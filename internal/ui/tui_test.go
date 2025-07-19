@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/mattwojtowicz/lazyoc/internal/ui/messages"
-	"github.com/mattwojtowicz/lazyoc/internal/ui/models"
+	"github.com/katyella/lazyoc/internal/ui/messages"
+	"github.com/katyella/lazyoc/internal/ui/models"
 )
 
 func TestNewTUI(t *testing.T) {

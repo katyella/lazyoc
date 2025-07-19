@@ -2,7 +2,7 @@ package ui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/mattwojtowicz/lazyoc/internal/logging"
+	"github.com/katyella/lazyoc/internal/logging"
 )
 
 // ProgramOptions holds configuration for the Bubble Tea program

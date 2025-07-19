@@ -6,10 +6,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/mattwojtowicz/lazyoc/internal/errors"
-	"github.com/mattwojtowicz/lazyoc/internal/logging"
-	"github.com/mattwojtowicz/lazyoc/internal/ui/messages"
-	"github.com/mattwojtowicz/lazyoc/internal/ui/models"
+	"github.com/katyella/lazyoc/internal/errors"
+	"github.com/katyella/lazyoc/internal/logging"
+	"github.com/katyella/lazyoc/internal/ui/messages"
+	"github.com/katyella/lazyoc/internal/ui/models"
 )
 
 // TUI wraps the App model and implements the tea.Model interface

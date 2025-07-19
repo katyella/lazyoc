@@ -1,4 +1,4 @@
-module github.com/mattwojtowicz/lazyoc
+module github.com/katyella/lazyoc
 
 go 1.24.5
 

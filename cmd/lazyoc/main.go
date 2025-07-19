@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/mattwojtowicz/lazyoc/internal/ui"
+	"github.com/katyella/lazyoc/internal/ui"
 )
 
 var (

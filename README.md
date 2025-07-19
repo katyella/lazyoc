@@ -1,9 +1,9 @@
 # LazyOC 🚀
 
-[![CI Status](https://github.com/mattwojtowicz/lazyoc/workflows/CI/badge.svg)](https://github.com/mattwojtowicz/lazyoc/actions)
-[![Go Report Card](https://goreportcard.com/badge/github.com/mattwojtowicz/lazyoc)](https://goreportcard.com/report/github.com/mattwojtowicz/lazyoc)
-[![codecov](https://codecov.io/gh/mattwojtowicz/lazyoc/branch/main/graph/badge.svg)](https://codecov.io/gh/mattwojtowicz/lazyoc)
-[![Release](https://img.shields.io/github/release/mattwojtowicz/lazyoc.svg)](https://github.com/mattwojtowicz/lazyoc/releases/latest)
+[![CI Status](https://github.com/katyella/lazyoc/workflows/CI/badge.svg)](https://github.com/katyella/lazyoc/actions)
+[![Go Report Card](https://goreportcard.com/badge/github.com/katyella/lazyoc)](https://goreportcard.com/report/github.com/katyella/lazyoc)
+[![codecov](https://codecov.io/gh/katyella/lazyoc/branch/main/graph/badge.svg)](https://codecov.io/gh/katyella/lazyoc)
+[![Release](https://img.shields.io/github/release/katyella/lazyoc.svg)](https://github.com/katyella/lazyoc/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A lazy terminal UI for OpenShift and Kubernetes clusters. LazyOC provides an intuitive, vim-like interface for managing cluster resources without the complexity of memorizing kubectl/oc commands.
@@ -44,11 +44,11 @@ brew install mattwojtowicz/tap/lazyoc
 ### Linux/macOS (Manual)
 ```bash
 # Download the latest release
-curl -L https://github.com/mattwojtowicz/lazyoc/releases/latest/download/lazyoc_Linux_x86_64.tar.gz | tar xz
+curl -L https://github.com/katyella/lazyoc/releases/latest/download/lazyoc_Linux_x86_64.tar.gz | tar xz
 sudo mv lazyoc /usr/local/bin/
 
 # Or for macOS
-curl -L https://github.com/mattwojtowicz/lazyoc/releases/latest/download/lazyoc_Darwin_x86_64.tar.gz | tar xz
+curl -L https://github.com/katyella/lazyoc/releases/latest/download/lazyoc_Darwin_x86_64.tar.gz | tar xz
 sudo mv lazyoc /usr/local/bin/
 ```
 
@@ -60,7 +60,7 @@ scoop install lazyoc
 
 ### From Source
 ```bash
-go install github.com/mattwojtowicz/lazyoc/cmd/lazyoc@latest
+go install github.com/katyella/lazyoc/cmd/lazyoc@latest
 ```
 
 ## 🎯 Quick Start
@@ -95,7 +95,7 @@ LazyOC is designed to be lightweight and efficient:
 
 ### Building from Source
 ```bash
-git clone https://github.com/mattwojtowicz/lazyoc
+git clone https://github.com/katyella/lazyoc
 cd lazyoc
 make build
 ```
@@ -146,7 +146,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🔗 Links
 
-- [Documentation](https://github.com/mattwojtowicz/lazyoc/wiki)
-- [Issue Tracker](https://github.com/mattwojtowicz/lazyoc/issues)
-- [Discussions](https://github.com/mattwojtowicz/lazyoc/discussions)
-- [Releases](https://github.com/mattwojtowicz/lazyoc/releases)
+- [Documentation](https://github.com/katyella/lazyoc/wiki)
+- [Issue Tracker](https://github.com/katyella/lazyoc/issues)
+- [Discussions](https://github.com/katyella/lazyoc/discussions)
+- [Releases](https://github.com/katyella/lazyoc/releases)
