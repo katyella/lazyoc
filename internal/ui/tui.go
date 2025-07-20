@@ -35,6 +35,9 @@ type TUI struct {
 	// CRITICAL: Ready state pattern from research
 	isReady               bool // Never render until first WindowSizeMsg
 	componentsInitialized bool
+	
+	// Message handling
+	messageHandler *messages.MessageHandler
 }
 
 // NewTUI creates a new TUI instance
@@ -47,9 +50,10 @@ func NewTUI(version string, debug bool) *TUI {
 	
 	// Create TUI with empty layout components (will be initialized on first resize)
 	tui := &TUI{
-		App:           app,
-		navController: navigation.NewNavigationController(),
-		helpComponent: navigation.NewHelpComponent(80, 24), // Default size, will be updated
+		App:            app,
+		navController:  navigation.NewNavigationController(),
+		helpComponent:  navigation.NewHelpComponent(80, 24), // Default size, will be updated
+		messageHandler: messages.NewMessageHandler(),
 	}
 	
 	// Set up navigation callbacks
@@ -75,57 +79,144 @@ func (t *TUI) Init() tea.Cmd {
 
 // Update implements tea.Model interface - handles messages and updates state
 func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	logging.Debug(t.Logger, "TUI Update() received message: %T", msg)
+	// Track message for performance optimization
+	t.messageHandler.TrackMessage(msg)
 	
+	// Debug logging with rate limiting for high-frequency messages
+	if !t.messageHandler.IsHighFrequency(msg) {
+		logging.Debug(t.Logger, "TUI Update() received message: %T", msg)
+	}
+	
+	// Check if this message should be batched
+	if t.messageHandler.ShouldBatch(msg) {
+		t.messageHandler.AddToBatch(msg)
+		// Process batch if it's getting large
+		if len(t.messageHandler.ProcessBatch()) >= 5 {
+			return t.processBatchedMessages()
+		}
+		return t, nil
+	}
+	
+	// Process critical and high-priority messages first
+	priority := t.messageHandler.GetMessagePriority(msg)
+	if priority == messages.PriorityCritical {
+		return t.handleCriticalMessage(msg)
+	}
+	
+	// Handle regular messages
 	var cmds []tea.Cmd
 	
-	switch msg := msg.(type) {
+	// Process window size changes with helper function
+	if handled, cmd := t.handleWindowSizeMessage(msg); handled {
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	} else if handled, cmd := t.handleKeyboardMessage(msg); handled {
+		// Handle keyboard input
+		return t, cmd
+	} else if handled, cmd := t.handleApplicationMessage(msg); handled {
+		// Handle application state messages
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	} else if handled, cmd := t.handleNavigationSystemMessage(msg); handled {
+		// Handle navigation system messages
+		return t, cmd
+	}
 	
-	// Terminal window size changes
-	case tea.WindowSizeMsg:
-		// CRITICAL: This is our first valid sizing info - mark as ready
-		if !t.isReady {
-			t.isReady = true
-			logging.Debug(t.Logger, "TUI marked ready after receiving WindowSizeMsg")
+	// Update components if initialized
+	if t.componentsInitialized {
+		componentCmds := t.updateComponents(msg)
+		cmds = append(cmds, componentCmds...)
+	}
+	
+	// Return with batched commands
+	if len(cmds) > 0 {
+		return t, tea.Batch(cmds...)
+	}
+	return t, nil
+}
+
+// handleCriticalMessage handles critical priority messages that must be processed immediately
+func (t *TUI) handleCriticalMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.QuitMsg:
+		logging.Info(t.Logger, "Quit message received")
+		return t, tea.Quit
+		
+	case messages.ErrorMsg:
+		t.SetError(msg.Err)
+		logging.Error(t.Logger, "Critical error occurred: %v", msg.Err)
+		return t, nil
+		
+	default:
+		// Shouldn't happen but handle gracefully
+		logging.Warn(t.Logger, "Unknown critical message type: %T", msg)
+		return t, nil
+	}
+}
+
+// handleWindowSizeMessage handles window resize messages
+func (t *TUI) handleWindowSizeMessage(msg tea.Msg) (bool, tea.Cmd) {
+	windowMsg, ok := msg.(tea.WindowSizeMsg)
+	if !ok {
+		return false, nil
+	}
+	
+	// CRITICAL: This is our first valid sizing info - mark as ready
+	if !t.isReady {
+		t.isReady = true
+		logging.Debug(t.Logger, "TUI marked ready after receiving WindowSizeMsg")
+	}
+	
+	// Ensure minimum terminal size to prevent layout issues
+	width, height := windowMsg.Width, windowMsg.Height
+	minWidth, minHeight := 60, 15 // Absolute minimum for basic functionality
+	
+	if width < minWidth {
+		width = minWidth
+	}
+	if height < minHeight {
+		height = minHeight
+	}
+	
+	t.SetDimensions(width, height)
+	
+	// Initialize components ONLY after we're ready with valid dimensions
+	if !t.componentsInitialized && t.isReady {
+		t.testLayoutManagerOnly(width, height)
+		t.componentsInitialized = true
+	} else if t.componentsInitialized {
+		// Update existing layout with new dimensions
+		if t.layoutManager != nil {
+			t.layoutManager.UpdateDimensions(width, height)
+			t.updateAllComponentDimensions()
 		}
-		
-		// Ensure minimum terminal size to prevent layout issues
-		width, height := msg.Width, msg.Height
-		minWidth, minHeight := 60, 15 // Absolute minimum for basic functionality
-		
-		if width < minWidth {
-			width = minWidth
-		}
-		if height < minHeight {
-			height = minHeight
-		}
-		
-		t.SetDimensions(width, height)
-		
-		// Initialize components ONLY after we're ready with valid dimensions
-		if !t.componentsInitialized && t.isReady {
-			t.testLayoutManagerOnly(width, height)
-			t.componentsInitialized = true
-		} else if t.componentsInitialized {
-			// Update existing layout with new dimensions
-			if t.layoutManager != nil {
-				t.layoutManager.UpdateDimensions(width, height)
-				t.updateAllComponentDimensions()
-			}
-		}
-		
-		// Update help component dimensions
-		if t.helpComponent != nil {
-			t.helpComponent.SetDimensions(width, height)
-		}
-		
-		logging.Debug(t.Logger, "Window resized to %dx%d (requested: %dx%d)", width, height, msg.Width, msg.Height)
-		
-	// Keyboard input
-	case tea.KeyMsg:
-		return t.handleKeyInputWithNavigation(msg)
-		
-	// Application initialization
+	}
+	
+	// Update help component dimensions
+	if t.helpComponent != nil {
+		t.helpComponent.SetDimensions(width, height)
+	}
+	
+	logging.Debug(t.Logger, "Window resized to %dx%d (requested: %dx%d)", width, height, windowMsg.Width, windowMsg.Height)
+	return true, nil
+}
+
+// handleKeyboardMessage handles keyboard input messages
+func (t *TUI) handleKeyboardMessage(msg tea.Msg) (bool, tea.Cmd) {
+	keyMsg, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return false, nil
+	}
+	
+	_, cmd := t.handleKeyInputWithNavigation(keyMsg)
+	return true, cmd
+}
+
+// handleApplicationMessage handles application state messages
+func (t *TUI) handleApplicationMessage(msg tea.Msg) (bool, tea.Cmd) {
+	switch msg := msg.(type) {
 	case messages.InitMsg:
 		t.ClearLoading()
 		t.State = models.StateMain
@@ -136,75 +227,120 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			t.componentsInitialized = true
 		}
 		logging.Info(t.Logger, "Application initialized successfully")
+		return true, nil
 		
-	// Error messages
-	case messages.ErrorMsg:
-		t.SetError(msg.Err)
-		logging.Error(t.Logger, "Error occurred: %v", msg.Err)
-		
-	// Loading state changes
 	case messages.LoadingMsg:
 		if msg.Loading {
 			t.SetLoading(msg.Message)
 		} else {
 			t.ClearLoading()
 		}
+		return true, nil
 		
-	// Status messages
 	case messages.StatusMsg:
 		logging.Info(t.Logger, "Status: %s", msg.Message)
+		return true, nil
 		
-	// Connection events
 	case messages.ConnectedMsg:
 		logging.Info(t.Logger, "Connected to cluster: %s, namespace: %s", msg.ClusterName, msg.Namespace)
+		return true, nil
 		
 	case messages.DisconnectedMsg:
 		logging.Info(t.Logger, "Disconnected from cluster")
+		return true, nil
 		
-	// Navigation messages
+	default:
+		return false, nil
+	}
+}
+
+// handleNavigationSystemMessage handles navigation system messages
+func (t *TUI) handleNavigationSystemMessage(msg tea.Msg) (bool, tea.Cmd) {
+	switch msg := msg.(type) {
 	case navigation.NavigationMsg:
-		return t.handleNavigationMessage(msg)
+		_, cmd := t.handleNavigationMessage(msg)
+		return true, cmd
 		
 	case navigation.ModeChangeMsg:
-		return t.handleModeChange(msg)
+		_, cmd := t.handleModeChange(msg)
+		return true, cmd
 		
 	case navigation.SearchMsg:
-		return t.handleSearchMessage(msg)
+		_, cmd := t.handleSearchMessage(msg)
+		return true, cmd
 		
 	case navigation.CommandMsg:
-		return t.handleCommandMessage(msg)
+		_, cmd := t.handleCommandMessage(msg)
+		return true, cmd
+		
+	default:
+		return false, nil
 	}
+}
+
+// updateComponents updates all components with the message and collects commands
+func (t *TUI) updateComponents(msg tea.Msg) []tea.Cmd {
+	var cmds []tea.Cmd
 	
-	// Update all components if they're initialized - CRITICAL for BubbleTea pattern
-	if t.componentsInitialized {
-		// Update log pane
-		if t.logPane != nil {
-			var cmd tea.Cmd
-			t.logPane, cmd = t.logPane.Update(msg)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-		}
-		
-		// Update other components as needed
-		if t.contentPane != nil {
-			var cmd tea.Cmd
-			t.contentPane, cmd = t.contentPane.Update(msg)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-		}
-		
-		if t.detailPane != nil {
-			var cmd tea.Cmd
-			t.detailPane, cmd = t.detailPane.Update(msg)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
+	// Update components in priority order
+	// Log pane first as it might need to log other component updates
+	if t.logPane != nil {
+		var cmd tea.Cmd
+		t.logPane, cmd = t.logPane.Update(msg)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
 		}
 	}
 	
-	// Return updated model and any commands to run
+	// Content pane - main interaction area
+	if t.contentPane != nil {
+		var cmd tea.Cmd
+		t.contentPane, cmd = t.contentPane.Update(msg)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+	
+	// Detail pane - secondary interaction area
+	if t.detailPane != nil {
+		var cmd tea.Cmd
+		t.detailPane, cmd = t.detailPane.Update(msg)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+	
+	// Header, status bar, and tabs don't have Update methods
+	// They are updated through direct property changes in updateComponentsContent
+	
+	return cmds
+}
+
+// processBatchedMessages processes accumulated batched messages
+func (t *TUI) processBatchedMessages() (tea.Model, tea.Cmd) {
+	messages := t.messageHandler.ProcessBatch()
+	if len(messages) == 0 {
+		return t, nil
+	}
+	
+	var cmds []tea.Cmd
+	
+	// Process each batched message
+	for _, msg := range messages {
+		// These should all be low-priority messages
+		if handled, cmd := t.handleApplicationMessage(msg); handled {
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+	}
+	
+	// Update components once with the last message
+	if t.componentsInitialized && len(messages) > 0 {
+		componentCmds := t.updateComponents(messages[len(messages)-1])
+		cmds = append(cmds, componentCmds...)
+	}
+	
 	if len(cmds) > 0 {
 		return t, tea.Batch(cmds...)
 	}
