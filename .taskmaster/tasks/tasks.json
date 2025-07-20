@@ -106,7 +106,7 @@
         "id": 2,
         "title": "Basic TUI Framework Implementation",
         "description": "Implement the core Terminal User Interface (TUI) framework using Bubble Tea with basic navigation and layout components.",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [
           1
         ],
@@ -224,7 +224,7 @@
             "title": "Simple Theme Management with Lipgloss",
             "description": "Implement a simplified theme system using lipgloss built-in styling capabilities with basic light/dark themes and config persistence",
             "details": "<info added on 2025-07-20T17:55:25.429Z>\n# Theme Management Implementation Plan\n\n1. Create a simple Theme struct with color fields:\n   - Background, foreground, primary, secondary colors\n   - Error, warning, success status colors\n   - Border colors for UI elements\n\n2. Define two built-in themes:\n   - Light theme using light background with dark text\n   - Dark theme using dark background with light text\n   - Use lipgloss.Color definitions for all color values\n\n3. Implement theme manager:\n   - Create configuration directory at ~/.lazyoc/\n   - Store theme preferences in config.json\n   - Include functions to load/save theme settings\n\n4. Theme switching functionality:\n   - Create a function to switch between themes\n   - Update all lipgloss styles when theme changes\n   - Broadcast theme change events to UI components\n\n5. Style component creation:\n   - Use lipgloss.NewStyle() to create reusable styled components\n   - Base all styles on current theme colors\n   - Create helper functions for common styling patterns\n\n6. Theme persistence:\n   - Save theme preference immediately on change\n   - Restore last used theme on application startup\n   - Handle file I/O errors gracefully\n\n7. UI component theming:\n   - Apply theme colors to header, panels, borders\n   - Style text elements according to theme\n   - Ensure consistent visual appearance across all components\n\n8. Implementation approach:\n   - Keep code simple and pragmatic\n   - Avoid complex terminal capability detection\n   - Focus on maintainable code over feature complexity\n\n9. Documentation:\n   - Document theme structure and available colors\n   - Include examples of creating custom styles\n   - Provide instructions for theme switching\n</info added on 2025-07-20T17:55:25.429Z>",
-            "status": "in-progress",
+            "status": "done",
             "dependencies": [],
             "parentTaskId": 2
           }
@@ -234,7 +234,7 @@
         "id": 3,
         "title": "OpenShift Client Integration",
         "description": "Integrate the OpenShift client libraries to enable communication with OpenShift clusters, including authentication and basic resource retrieval.",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [
           1
         ],
@@ -246,45 +246,81 @@
             "id": 1,
             "title": "Client Library Integration and Basic Connection Setup",
             "description": "Integrate client-go and openshift/client-go libraries with simple connection management for cluster communication",
-            "status": "pending",
+            "status": "done",
             "dependencies": [],
-            "details": "1. Import and configure client-go and openshift/client-go dependencies\n2. Implement basic connection setup with standard HTTP client\n3. Configure TLS settings with certificate validation\n4. Create simple connection factory with timeout configuration\n5. Add support for basic proxy configurations\n6. Implement proper cleanup on shutdown",
+            "details": "1. Import and configure client-go and openshift/client-go dependencies\n2. Implement basic connection setup with standard HTTP client\n3. Configure TLS settings with certificate validation\n4. Create simple connection factory with timeout configuration\n5. Add support for basic proxy configurations\n6. Implement proper cleanup on shutdown\n<info added on 2025-07-20T18:47:42.595Z>\nCreate Kubernetes Client Factory\n\n1. Parse kubeconfig file from default location (~/.kube/config)\n2. Create client factory that returns typed clients (CoreV1, AppsV1, etc)\n3. Define simple client interface for dependency injection\n4. Handle basic connection errors\n5. Test connection with simple API call (get server version)\n</info added on 2025-07-20T18:47:42.595Z>",
             "testStrategy": ""
           },
           {
             "id": 2,
             "title": "Kubeconfig Authentication Implementation",
             "description": "Implement kubeconfig file parsing and authentication as the initial authentication method",
-            "status": "pending",
+            "status": "done",
             "dependencies": [
               1
             ],
-            "details": "1. Create authentication interface for future extensibility\n2. Implement kubeconfig parser with current-context support\n3. Add support for embedded certificate data in kubeconfig\n4. Implement token extraction from kubeconfig\n5. Create simple credential validation\n6. Add basic error handling for authentication failures",
+            "details": "1. Create authentication interface for future extensibility\n2. Implement kubeconfig parser with current-context support\n3. Add support for embedded certificate data in kubeconfig\n4. Implement token extraction from kubeconfig\n5. Create simple credential validation\n6. Add basic error handling for authentication failures\n<info added on 2025-07-20T18:48:29.623Z>\n1. Implement ListPods(namespace) method\n2. Implement ListServices(namespace) method  \n3. Implement ListDeployments(namespace) method\n4. Add basic field selectors (name, labels)\n5. Return simplified resource structs (not full K8s objects)\n6. Handle list errors gracefully\n</info added on 2025-07-20T18:48:29.623Z>",
             "testStrategy": ""
           },
           {
             "id": 3,
-            "title": "Basic API Abstraction Layer",
+            "title": "Basic Resource Operations",
             "description": "Build minimal API abstraction layer with simple error handling and retry logic",
-            "status": "pending",
+            "status": "done",
             "dependencies": [
               1,
               2
             ],
-            "details": "1. Design simple API client interface for common resource operations\n2. Implement basic error handling with standard HTTP status codes\n3. Add simple retry logic for transient errors\n4. Create request/response logging for debugging\n5. Implement basic API version detection\n6. Add support for common resource operations (get, list, create, update, delete)",
+            "details": "1. Design simple API client interface for common resource operations\n2. Implement basic error handling with standard HTTP status codes\n3. Add simple retry logic for transient errors\n4. Create request/response logging for debugging\n5. Implement basic API version detection\n6. Add support for common resource operations (get, list, create, update, delete)\n<info added on 2025-07-20T18:49:39.331Z>\n1. Implement ListPods(namespace) method\n2. Implement ListServices(namespace) method  \n3. Implement ListDeployments(namespace) method\n4. Add basic field selectors (name, labels)\n5. Return simplified resource structs (not full K8s objects)\n6. Handle list errors gracefully\n7. Add pagination support for large resource lists\n8. Implement context cancellation for long-running operations\n9. Add namespace validation before queries\n10. Include resource count metrics in responses\n</info added on 2025-07-20T18:49:39.331Z>\n<info added on 2025-07-20T18:50:25.155Z>\n1. Get current namespace from kubeconfig\n2. List all namespaces user has access to\n3. Switch active namespace (update in-memory, not kubeconfig file)\n4. Get current context name\n5. Store selected namespace in app state\n</info added on 2025-07-20T18:50:25.155Z>",
             "testStrategy": ""
           },
           {
             "id": 4,
             "title": "Basic Connection Monitoring",
             "description": "Implement simple connection monitoring and basic metrics collection",
-            "status": "pending",
+            "status": "done",
             "dependencies": [
               1,
               2,
               3
             ],
-            "details": "1. Create basic connection status monitor\n2. Implement simple metrics for API request counts and errors\n3. Add basic latency tracking\n4. Create simple connection health check\n5. Implement basic logging for connection events\n6. Add cluster version detection",
+            "details": "1. Create basic connection status monitor\n2. Implement simple metrics for API request counts and errors\n3. Add basic latency tracking\n4. Create simple connection health check\n5. Implement basic logging for connection events\n6. Add cluster version detection\n<info added on 2025-07-20T18:51:08.055Z>\n1. Detect connection failures (network, auth, etc)\n2. Show user-friendly error messages in TUI\n3. Implement simple exponential backoff for retries\n4. Add 'Reconnect' command for manual retry\n5. Cache last successful connection config\n</info added on 2025-07-20T18:51:08.055Z>",
+            "testStrategy": ""
+          },
+          {
+            "id": 5,
+            "title": "Client Library Integration and Connection Pool Setup",
+            "description": "Implement client library integration with HTTP/2 support and configure connection pooling for efficient API communication with OpenShift clusters.",
+            "dependencies": [],
+            "details": "1. Integrate client-go and openshift/client-go libraries\n2. Configure HTTP/2 transport for improved performance\n3. Implement connection pooling with configurable limits\n4. Add connection timeout and keep-alive settings\n5. Implement graceful connection handling and cleanup\n6. Create connection factory with version-specific client configuration\n7. Add TLS configuration with certificate validation",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 6,
+            "title": "Multi-Method Authentication System",
+            "description": "Develop a flexible authentication system supporting multiple authentication methods including kubeconfig files, tokens, and OAuth.",
+            "dependencies": [],
+            "details": "1. Implement kubeconfig file parsing and credential extraction\n2. Add support for static token authentication\n3. Implement OAuth2 authentication flow\n4. Create credential manager for secure storage\n5. Add support for certificate-based authentication\n6. Implement credential refresh and rotation\n7. Add impersonation support for admin operations\n8. Create unified authentication interface for client usage",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 7,
+            "title": "API Abstraction Layer with Rate Limiting",
+            "description": "Create an API abstraction layer with rate limiting, retry logic, and version compatibility handling for reliable OpenShift API communication.",
+            "dependencies": [],
+            "details": "1. Implement API client abstraction for resource operations\n2. Add rate limiting with configurable thresholds\n3. Create exponential backoff retry mechanism\n4. Implement request batching for bulk operations\n5. Add version compatibility checks and adaptations\n6. Create request context propagation\n7. Implement request cancellation support\n8. Add comprehensive error handling with categorization",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 8,
+            "title": "Connection Monitoring and Metrics Collection",
+            "description": "Implement connection monitoring and metrics collection for OpenShift API interactions to track performance and reliability.",
+            "dependencies": [],
+            "details": "1. Create connection health checking mechanism\n2. Implement API latency metrics collection\n3. Add request success/failure rate tracking\n4. Create connection status dashboard data\n5. Implement automatic reconnection for failed connections\n6. Add resource utilization metrics (memory, connections)\n7. Create alerting mechanism for connection issues\n8. Implement metrics export for external monitoring",
+            "status": "pending",
             "testStrategy": ""
           }
         ]
@@ -689,7 +725,7 @@
     ],
     "metadata": {
       "created": "2025-07-19T19:01:35.351Z",
-      "updated": "2025-07-20T18:19:01.285Z",
+      "updated": "2025-07-20T19:09:01.506Z",
       "description": "Tasks for master context"
     }
   }
