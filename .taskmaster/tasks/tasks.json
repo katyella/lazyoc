@@ -106,14 +106,61 @@
         "id": 2,
         "title": "Basic TUI Framework Implementation",
         "description": "Implement the core Terminal User Interface (TUI) framework using Bubble Tea with basic navigation and layout components.",
-        "details": "1. Integrate Bubble Tea framework and Bubbles components\n2. Implement the main application model with state management\n3. Create the basic layout structure as specified in the PRD:\n   - Header with cluster info\n   - Tab navigation for resource types\n   - Main pane for resource listing\n   - Detail pane for selected resource\n   - Log pane for streaming logs\n   - Status bar for connection info\n4. Implement keyboard navigation with vim-like bindings\n5. Create event handling system for user input\n6. Implement color scheme management with support for different terminal capabilities\n7. Add responsive layout that adapts to terminal size\n8. Implement help overlay accessible via '?' key\n9. Create loading indicators and progress displays",
-        "testStrategy": "1. Unit tests for UI components and state management\n2. Manual testing across different terminal emulators\n3. Test keyboard navigation and shortcuts\n4. Verify responsive layout at different terminal dimensions\n5. Test color rendering in terminals with different capabilities\n6. Verify accessibility features work as expected",
-        "priority": "high",
+        "status": "in-progress",
         "dependencies": [
           1
         ],
-        "status": "in-progress",
+        "priority": "high",
+        "details": "1. Integrate Bubble Tea framework and Bubbles components\n2. Implement the main application model with state management\n3. Create the basic layout structure as specified in the PRD:\n   - Header with cluster info\n   - Tab navigation for resource types\n   - Main pane for resource listing\n   - Detail pane for selected resource\n   - Log pane for streaming logs\n   - Status bar for connection info\n4. Implement keyboard navigation with vim-like bindings\n5. Create event handling system for user input\n6. Implement color scheme management with support for different terminal capabilities\n7. Add responsive layout that adapts to terminal size\n8. Implement help overlay accessible via '?' key\n9. Create loading indicators and progress displays",
+        "testStrategy": "1. Unit tests for UI components and state management\n2. Manual testing across different terminal emulators\n3. Test keyboard navigation and shortcuts\n4. Verify responsive layout at different terminal dimensions\n5. Test color rendering in terminals with different capabilities\n6. Verify accessibility features work as expected",
         "subtasks": [
+          {
+            "id": 4,
+            "title": "Simplified State Management and Message Handling",
+            "description": "Enhance the existing App model with pragmatic state management, improved message handling, and session persistence while avoiding over-engineering.",
+            "status": "pending",
+            "dependencies": [
+              1
+            ],
+            "details": "1. Refine the existing App model with clear state fields\n2. Implement state update patterns with immutability where needed\n3. Improve message handling in Update() method with clearer type switches\n4. Add session state persistence (save/restore):\n   - Window dimensions and position\n   - Selected tabs and views\n   - User preferences\n   - Recent clusters/namespaces\n5. Implement state validation for critical fields\n6. Add undo/redo capability for critical destructive actions\n7. Create simple state change notification mechanism\n8. Implement performance optimizations for large state updates\n9. Add error state handling and recovery\n10. Create user preference persistence",
+            "testStrategy": "1. Unit test state update functions\n2. Test session persistence with various state configurations\n3. Verify state validation correctly identifies invalid states\n4. Test undo/redo functionality for critical operations\n5. Benchmark performance with large state updates\n6. Test error recovery mechanisms\n7. Verify user preferences are correctly saved and restored"
+          },
+          {
+            "id": 5,
+            "title": "Theme and Color Scheme Management with Terminal Capability Detection",
+            "description": "Build a theming system that supports multiple color schemes, detects terminal capabilities, and provides graceful degradation for limited terminals while ensuring accessibility.",
+            "status": "pending",
+            "dependencies": [
+              1
+            ],
+            "details": "1. Create theme interface with color definitions\n2. Implement terminal capability detection (256 color, true color)\n3. Build default light and dark themes\n4. Add high contrast theme for accessibility\n5. Create theme switching mechanism\n6. Implement color degradation for limited terminals\n7. Add theme persistence to user preferences\n8. Create semantic color system (primary, secondary, error, etc.)\n9. Implement dynamic theme reloading\n10. Add support for custom user themes\n11. Create theme validation and testing utilities\n12. Implement ANSI escape sequence optimization",
+            "testStrategy": ""
+          },
+          {
+            "id": 9,
+            "title": "Implement Session State Persistence",
+            "description": "Create a system to save and restore user session state between application runs, preserving user preferences and window configuration.",
+            "status": "pending",
+            "dependencies": [
+              1,
+              2,
+              3
+            ],
+            "details": "1. Define serializable session state structure\n2. Implement file-based state storage in user config directory\n3. Create state serialization/deserialization functions\n4. Add automatic state saving on exit\n5. Implement state loading on startup\n6. Add version compatibility for state files\n7. Create state migration for version changes\n8. Implement state validation on load\n9. Add user preferences section in state file\n10. Create fallback to defaults for corrupted state",
+            "testStrategy": "1. Test state serialization/deserialization with various configurations\n2. Verify state is correctly saved on normal and abnormal exits\n3. Test state loading with valid and invalid state files\n4. Verify version compatibility handling works correctly\n5. Test state validation correctly identifies corrupted state\n6. Verify fallback to defaults works as expected"
+          },
+          {
+            "id": 10,
+            "title": "Enhance Message Handling in Update Method",
+            "description": "Improve the message handling system in the Update method to be more maintainable and efficient with the simplified direct rendering approach.",
+            "status": "pending",
+            "dependencies": [
+              1,
+              7
+            ],
+            "details": "1. Refactor Update() method with clearer message type handling\n2. Implement more efficient type switching for messages\n3. Add message prioritization for critical updates\n4. Create helper functions for common message handling patterns\n5. Implement better error handling for message processing\n6. Add performance optimizations for high-frequency messages\n7. Create debug logging for message flow\n8. Implement message batching for similar updates",
+            "testStrategy": "1. Unit test message handling with various message types\n2. Benchmark message processing performance\n3. Test error handling with invalid messages\n4. Verify message prioritization works correctly\n5. Test message batching with high-frequency updates"
+          },
           {
             "id": 1,
             "title": "Bubble Tea Framework Integration and Base Application Structure",
@@ -144,28 +191,6 @@
             ],
             "details": "1. Create keybinding registry with configurable mappings\n2. Implement vim-like navigation (h,j,k,l for movement)\n3. Add modal system (normal, search, command modes)\n4. Create focus navigation between panels (Tab/Shift-Tab)\n5. Implement jump navigation (gg for top, G for bottom)\n6. Add search mode with / key activation\n7. Create command mode with : key activation\n8. Build help overlay component with ? key trigger\n9. Implement contextual keybinding hints\n10. Add customizable keybinding support\n11. Create keyboard event routing system\n12. Implement escape key handling for mode switching",
             "status": "done",
-            "testStrategy": ""
-          },
-          {
-            "id": 4,
-            "title": "State Management and Event Handling System",
-            "description": "Design and implement a robust state management system with event handling, command pattern implementation, and proper separation of concerns between UI and business logic.",
-            "dependencies": [
-              1
-            ],
-            "details": "1. Create centralized state store with typed fields\n2. Implement state update patterns with immutability\n3. Design event/message types for all user actions\n4. Create command pattern for executing operations\n5. Implement undo/redo capability for reversible actions\n6. Add state persistence for session recovery\n7. Create event bus for component communication\n8. Implement debouncing for rapid events\n9. Add state validation and consistency checks\n10. Create middleware system for cross-cutting concerns\n11. Implement state change notifications\n12. Add performance optimizations for large state updates",
-            "status": "pending",
-            "testStrategy": ""
-          },
-          {
-            "id": 5,
-            "title": "Theme and Color Scheme Management with Terminal Capability Detection",
-            "description": "Build a theming system that supports multiple color schemes, detects terminal capabilities, and provides graceful degradation for limited terminals while ensuring accessibility.",
-            "dependencies": [
-              1
-            ],
-            "details": "1. Create theme interface with color definitions\n2. Implement terminal capability detection (256 color, true color)\n3. Build default light and dark themes\n4. Add high contrast theme for accessibility\n5. Create theme switching mechanism\n6. Implement color degradation for limited terminals\n7. Add theme persistence to user preferences\n8. Create semantic color system (primary, secondary, error, etc.)\n9. Implement dynamic theme reloading\n10. Add support for custom user themes\n11. Create theme validation and testing utilities\n12. Implement ANSI escape sequence optimization",
-            "status": "pending",
             "testStrategy": ""
           },
           {
@@ -678,7 +703,7 @@
     ],
     "metadata": {
       "created": "2025-07-19T19:01:35.351Z",
-      "updated": "2025-07-20T15:53:00.707Z",
+      "updated": "2025-07-20T17:46:38.883Z",
       "description": "Tasks for master context"
     }
   }

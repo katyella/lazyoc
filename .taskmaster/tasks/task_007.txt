@@ -1,0 +1,65 @@
+# Task ID: 7
+# Title: OpenShift-Specific Resource Support
+# Status: pending
+# Dependencies: 4
+# Priority: high
+# Description: Implement support for OpenShift-specific resources including BuildConfigs, ImageStreams, DeploymentConfigs, and Operators.
+# Details:
+1. Create models for OpenShift-specific resources:
+   - BuildConfigs with build history
+   - ImageStreams with tag information
+   - DeploymentConfigs with rollback support
+   - Operators with subscription tracking
+   - Routes with TLS status
+2. Implement specialized views for each resource type
+3. Add resource-specific operations:
+   - Trigger builds
+   - Manage image tags
+   - Rollback deployments
+   - Manage operator subscriptions
+4. Create visualizations for resource relationships
+5. Implement resource-specific metrics
+6. Add vulnerability information for ImageStreams
+7. Create install plan tracking for Operators
+8. Implement build trigger management
+
+# Test Strategy:
+1. Test operations on OpenShift-specific resources
+2. Verify build triggering and monitoring
+3. Test image tag management
+4. Verify deployment rollbacks work correctly
+5. Test operator lifecycle management
+6. Verify route management with TLS
+7. Test visualization of resource relationships
+
+# Subtasks:
+## 1. Implement OpenShift Resource Models [pending]
+### Dependencies: None
+### Description: Create comprehensive Go models for BuildConfigs, ImageStreams, DeploymentConfigs, and Operators with all necessary fields and metadata
+### Details:
+Define structs for BuildConfig (with build strategies, triggers, source/output specs), ImageStream (with tags, import policies, repository metadata), DeploymentConfig (with deployment strategies, triggers, rollback configs), and Operator (with ClusterServiceVersion, Subscription, InstallPlan models). Include vulnerability data fields in ImageStream tags for CVE tracking. Ensure models support both v1 and v1beta1 API versions where applicable.
+
+## 2. Build Operator and Subscription Management System [pending]
+### Dependencies: 7.1
+### Description: Implement comprehensive support for OLM (Operator Lifecycle Manager) resources including subscriptions, install plans, and catalog sources
+### Details:
+Create handlers for managing operator subscriptions (create, update, delete), implement install plan approval workflows, support catalog source management, track operator upgrade paths, monitor ClusterServiceVersion status, handle operator dependency resolution, and provide subscription health monitoring. Include support for both manual and automatic approval strategies.
+
+## 3. Create Specialized UI Views for Each Resource Type [pending]
+### Dependencies: 7.1, 7.2
+### Description: Design and implement dedicated TUI views optimized for displaying BuildConfigs, ImageStreams, DeploymentConfigs, and Operators with resource-specific information
+### Details:
+Implement BuildConfig view showing build history, triggers, and webhook URLs; ImageStream view with tag list, import status, and vulnerability scan results; DeploymentConfig view with rollout history and trigger status; Operator view showing subscription details, installed versions, and available updates. Each view should support resource-specific filtering and sorting options.
+
+## 4. Implement Resource-Specific Operations [pending]
+### Dependencies: 7.1, 7.2, 7.3
+### Description: Add specialized operations for each OpenShift resource type including build triggers, deployment rollbacks, and image tag management
+### Details:
+Implement build triggering (manual, webhook, config change), build cancellation and restart, deployment rollback with history selection, image tag operations (import, tag, untag), operator subscription updates, install plan approval/denial, route edge termination management, and deployment config scaling. Include confirmation dialogs for destructive operations and progress indicators for long-running tasks.
+
+## 5. Build Resource Relationship Visualizations and Metrics [pending]
+### Dependencies: 7.1, 7.2, 7.3, 7.4
+### Description: Create visual representations of resource relationships and integrate vulnerability tracking with metrics display
+### Details:
+Implement dependency graphs showing relationships between BuildConfigs, ImageStreams, and DeploymentConfigs; create vulnerability dashboard for ImageStreams showing CVE counts by severity; build metrics displays for build success rates, deployment frequency, and image freshness; add operator dependency visualization; implement resource usage metrics per deployment. Include ASCII-based graph rendering for terminal display.
+

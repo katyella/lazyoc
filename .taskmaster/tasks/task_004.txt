@@ -1,0 +1,67 @@
+# Task ID: 4
+# Title: Resource Listing and Management
+# Status: pending
+# Dependencies: 2, 3
+# Priority: high
+# Description: Implement core resource listing and management functionality for basic OpenShift resources (Pods, Services, etc.) with real-time updates.
+# Details:
+1. Create resource models for core OpenShift resources:
+   - Pods
+   - Services
+   - Routes
+   - Deployments
+   - ConfigMaps
+   - Secrets
+2. Implement resource listing with pagination
+3. Add filtering and search functionality
+4. Create watch streams for real-time updates
+5. Implement basic resource operations:
+   - Describe (detailed view)
+   - Logs (streaming)
+   - Delete
+   - Restart
+6. Add multi-selection support with batch operations
+7. Implement namespace/project filtering
+8. Create resource caching layer for performance
+9. Add sorting options for resource lists
+
+# Test Strategy:
+1. Unit tests for resource models and operations
+2. Integration tests for resource listing and filtering
+3. Test watch streams with simulated resource changes
+4. Verify pagination works correctly with large resource sets
+5. Test search and filtering performance
+6. Verify cache invalidation works correctly
+7. Test batch operations on multiple resources
+
+# Subtasks:
+## 1. Core Resource Model Definitions [pending]
+### Dependencies: None
+### Description: Create comprehensive data models and interfaces for Kubernetes/OpenShift resources including Pods, Services, Routes, Deployments, ConfigMaps, and Secrets
+### Details:
+Define Go structs for core Kubernetes resources with proper JSON/YAML tags. Create interfaces for resource operations (CRUD, watch, describe). Implement resource metadata handling including labels, annotations, and ownership references. Add resource status parsing and state management. Create type-safe resource accessors and converters. Implement resource validation and error handling patterns.
+
+## 2. Resource Listing with Pagination and Caching [pending]
+### Dependencies: 4.1
+### Description: Implement efficient resource listing functionality with server-side pagination support and intelligent caching layer for performance optimization
+### Details:
+Create paginated list requests using limit/continue tokens. Implement in-memory cache with TTL and invalidation strategies. Add resource indexing for fast lookups by name, namespace, and labels. Create background refresh mechanism for cache updates. Implement resource version tracking for consistency. Add metrics for cache hit/miss rates and performance monitoring.
+
+## 3. Filtering, Search, and Sorting Functionality [pending]
+### Dependencies: 4.2
+### Description: Build comprehensive filtering system with field selectors, label selectors, full-text search, and multi-column sorting capabilities
+### Details:
+Implement Kubernetes field and label selector parsing. Create full-text search across resource names and descriptions. Add fuzzy search support for user-friendly matching. Implement multi-column sorting with custom comparators. Create saved filter presets and search history. Add performance optimizations for large result sets including result streaming.
+
+## 4. Real-time Updates via Watch Streams [pending]
+### Dependencies: 4.1, 4.2
+### Description: Implement WebSocket-based watch streams for real-time resource updates with automatic reconnection and event deduplication
+### Details:
+Create watch stream manager with connection pooling. Implement event buffering and deduplication logic. Add automatic reconnection with exponential backoff. Create delta processing for efficient UI updates. Implement watch bookmark support for resume capability. Add event filtering at the stream level for reduced bandwidth usage.
+
+## 5. Resource Operations with Batch Support [pending]
+### Dependencies: 4.1, 4.3
+### Description: Implement resource operations including describe, logs, delete, and restart with support for batch operations on multiple resources
+### Details:
+Create describe operation with detailed resource information formatting. Implement streaming log retrieval with tail and follow options. Add safe delete operations with cascade and orphan options. Implement pod restart via rolling update strategy. Create batch operation framework with progress tracking. Add operation queuing and rate limiting for cluster protection.
+
