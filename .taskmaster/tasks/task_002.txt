@@ -30,59 +30,8 @@
 6. Verify accessibility features work as expected
 
 # Subtasks:
-## 4. Simplified State Management and Message Handling [pending]
+## 4. Enhance Message Handling in Update Method [pending]
 ### Dependencies: 2.1
-### Description: Enhance the existing App model with pragmatic state management, improved message handling, and session persistence while avoiding over-engineering.
-### Details:
-1. Refine the existing App model with clear state fields
-2. Implement state update patterns with immutability where needed
-3. Improve message handling in Update() method with clearer type switches
-4. Add session state persistence (save/restore):
-   - Window dimensions and position
-   - Selected tabs and views
-   - User preferences
-   - Recent clusters/namespaces
-5. Implement state validation for critical fields
-6. Add undo/redo capability for critical destructive actions
-7. Create simple state change notification mechanism
-8. Implement performance optimizations for large state updates
-9. Add error state handling and recovery
-10. Create user preference persistence
-
-## 5. Theme and Color Scheme Management with Terminal Capability Detection [pending]
-### Dependencies: 2.1
-### Description: Build a theming system that supports multiple color schemes, detects terminal capabilities, and provides graceful degradation for limited terminals while ensuring accessibility.
-### Details:
-1. Create theme interface with color definitions
-2. Implement terminal capability detection (256 color, true color)
-3. Build default light and dark themes
-4. Add high contrast theme for accessibility
-5. Create theme switching mechanism
-6. Implement color degradation for limited terminals
-7. Add theme persistence to user preferences
-8. Create semantic color system (primary, secondary, error, etc.)
-9. Implement dynamic theme reloading
-10. Add support for custom user themes
-11. Create theme validation and testing utilities
-12. Implement ANSI escape sequence optimization
-
-## 9. Implement Session State Persistence [pending]
-### Dependencies: 2.1, 2.2, 2.3
-### Description: Create a system to save and restore user session state between application runs, preserving user preferences and window configuration.
-### Details:
-1. Define serializable session state structure
-2. Implement file-based state storage in user config directory
-3. Create state serialization/deserialization functions
-4. Add automatic state saving on exit
-5. Implement state loading on startup
-6. Add version compatibility for state files
-7. Create state migration for version changes
-8. Implement state validation on load
-9. Add user preferences section in state file
-10. Create fallback to defaults for corrupted state
-
-## 10. Enhance Message Handling in Update Method [pending]
-### Dependencies: 2.1, 2.7
 ### Description: Improve the message handling system in the Update method to be more maintainable and efficient with the simplified direct rendering approach.
 ### Details:
 1. Refactor Update() method with clearer message type handling
@@ -93,6 +42,62 @@
 6. Add performance optimizations for high-frequency messages
 7. Create debug logging for message flow
 8. Implement message batching for similar updates
+
+## 5. Bubble Tea Framework Integration and Base Application Structure [done]
+### Dependencies: None
+### Description: Set up the Bubble Tea framework as the foundation of the TUI application, create the main application model, and establish the basic program structure with proper initialization and lifecycle management.
+### Details:
+1. Add Bubble Tea and Bubbles dependencies to go.mod
+2. Create main application model struct with core fields for state management
+3. Implement Init() method for initial setup and commands
+4. Create Update() method skeleton for handling messages
+5. Implement View() method structure for rendering
+6. Set up proper tea.Program initialization with options
+7. Create message types for internal communication
+8. Implement graceful shutdown handling
+9. Add error handling and recovery mechanisms
+10. Create base directory structure for UI components
+<info added on 2025-07-20T08:21:36.480Z>
+Successfully integrated Bubble Tea framework with complete application structure. Implementation includes state management, tab navigation, help system, loading states, error handling, and responsive layout rendering. The TUI model properly implements all required Bubble Tea interfaces (Init/Update/View) with a comprehensive message system. All dependencies are correctly added to go.mod and the UI component directory structure is in place for future development.
+</info added on 2025-07-20T08:21:36.480Z>
+
+## 9. Implement Core Bubble Tea Methods [done]
+### Dependencies: 2.6
+### Description: Implement the three essential Bubble Tea lifecycle methods (Init, Update, View) that form the foundation of the application.
+### Details:
+1. Implement Init() method to:
+   - Set up initial application state
+   - Initialize UI components
+   - Subscribe to terminal resize events
+   - Return initial commands
+2. Create Update() method to:
+   - Handle different message types
+   - Process keyboard input
+   - Update application state based on events
+   - Handle window resize events
+   - Return commands for async operations
+3. Implement View() method to:
+   - Render the current application state
+   - Handle different view modes
+   - Compose the UI from components
+   - Format output with proper styling
+
+## 10. Set Up Program Initialization and Message Handling [done]
+### Dependencies: 2.7
+### Description: Configure the Bubble Tea program initialization with proper options and implement the message handling system for the application.
+### Details:
+1. Create main entry point with tea.Program initialization
+2. Configure program options:
+   - Alt screen mode
+   - Mouse support
+   - Custom renderer if needed
+3. Implement graceful shutdown handling
+4. Create command system for async operations
+5. Set up message passing between components
+6. Implement error recovery mechanisms
+7. Add debug mode toggle
+8. Create system for handling terminal capability detection
+9. Set up event propagation between nested components
 
 ## 1. Bubble Tea Framework Integration and Base Application Structure [done]
 ### Dependencies: None
@@ -202,4 +207,10 @@ Successfully implemented comprehensive layout system with full panel structure a
 7. Add debug mode toggle
 8. Create system for handling terminal capability detection
 9. Set up event propagation between nested components
+
+## 11. Simple Theme Management with Lipgloss [pending]
+### Dependencies: None
+### Description: Implement a simplified theme system using lipgloss built-in styling capabilities with basic light/dark themes and config persistence
+### Details:
+
 

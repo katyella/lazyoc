@@ -116,50 +116,45 @@
         "subtasks": [
           {
             "id": 4,
-            "title": "Simplified State Management and Message Handling",
-            "description": "Enhance the existing App model with pragmatic state management, improved message handling, and session persistence while avoiding over-engineering.",
-            "status": "pending",
-            "dependencies": [
-              1
-            ],
-            "details": "1. Refine the existing App model with clear state fields\n2. Implement state update patterns with immutability where needed\n3. Improve message handling in Update() method with clearer type switches\n4. Add session state persistence (save/restore):\n   - Window dimensions and position\n   - Selected tabs and views\n   - User preferences\n   - Recent clusters/namespaces\n5. Implement state validation for critical fields\n6. Add undo/redo capability for critical destructive actions\n7. Create simple state change notification mechanism\n8. Implement performance optimizations for large state updates\n9. Add error state handling and recovery\n10. Create user preference persistence",
-            "testStrategy": "1. Unit test state update functions\n2. Test session persistence with various state configurations\n3. Verify state validation correctly identifies invalid states\n4. Test undo/redo functionality for critical operations\n5. Benchmark performance with large state updates\n6. Test error recovery mechanisms\n7. Verify user preferences are correctly saved and restored"
-          },
-          {
-            "id": 5,
-            "title": "Theme and Color Scheme Management with Terminal Capability Detection",
-            "description": "Build a theming system that supports multiple color schemes, detects terminal capabilities, and provides graceful degradation for limited terminals while ensuring accessibility.",
-            "status": "pending",
-            "dependencies": [
-              1
-            ],
-            "details": "1. Create theme interface with color definitions\n2. Implement terminal capability detection (256 color, true color)\n3. Build default light and dark themes\n4. Add high contrast theme for accessibility\n5. Create theme switching mechanism\n6. Implement color degradation for limited terminals\n7. Add theme persistence to user preferences\n8. Create semantic color system (primary, secondary, error, etc.)\n9. Implement dynamic theme reloading\n10. Add support for custom user themes\n11. Create theme validation and testing utilities\n12. Implement ANSI escape sequence optimization",
-            "testStrategy": ""
-          },
-          {
-            "id": 9,
-            "title": "Implement Session State Persistence",
-            "description": "Create a system to save and restore user session state between application runs, preserving user preferences and window configuration.",
-            "status": "pending",
-            "dependencies": [
-              1,
-              2,
-              3
-            ],
-            "details": "1. Define serializable session state structure\n2. Implement file-based state storage in user config directory\n3. Create state serialization/deserialization functions\n4. Add automatic state saving on exit\n5. Implement state loading on startup\n6. Add version compatibility for state files\n7. Create state migration for version changes\n8. Implement state validation on load\n9. Add user preferences section in state file\n10. Create fallback to defaults for corrupted state",
-            "testStrategy": "1. Test state serialization/deserialization with various configurations\n2. Verify state is correctly saved on normal and abnormal exits\n3. Test state loading with valid and invalid state files\n4. Verify version compatibility handling works correctly\n5. Test state validation correctly identifies corrupted state\n6. Verify fallback to defaults works as expected"
-          },
-          {
-            "id": 10,
             "title": "Enhance Message Handling in Update Method",
             "description": "Improve the message handling system in the Update method to be more maintainable and efficient with the simplified direct rendering approach.",
             "status": "pending",
             "dependencies": [
-              1,
-              7
+              1
             ],
             "details": "1. Refactor Update() method with clearer message type handling\n2. Implement more efficient type switching for messages\n3. Add message prioritization for critical updates\n4. Create helper functions for common message handling patterns\n5. Implement better error handling for message processing\n6. Add performance optimizations for high-frequency messages\n7. Create debug logging for message flow\n8. Implement message batching for similar updates",
             "testStrategy": "1. Unit test message handling with various message types\n2. Benchmark message processing performance\n3. Test error handling with invalid messages\n4. Verify message prioritization works correctly\n5. Test message batching with high-frequency updates"
+          },
+          {
+            "id": 5,
+            "title": "Bubble Tea Framework Integration and Base Application Structure",
+            "description": "Set up the Bubble Tea framework as the foundation of the TUI application, create the main application model, and establish the basic program structure with proper initialization and lifecycle management.",
+            "status": "done",
+            "dependencies": [],
+            "details": "1. Add Bubble Tea and Bubbles dependencies to go.mod\n2. Create main application model struct with core fields for state management\n3. Implement Init() method for initial setup and commands\n4. Create Update() method skeleton for handling messages\n5. Implement View() method structure for rendering\n6. Set up proper tea.Program initialization with options\n7. Create message types for internal communication\n8. Implement graceful shutdown handling\n9. Add error handling and recovery mechanisms\n10. Create base directory structure for UI components\n<info added on 2025-07-20T08:21:36.480Z>\nSuccessfully integrated Bubble Tea framework with complete application structure. Implementation includes state management, tab navigation, help system, loading states, error handling, and responsive layout rendering. The TUI model properly implements all required Bubble Tea interfaces (Init/Update/View) with a comprehensive message system. All dependencies are correctly added to go.mod and the UI component directory structure is in place for future development.\n</info added on 2025-07-20T08:21:36.480Z>",
+            "testStrategy": ""
+          },
+          {
+            "id": 9,
+            "title": "Implement Core Bubble Tea Methods",
+            "description": "Implement the three essential Bubble Tea lifecycle methods (Init, Update, View) that form the foundation of the application.",
+            "status": "done",
+            "dependencies": [
+              6
+            ],
+            "details": "1. Implement Init() method to:\n   - Set up initial application state\n   - Initialize UI components\n   - Subscribe to terminal resize events\n   - Return initial commands\n2. Create Update() method to:\n   - Handle different message types\n   - Process keyboard input\n   - Update application state based on events\n   - Handle window resize events\n   - Return commands for async operations\n3. Implement View() method to:\n   - Render the current application state\n   - Handle different view modes\n   - Compose the UI from components\n   - Format output with proper styling",
+            "testStrategy": ""
+          },
+          {
+            "id": 10,
+            "title": "Set Up Program Initialization and Message Handling",
+            "description": "Configure the Bubble Tea program initialization with proper options and implement the message handling system for the application.",
+            "status": "done",
+            "dependencies": [
+              7
+            ],
+            "details": "1. Create main entry point with tea.Program initialization\n2. Configure program options:\n   - Alt screen mode\n   - Mouse support\n   - Custom renderer if needed\n3. Implement graceful shutdown handling\n4. Create command system for async operations\n5. Set up message passing between components\n6. Implement error recovery mechanisms\n7. Add debug mode toggle\n8. Create system for handling terminal capability detection\n9. Set up event propagation between nested components",
+            "testStrategy": ""
           },
           {
             "id": 1,
@@ -223,6 +218,15 @@
             "details": "1. Create main entry point with tea.Program initialization\n2. Configure program options:\n   - Alt screen mode\n   - Mouse support\n   - Custom renderer if needed\n3. Implement graceful shutdown handling\n4. Create command system for async operations\n5. Set up message passing between components\n6. Implement error recovery mechanisms\n7. Add debug mode toggle\n8. Create system for handling terminal capability detection\n9. Set up event propagation between nested components",
             "status": "done",
             "testStrategy": ""
+          },
+          {
+            "id": 11,
+            "title": "Simple Theme Management with Lipgloss",
+            "description": "Implement a simplified theme system using lipgloss built-in styling capabilities with basic light/dark themes and config persistence",
+            "details": "<info added on 2025-07-20T17:55:25.429Z>\n# Theme Management Implementation Plan\n\n1. Create a simple Theme struct with color fields:\n   - Background, foreground, primary, secondary colors\n   - Error, warning, success status colors\n   - Border colors for UI elements\n\n2. Define two built-in themes:\n   - Light theme using light background with dark text\n   - Dark theme using dark background with light text\n   - Use lipgloss.Color definitions for all color values\n\n3. Implement theme manager:\n   - Create configuration directory at ~/.lazyoc/\n   - Store theme preferences in config.json\n   - Include functions to load/save theme settings\n\n4. Theme switching functionality:\n   - Create a function to switch between themes\n   - Update all lipgloss styles when theme changes\n   - Broadcast theme change events to UI components\n\n5. Style component creation:\n   - Use lipgloss.NewStyle() to create reusable styled components\n   - Base all styles on current theme colors\n   - Create helper functions for common styling patterns\n\n6. Theme persistence:\n   - Save theme preference immediately on change\n   - Restore last used theme on application startup\n   - Handle file I/O errors gracefully\n\n7. UI component theming:\n   - Apply theme colors to header, panels, borders\n   - Style text elements according to theme\n   - Ensure consistent visual appearance across all components\n\n8. Implementation approach:\n   - Keep code simple and pragmatic\n   - Avoid complex terminal capability detection\n   - Focus on maintainable code over feature complexity\n\n9. Documentation:\n   - Document theme structure and available colors\n   - Include examples of creating custom styles\n   - Provide instructions for theme switching\n</info added on 2025-07-20T17:55:25.429Z>",
+            "status": "pending",
+            "dependencies": [],
+            "parentTaskId": 2
           }
         ]
       },
@@ -230,57 +234,57 @@
         "id": 3,
         "title": "OpenShift Client Integration",
         "description": "Integrate the OpenShift client libraries to enable communication with OpenShift clusters, including authentication and basic resource retrieval.",
-        "details": "1. Integrate client-go and openshift/client-go libraries\n2. Implement connection pool with HTTP/2 support\n3. Create authentication manager supporting:\n   - kubeconfig file parsing\n   - Service account tokens\n   - OAuth token authentication\n4. Implement automatic cluster context detection\n5. Create rate limiter using token bucket algorithm\n6. Implement error handling with retry logic\n7. Add connection status monitoring\n8. Create API client abstraction layer for resource operations\n9. Implement metrics collection for API latency\n10. Add support for multiple OpenShift versions (4.8+ primary, 3.11+ legacy)",
-        "testStrategy": "1. Unit tests for client functionality\n2. Integration tests against mock OpenShift API\n3. Test authentication with different credential types\n4. Verify rate limiting and retry behavior\n5. Test compatibility with different OpenShift versions\n6. Benchmark API performance and latency\n7. Test error handling with simulated failures",
-        "priority": "high",
+        "status": "pending",
         "dependencies": [
           1
         ],
-        "status": "pending",
+        "priority": "high",
+        "details": "1. Integrate client-go and openshift/client-go libraries\n2. Implement simple connection management\n3. Create authentication manager supporting kubeconfig file parsing\n4. Implement basic error handling with simple retry logic\n5. Add basic connection status monitoring\n6. Create minimal API client abstraction layer for resource operations\n7. Implement basic metrics collection for API latency\n8. Add support for OpenShift version detection",
+        "testStrategy": "1. Unit tests for client functionality\n2. Integration tests against mock OpenShift API\n3. Test authentication with kubeconfig credentials\n4. Verify basic error handling behavior\n5. Test compatibility with target OpenShift version\n6. Basic API performance testing",
         "subtasks": [
           {
             "id": 1,
-            "title": "Client Library Integration and Connection Pool Setup",
-            "description": "Integrate client-go and openshift/client-go libraries with HTTP/2 connection pooling for efficient cluster communication",
-            "dependencies": [],
-            "details": "1. Import and configure client-go and openshift/client-go dependencies\n2. Implement connection pool with HTTP/2 support and keep-alive settings\n3. Configure TLS settings with certificate validation and custom CA support\n4. Create connection factory with proper timeout and retry configurations\n5. Implement connection reuse and pooling strategy\n6. Add support for proxy configurations\n7. Create connection health checks and automatic reconnection\n8. Implement proper cleanup and connection draining on shutdown",
+            "title": "Client Library Integration and Basic Connection Setup",
+            "description": "Integrate client-go and openshift/client-go libraries with simple connection management for cluster communication",
             "status": "pending",
+            "dependencies": [],
+            "details": "1. Import and configure client-go and openshift/client-go dependencies\n2. Implement basic connection setup with standard HTTP client\n3. Configure TLS settings with certificate validation\n4. Create simple connection factory with timeout configuration\n5. Add support for basic proxy configurations\n6. Implement proper cleanup on shutdown",
             "testStrategy": ""
           },
           {
             "id": 2,
-            "title": "Multi-Method Authentication System",
-            "description": "Implement comprehensive authentication supporting kubeconfig files, service account tokens, and OAuth with automatic detection",
+            "title": "Kubeconfig Authentication Implementation",
+            "description": "Implement kubeconfig file parsing and authentication as the initial authentication method",
+            "status": "pending",
             "dependencies": [
               1
             ],
-            "details": "1. Create authentication interface supporting multiple auth methods\n2. Implement kubeconfig parser with multi-context support\n3. Add service account token authentication with automatic renewal\n4. Implement OAuth token flow with refresh token handling\n5. Create bearer token authentication for direct API access\n6. Add certificate-based authentication support\n7. Implement authentication method auto-detection based on available credentials\n8. Create secure credential storage and rotation mechanism\n9. Add support for OIDC authentication providers",
-            "status": "pending",
+            "details": "1. Create authentication interface for future extensibility\n2. Implement kubeconfig parser with current-context support\n3. Add support for embedded certificate data in kubeconfig\n4. Implement token extraction from kubeconfig\n5. Create simple credential validation\n6. Add basic error handling for authentication failures",
             "testStrategy": ""
           },
           {
             "id": 3,
-            "title": "API Abstraction Layer with Rate Limiting",
-            "description": "Build robust API abstraction layer with intelligent rate limiting, retry logic, and version compatibility handling",
+            "title": "Basic API Abstraction Layer",
+            "description": "Build minimal API abstraction layer with simple error handling and retry logic",
+            "status": "pending",
             "dependencies": [
               1,
               2
             ],
-            "details": "1. Design generic API client interface for all resource operations\n2. Implement token bucket rate limiter with configurable limits\n3. Add exponential backoff retry logic with jitter\n4. Create request/response interceptors for logging and metrics\n5. Implement API version negotiation and compatibility layer\n6. Add request batching for bulk operations\n7. Create circuit breaker pattern for failing endpoints\n8. Implement request prioritization and queueing\n9. Add support for both REST and WebSocket connections\n10. Create response caching layer with TTL management",
-            "status": "pending",
+            "details": "1. Design simple API client interface for common resource operations\n2. Implement basic error handling with standard HTTP status codes\n3. Add simple retry logic for transient errors\n4. Create request/response logging for debugging\n5. Implement basic API version detection\n6. Add support for common resource operations (get, list, create, update, delete)",
             "testStrategy": ""
           },
           {
             "id": 4,
-            "title": "Connection Monitoring and Metrics Collection",
-            "description": "Implement comprehensive connection monitoring, health checks, and metrics collection for observability",
+            "title": "Basic Connection Monitoring",
+            "description": "Implement simple connection monitoring and basic metrics collection",
+            "status": "pending",
             "dependencies": [
               1,
               2,
               3
             ],
-            "details": "1. Create connection status monitor with real-time health checks\n2. Implement metrics collector for API latency, throughput, and errors\n3. Add connection pool metrics (active, idle, total connections)\n4. Create authentication metrics (success/failure rates, token expiry)\n5. Implement rate limit metrics and quota usage tracking\n6. Add cluster version and API capability detection\n7. Create alerting system for connection failures and degraded performance\n8. Implement distributed tracing support with OpenTelemetry\n9. Add connection event logging with structured output\n10. Create performance profiling hooks for debugging",
-            "status": "pending",
+            "details": "1. Create basic connection status monitor\n2. Implement simple metrics for API request counts and errors\n3. Add basic latency tracking\n4. Create simple connection health check\n5. Implement basic logging for connection events\n6. Add cluster version detection",
             "testStrategy": ""
           }
         ]
@@ -501,69 +505,51 @@
       {
         "id": 8,
         "title": "Developer Workflow Integration",
-        "description": "Implement developer-focused features including port forwarding, shell access, file transfer, and resource editing.",
-        "details": "1. Create port forwarding management with automatic tunnel setup\n2. Implement container shell access with exec support\n3. Add file transfer between local machine and containers\n4. Create resource editing with YAML/JSON validation\n5. Implement hot reload for configuration changes\n6. Add development environment setup wizards\n7. Create local-to-remote synchronization\n8. Implement build and deployment triggers\n9. Add debugging support with breakpoints\n10. Create development workflow templates",
-        "testStrategy": "1. Test port forwarding with various service types\n2. Verify shell access works across container types\n3. Test file transfer performance and reliability\n4. Verify resource editing with validation\n5. Test hot reload functionality\n6. Verify synchronization between local and remote\n7. Test debugging features with sample applications",
-        "priority": "medium",
+        "description": "Implement core developer-focused features including port forwarding, shell access, file transfer, and resource editing for MVP.",
+        "status": "pending",
         "dependencies": [
           4,
           7
         ],
-        "status": "pending",
+        "priority": "medium",
+        "details": "1. Create basic port forwarding management\n2. Implement container shell access with exec support\n3. Add simple file transfer between local machine and containers\n4. Create resource editing with YAML/JSON validation",
+        "testStrategy": "1. Test port forwarding with various service types\n2. Verify shell access works across container types\n3. Test file transfer performance and reliability\n4. Verify resource editing with validation",
         "subtasks": [
           {
             "id": 1,
-            "title": "Port Forwarding System with Automatic Tunnel Management",
-            "description": "Implement automatic port forwarding for accessing services running in containers with intelligent tunnel lifecycle management",
-            "dependencies": [],
-            "details": "Create a port forwarding manager that automatically establishes tunnels to container ports, handles connection failures with auto-reconnect, manages multiple concurrent tunnels, provides port collision detection and resolution, supports both TCP and UDP protocols, implements tunnel health monitoring, and creates a UI for managing active tunnels with start/stop controls",
+            "title": "Basic Port Forwarding System",
+            "description": "Implement basic port forwarding for accessing services running in containers",
             "status": "pending",
-            "testStrategy": ""
+            "dependencies": [],
+            "details": "Create a port forwarding manager that establishes tunnels to container ports, handles connection failures, manages concurrent tunnels, provides port collision detection, and supports TCP protocol. Focus on reliability and simplicity for MVP.",
+            "testStrategy": "Test port forwarding with different service types and verify connection stability. Ensure proper error handling when connections fail."
           },
           {
             "id": 2,
             "title": "Container Shell Access and Exec Functionality",
-            "description": "Implement interactive shell access to containers with full exec support for running commands",
-            "dependencies": [],
-            "details": "Build a terminal emulator component with PTY support, implement WebSocket-based shell streaming, add support for multiple shell types (bash, sh, PowerShell), create command history and auto-completion, implement file upload/download through shell, add session persistence and recovery, support for exec into specific containers in multi-container pods, and implement security controls for shell access",
+            "description": "Implement interactive shell access to pods with basic exec support for running commands",
             "status": "pending",
-            "testStrategy": ""
+            "dependencies": [],
+            "details": "Build a terminal emulator component with PTY support, implement WebSocket-based shell streaming, add support for common shell types (bash, sh), create basic command history, and implement security controls for shell access. Focus on reliable pod shell access for MVP.",
+            "testStrategy": "Test shell access across different pod types. Verify command execution works correctly and terminal emulation functions properly."
           },
           {
             "id": 3,
-            "title": "File Transfer and Synchronization Features",
-            "description": "Create bidirectional file transfer capabilities between local machine and containers with real-time synchronization",
-            "dependencies": [],
-            "details": "Implement drag-and-drop file upload to containers, create file browser for container filesystems, add bulk file transfer with progress tracking, implement directory synchronization with conflict resolution, create file watcher for automatic sync, add compression for large file transfers, implement resume capability for interrupted transfers, and create file diff viewer for comparing local and remote files",
+            "title": "Simple File Transfer Features",
+            "description": "Create basic file transfer capabilities between local machine and pods",
             "status": "pending",
-            "testStrategy": ""
+            "dependencies": [],
+            "details": "Implement file upload to pods, create simple file browser for pod filesystems, add basic file transfer with progress tracking, and implement simple file download from pods. Focus on reliable file copying to and from pods for MVP.",
+            "testStrategy": "Test file upload and download with various file types and sizes. Verify transfer reliability and proper error handling."
           },
           {
             "id": 4,
-            "title": "Resource Editing with YAML/JSON Validation and Hot Reload",
-            "description": "Build advanced resource editor with syntax validation, schema support, and automatic hot reload on changes",
-            "dependencies": [],
-            "details": "Create Monaco-based editor with YAML/JSON syntax highlighting, implement OpenShift resource schema validation, add intelligent auto-completion based on resource type, implement diff view for comparing changes, create hot reload system that applies changes without disruption, add rollback capability for failed updates, implement template support for common patterns, and create validation preview before applying changes",
+            "title": "Resource Editing with YAML/JSON Validation",
+            "description": "Build basic resource editor with syntax validation and schema support",
             "status": "pending",
-            "testStrategy": ""
-          },
-          {
-            "id": 5,
-            "title": "Development Environment Wizards and Templates",
-            "description": "Create guided wizards and templates for setting up development environments with best practices",
             "dependencies": [],
-            "details": "Build step-by-step wizards for common development scenarios, create project scaffolding templates, implement environment cloning functionality, add preset configurations for different tech stacks, create development workflow automation, implement environment health checks, add integration with popular IDEs, and create shareable environment configurations",
-            "status": "pending",
-            "testStrategy": ""
-          },
-          {
-            "id": 6,
-            "title": "Debugging Support with Breakpoint Integration",
-            "description": "Implement comprehensive debugging capabilities with breakpoint support and integration with development tools",
-            "dependencies": [],
-            "details": "Create remote debugging protocol support, implement breakpoint management UI, add variable inspection and watch expressions, create call stack visualization, implement conditional breakpoints, add debugging session management, create integration with VS Code Debug Adapter Protocol, implement performance profiling tools, and add memory dump analysis capabilities",
-            "status": "pending",
-            "testStrategy": ""
+            "details": "Create editor with YAML/JSON syntax highlighting, implement OpenShift resource schema validation, add basic auto-completion based on resource type, and implement diff view for comparing changes. Focus on reliable resource editing for MVP without hot reload functionality.",
+            "testStrategy": "Test resource editing with various resource types. Verify validation works correctly and prevents invalid configurations from being applied."
           }
         ]
       },
@@ -637,7 +623,7 @@
           3,
           4
         ],
-        "status": "pending",
+        "status": "deferred",
         "subtasks": [
           {
             "id": 1,
@@ -703,7 +689,7 @@
     ],
     "metadata": {
       "created": "2025-07-19T19:01:35.351Z",
-      "updated": "2025-07-20T17:46:38.883Z",
+      "updated": "2025-07-20T17:58:40.212Z",
       "description": "Tasks for master context"
     }
   }
