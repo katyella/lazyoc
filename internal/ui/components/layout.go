@@ -62,15 +62,15 @@ type LayoutConfig struct {
 // DefaultLayoutConfig returns sensible defaults for the layout
 func DefaultLayoutConfig() LayoutConfig {
 	return LayoutConfig{
-		MinTerminalWidth:  80,
-		MinTerminalHeight: 24,
-		HeaderHeight:      3,
-		TabsHeight:        2,
+		MinTerminalWidth:  60, // Reduced for better small screen support
+		MinTerminalHeight: 15, // Reduced for better small screen support
+		HeaderHeight:      2,  // Reduced from 3 to save space
+		TabsHeight:        1,  // Reduced from 2 to save space
 		StatusBarHeight:   1,
 		DetailPaneRatio:   0.3,  // 30% of width
 		LogPaneRatio:      0.25, // 25% of height
-		MinPanelWidth:     20,
-		MinPanelHeight:    5,
+		MinPanelWidth:     15,   // Reduced for small screens
+		MinPanelHeight:    3,    // Reduced for small screens
 	}
 }
 
@@ -101,6 +101,9 @@ func (lm *LayoutManager) UpdateDimensions(width, height int) {
 	lm.Width = width
 	lm.Height = height
 	
+	// Apply responsive adjustments for small screens first
+	lm.applyResponsiveAdjustments()
+	
 	// Recalculate panel sizes based on ratios
 	config := DefaultLayoutConfig()
 	if lm.DetailPaneVisible {
@@ -116,6 +119,33 @@ func (lm *LayoutManager) UpdateDimensions(width, height int) {
 	}
 	if lm.LogPaneHeight < lm.MinPanelHeight {
 		lm.LogPaneHeight = lm.MinPanelHeight
+	}
+}
+
+// applyResponsiveAdjustments adjusts layout for small terminal sizes
+func (lm *LayoutManager) applyResponsiveAdjustments() {
+	config := DefaultLayoutConfig()
+	
+	// For very small terminals, reduce component heights
+	if lm.Height < 20 {
+		lm.HeaderHeight = 1
+		lm.TabsHeight = 1
+		lm.StatusBarHeight = 1
+		
+		// Hide detail pane on very small screens
+		if lm.Width < 80 {
+			lm.DetailPaneVisible = false
+		}
+		
+		// Reduce or hide log pane on very small screens
+		if lm.Height < 15 {
+			lm.LogPaneVisible = false
+		}
+	} else {
+		// Restore default values for larger screens
+		lm.HeaderHeight = config.HeaderHeight
+		lm.TabsHeight = config.TabsHeight
+		lm.StatusBarHeight = config.StatusBarHeight
 	}
 }
 

@@ -25,8 +25,8 @@ func DefaultProgramOptions() ProgramOptions {
 
 // NewProgram creates a new Bubble Tea program with the TUI model
 func NewProgram(opts ProgramOptions) *tea.Program {
-	// Create the TUI model
-	tui := NewTUI(opts.Version, opts.Debug)
+	// Create the simplified TUI model
+	tui := NewSimplifiedTUI(opts.Version, opts.Debug)
 	
 	// Configure program options
 	var programOpts []tea.ProgramOption
@@ -39,8 +39,8 @@ func NewProgram(opts ProgramOptions) *tea.Program {
 		programOpts = append(programOpts, tea.WithMouseCellMotion())
 	}
 	
-	// Add input handling
-	programOpts = append(programOpts, tea.WithInput(nil)) // Use stdin
+	// Add input handling (using default stdin, no need to specify nil)
+	// programOpts = append(programOpts, tea.WithInput(nil)) // Use stdin
 	
 	logging.Info(tui.Logger, "Creating Bubble Tea program with options: AltScreen=%v, Mouse=%v", 
 		opts.AltScreen, opts.MouseSupport)
@@ -60,7 +60,7 @@ func RunTUI(opts ProgramOptions) error {
 	}
 	
 	// Log final state if debug is enabled
-	if tui, ok := model.(*TUI); ok && tui.Debug {
+	if tui, ok := model.(*SimplifiedTUI); ok && tui.Debug {
 		logging.Info(tui.Logger, "TUI program exited successfully")
 	}
 	
