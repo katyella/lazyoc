@@ -13,6 +13,7 @@ import (
 	"github.com/katyella/lazyoc/internal/ui/messages"
 	"github.com/katyella/lazyoc/internal/ui/models"
 	"github.com/katyella/lazyoc/internal/ui/navigation"
+	"github.com/katyella/lazyoc/internal/ui/styles"
 )
 
 // TUI wraps the App model and implements the tea.Model interface
@@ -38,6 +39,9 @@ type TUI struct {
 	
 	// Message handling
 	messageHandler *messages.MessageHandler
+	
+	// Theme management
+	styleManager *styles.StyleManager
 }
 
 // NewTUI creates a new TUI instance
@@ -54,10 +58,17 @@ func NewTUI(version string, debug bool) *TUI {
 		navController:  navigation.NewNavigationController(),
 		helpComponent:  navigation.NewHelpComponent(80, 24), // Default size, will be updated
 		messageHandler: messages.NewMessageHandler(),
+		styleManager:   styles.GetStyleManager(),
 	}
 	
 	// Set up navigation callbacks
 	tui.setupNavigationCallbacks()
+	
+	// Set up theme change listener
+	tui.styleManager.AddThemeChangeListener(func() {
+		logging.Info(tui.Logger, "Theme changed, updating components")
+		// Components will automatically pick up new theme on next render
+	})
 	
 	return tui
 }
@@ -361,6 +372,12 @@ func (t *TUI) handleKeyInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		t.Logger = logging.SetupLogger(t.Debug)
 		logging.Info(t.Logger, "Debug mode toggled: %v", t.Debug)
 		return t, nil
+		
+	case "ctrl+t":
+		// Toggle theme between light and dark
+		t.styleManager.ToggleTheme()
+		logging.Info(t.Logger, "Theme toggled to: %s", t.styleManager.GetTheme().Name)
+		return t, nil
 	}
 	
 	// State-specific keybindings
@@ -456,23 +473,28 @@ func (t *TUI) View() string {
 
 // renderLoading renders the loading state
 func (t *TUI) renderLoading() string {
-	style := lipgloss.NewStyle().
+	theme := t.styleManager.GetTheme()
+	style := styles.CreateBaseStyle(theme).
 		Width(t.Width).
 		Height(t.Height).
 		Align(lipgloss.Center, lipgloss.Center)
 		
-	content := fmt.Sprintf("🚀 %s\n\nLoading LazyOC v%s...", t.LoadingMessage, t.Version)
+	titleStyle := styles.CreatePrimaryStyle(theme)
+	content := titleStyle.Render("🚀 " + t.LoadingMessage) + "\n\n" +
+		"Loading LazyOC v" + t.Version + "..."
 	
 	return style.Render(content)
 }
 
 // renderError renders the error state
 func (t *TUI) renderError() string {
-	style := lipgloss.NewStyle().
+	theme := t.styleManager.GetTheme()
+	style := styles.CreateBaseStyle(theme).
 		Width(t.Width).
 		Height(t.Height).
-		Align(lipgloss.Center, lipgloss.Center).
-		Foreground(lipgloss.Color("9")) // Red
+		Align(lipgloss.Center, lipgloss.Center)
+		
+	errorStyle := styles.CreateStatusStyle(theme, "error")
 		
 	errorMsg := "An error occurred"
 	if t.LastError != nil {
@@ -484,7 +506,9 @@ func (t *TUI) renderError() string {
 		}
 	}
 		
-	content := fmt.Sprintf("❌ Error\n\n%s\n\nPress ESC or Enter to continue", errorMsg)
+	content := errorStyle.Render("❌ Error") + "\n\n" +
+		errorMsg + "\n\n" +
+		styles.CreateMutedStyle(theme).Render("Press ESC or Enter to continue")
 	
 	return style.Render(content)
 }
@@ -500,6 +524,8 @@ func (t *TUI) renderHelp() string {
 	}
 	
 	// Fallback to simple help if navigation system isn't available
+	dialogStyles := t.styleManager.GetDialogStyles()
+	
 	helpText := `
 📖 LazyOC Help - Navigation System Unavailable
 
@@ -507,16 +533,15 @@ Basic Keys:
   q, Ctrl+C    Quit application
   ?            Toggle help
   Tab          Switch tabs
+  Ctrl+T       Toggle theme (light/dark)
   
 Press ? or ESC to close help
 `
 	
-	style := lipgloss.NewStyle().
+	style := dialogStyles.Container.
 		Width(t.Width).
 		Height(t.Height).
-		Align(lipgloss.Center, lipgloss.Center).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("12")) // Blue
+		Align(lipgloss.Center, lipgloss.Center)
 		
 	return style.Render(helpText)
 }
@@ -641,14 +666,17 @@ func (t *TUI) renderMainArea() string {
 
 // renderSimple provides simple fallback rendering when components aren't ready
 func (t *TUI) renderSimple() string {
-	header := lipgloss.NewStyle().
+	theme := t.styleManager.GetTheme()
+	headerStyles := t.styleManager.GetHeaderStyles()
+	panelStyles := t.styleManager.GetPanelStyles(false)
+	statusBarStyles := t.styleManager.GetStatusBarStyles()
+	
+	header := headerStyles.Title.
 		Width(t.Width).
 		Align(lipgloss.Center).
-		Foreground(lipgloss.Color("12")).
-		Bold(true).
 		Render("🚀 LazyOC v" + t.Version)
 		
-	tabs := lipgloss.NewStyle().
+	tabs := styles.CreateBaseStyle(theme).
 		Width(t.Width).
 		Align(lipgloss.Center).
 		Render("[ Pods ] [ Services ] [ Deployments ] [ ConfigMaps ] [ Secrets ]")
@@ -658,19 +686,15 @@ func (t *TUI) renderSimple() string {
 		contentHeight = 1
 	}
 	
-	content := lipgloss.NewStyle().
+	content := panelStyles.Border.
 		Width(t.Width).
 		Height(contentHeight).
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("8")).
 		Padding(1).
-		Render(fmt.Sprintf("📦 %s Resources\n\nNo cluster connected yet.\n\nUse Tab/Shift+Tab or h/l to navigate tabs\nPress ? for help\nPress q to quit", t.GetTabName(t.ActiveTab)))
+		Render(fmt.Sprintf("📦 %s Resources\n\nNo cluster connected yet.\n\nUse Tab/Shift+Tab or h/l to navigate tabs\nPress ? for help\nPress Ctrl+T to toggle theme\nPress q to quit", t.GetTabName(t.ActiveTab)))
 	
-	status := lipgloss.NewStyle().
+	status := statusBarStyles.Container.
 		Width(t.Width).
-		Foreground(lipgloss.Color("8")).
-		Background(lipgloss.Color("0")).
-		Render(fmt.Sprintf("Ready • %s • Debug: %v", t.GetTabName(t.ActiveTab), t.Debug))
+		Render(fmt.Sprintf("Ready • %s • Debug: %v • Theme: %s", t.GetTabName(t.ActiveTab), t.Debug, theme.Name))
 	
 	return lipgloss.JoinVertical(lipgloss.Left, header, tabs, content, status)
 }

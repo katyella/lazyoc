@@ -224,7 +224,7 @@
             "title": "Simple Theme Management with Lipgloss",
             "description": "Implement a simplified theme system using lipgloss built-in styling capabilities with basic light/dark themes and config persistence",
             "details": "<info added on 2025-07-20T17:55:25.429Z>\n# Theme Management Implementation Plan\n\n1. Create a simple Theme struct with color fields:\n   - Background, foreground, primary, secondary colors\n   - Error, warning, success status colors\n   - Border colors for UI elements\n\n2. Define two built-in themes:\n   - Light theme using light background with dark text\n   - Dark theme using dark background with light text\n   - Use lipgloss.Color definitions for all color values\n\n3. Implement theme manager:\n   - Create configuration directory at ~/.lazyoc/\n   - Store theme preferences in config.json\n   - Include functions to load/save theme settings\n\n4. Theme switching functionality:\n   - Create a function to switch between themes\n   - Update all lipgloss styles when theme changes\n   - Broadcast theme change events to UI components\n\n5. Style component creation:\n   - Use lipgloss.NewStyle() to create reusable styled components\n   - Base all styles on current theme colors\n   - Create helper functions for common styling patterns\n\n6. Theme persistence:\n   - Save theme preference immediately on change\n   - Restore last used theme on application startup\n   - Handle file I/O errors gracefully\n\n7. UI component theming:\n   - Apply theme colors to header, panels, borders\n   - Style text elements according to theme\n   - Ensure consistent visual appearance across all components\n\n8. Implementation approach:\n   - Keep code simple and pragmatic\n   - Avoid complex terminal capability detection\n   - Focus on maintainable code over feature complexity\n\n9. Documentation:\n   - Document theme structure and available colors\n   - Include examples of creating custom styles\n   - Provide instructions for theme switching\n</info added on 2025-07-20T17:55:25.429Z>",
-            "status": "pending",
+            "status": "in-progress",
             "dependencies": [],
             "parentTaskId": 2
           }
@@ -689,7 +689,7 @@
     ],
     "metadata": {
       "created": "2025-07-19T19:01:35.351Z",
-      "updated": "2025-07-20T18:16:37.128Z",
+      "updated": "2025-07-20T18:19:01.285Z",
       "description": "Tasks for master context"
     }
   }

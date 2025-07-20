@@ -35,6 +35,9 @@ type SimplifiedTUI struct {
 	// Visibility
 	showDetails   bool
 	showLogs      bool
+	
+	// Theme
+	theme string
 }
 
 // NewSimplifiedTUI creates a new simplified TUI instance
@@ -48,6 +51,7 @@ func NewSimplifiedTUI(version string, debug bool) *SimplifiedTUI {
 	tui := &SimplifiedTUI{
 		App:           app,
 		navController: navigation.NewNavigationController(),
+		theme:         "dark", // default theme
 		showDetails:   true,
 		showLogs:      true,
 		focusedPanel:  0, // 0=main, 1=details, 2=logs
@@ -172,6 +176,15 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				t.focusedPanel = 2 // Focus logs panel
 			}
 			return t, nil
+			
+		case "t":
+			// Toggle theme
+			if t.theme == "dark" {
+				t.theme = "light"
+			} else {
+				t.theme = "dark"
+			}
+			return t, nil
 		}
 		
 	case messages.InitMsg:
@@ -232,12 +245,13 @@ func (t *SimplifiedTUI) renderMain() string {
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }
 
-// renderHeader renders a simple header
+// renderHeader renders a themed header
 func (t *SimplifiedTUI) renderHeader(height int) string {
+	primaryColor, errorColor := t.getThemeColors()
 	headerStyle := lipgloss.NewStyle().
 		Width(t.width).
 		Align(lipgloss.Center).
-		Foreground(lipgloss.Color("12")).
+		Foreground(primaryColor).
 		Bold(true)
 	
 	if height == 1 {
@@ -249,7 +263,7 @@ func (t *SimplifiedTUI) renderHeader(height int) string {
 	line2 := lipgloss.NewStyle().
 		Width(t.width).
 		Align(lipgloss.Center).
-		Foreground(lipgloss.Color("9")).
+		Foreground(errorColor).
 		Render("○ Disconnected")
 		
 	return lipgloss.JoinVertical(lipgloss.Left, line1, line2)
@@ -298,10 +312,11 @@ func (t *SimplifiedTUI) renderContent(availableHeight int) string {
 	
 	mainHeight := availableHeight - logHeight
 	
-	// Main panel
-	borderColor := lipgloss.Color("240") // Default gray
+	// Main panel with theming
+	primaryColor, _ := t.getThemeColors()
+	borderColor := lipgloss.Color("240") // gray
 	if t.focusedPanel == 0 {
-		borderColor = lipgloss.Color("12") // Blue when focused
+		borderColor = primaryColor
 	}
 	
 	mainStyle := lipgloss.NewStyle().
@@ -459,6 +474,14 @@ func (t *SimplifiedTUI) setupNavigationCallbacks() {
 func (t *SimplifiedTUI) updateMainContent() {
 	tabName := t.GetTabName(t.ActiveTab)
 	t.mainContent = fmt.Sprintf("📦 %s Resources\n\nNo cluster connected yet.\n\nUse h/l or arrow keys to navigate tabs\nPress ? for help", tabName)
+}
+
+// getThemeColors returns primary and error colors based on current theme
+func (t *SimplifiedTUI) getThemeColors() (lipgloss.Color, lipgloss.Color) {
+	if t.theme == "light" {
+		return lipgloss.Color("4"), lipgloss.Color("1") // dark blue, dark red
+	}
+	return lipgloss.Color("12"), lipgloss.Color("9") // blue, red
 }
 
 // Helper function
