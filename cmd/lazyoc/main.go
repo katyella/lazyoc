@@ -21,6 +21,7 @@ func main() {
 	
 	var debugMode bool
 	var noAltScreen bool
+	var kubeconfigPath string
 	
 	rootCmd := &cobra.Command{
 		Use:   "lazyoc",
@@ -31,7 +32,7 @@ It provides an intuitive, vim-like interface for viewing and managing cluster re
 Press ? for help once inside the application.`,
 		Version: fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date),
 		Run: func(cmd *cobra.Command, args []string) {
-			runTUI(debugMode, !noAltScreen)
+			runTUI(debugMode, !noAltScreen, kubeconfigPath)
 		},
 	}
 
@@ -39,6 +40,7 @@ Press ? for help once inside the application.`,
 	rootCmd.Flags().BoolP("version", "v", false, "Print version information")
 	rootCmd.Flags().BoolVarP(&debugMode, "debug", "d", false, "Enable debug mode (logs to lazyoc.log)")
 	rootCmd.Flags().BoolVar(&noAltScreen, "no-alt-screen", false, "Disable alternate screen buffer")
+	rootCmd.Flags().StringVar(&kubeconfigPath, "kubeconfig", "", "Path to kubeconfig file (defaults to $HOME/.kube/config)")
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		log.Fatalf("Error executing command: %v", err)
@@ -47,12 +49,13 @@ Press ? for help once inside the application.`,
 }
 
 // runTUI starts the terminal user interface
-func runTUI(debug bool, altScreen bool) {
+func runTUI(debug bool, altScreen bool, kubeconfigPath string) {
 	opts := ui.ProgramOptions{
 		Version:      fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date),
 		Debug:        debug,
 		AltScreen:    altScreen,
 		MouseSupport: false, // Can be enabled later via flag
+		KubeConfig:   kubeconfigPath,
 	}
 	
 	if err := ui.RunTUI(opts); err != nil {

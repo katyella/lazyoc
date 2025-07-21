@@ -239,8 +239,8 @@
           1
         ],
         "priority": "high",
-        "details": "1. Integrate client-go and openshift/client-go libraries\n2. Implement simple connection management\n3. Create authentication manager supporting kubeconfig file parsing\n4. Implement basic error handling with simple retry logic\n5. Add basic connection status monitoring\n6. Create minimal API client abstraction layer for resource operations\n7. Implement basic metrics collection for API latency\n8. Add support for OpenShift version detection",
-        "testStrategy": "1. Unit tests for client functionality\n2. Integration tests against mock OpenShift API\n3. Test authentication with kubeconfig credentials\n4. Verify basic error handling behavior\n5. Test compatibility with target OpenShift version\n6. Basic API performance testing",
+        "details": "1. Create K8s client instance in TUI model\n2. Add pod listing to content pane\n3. Display pod name/status/age\n4. Handle connection errors\n5. Show loading state\n6. Update status bar with connection info\n7. Implement simple connection management\n8. Create authentication manager supporting kubeconfig file parsing",
+        "testStrategy": "1. Unit tests for client functionality\n2. Integration tests against mock OpenShift API\n3. Test authentication with kubeconfig credentials\n4. Verify basic error handling behavior\n5. Test pod listing display functionality\n6. Verify loading state and error handling in TUI",
         "subtasks": [
           {
             "id": 1,
@@ -289,108 +289,119 @@
           },
           {
             "id": 5,
-            "title": "Client Library Integration and Connection Pool Setup",
-            "description": "Implement client library integration with HTTP/2 support and configure connection pooling for efficient API communication with OpenShift clusters.",
-            "dependencies": [],
-            "details": "1. Integrate client-go and openshift/client-go libraries\n2. Configure HTTP/2 transport for improved performance\n3. Implement connection pooling with configurable limits\n4. Add connection timeout and keep-alive settings\n5. Implement graceful connection handling and cleanup\n6. Create connection factory with version-specific client configuration\n7. Add TLS configuration with certificate validation",
-            "status": "pending",
-            "testStrategy": ""
+            "title": "TUI-K8s Client Integration",
+            "description": "Create K8s client instance in TUI model to enable pod listing and display",
+            "status": "in-progress",
+            "dependencies": [
+              1,
+              2,
+              3
+            ],
+            "details": "1. Initialize K8s client in TUI model during startup\n2. Create client accessor methods for TUI components\n3. Implement error handling for client initialization\n4. Add connection status to TUI model\n5. Create client shutdown on application exit\n6. Add client reconnection capability",
+            "testStrategy": "1. Test client initialization in TUI model\n2. Verify error handling during client setup\n3. Test client accessor methods\n4. Verify proper client shutdown"
           },
           {
             "id": 6,
-            "title": "Multi-Method Authentication System",
-            "description": "Develop a flexible authentication system supporting multiple authentication methods including kubeconfig files, tokens, and OAuth.",
-            "dependencies": [],
-            "details": "1. Implement kubeconfig file parsing and credential extraction\n2. Add support for static token authentication\n3. Implement OAuth2 authentication flow\n4. Create credential manager for secure storage\n5. Add support for certificate-based authentication\n6. Implement credential refresh and rotation\n7. Add impersonation support for admin operations\n8. Create unified authentication interface for client usage",
+            "title": "Pod Listing Implementation",
+            "description": "Implement pod listing functionality in the content pane with name, status, and age display",
             "status": "pending",
-            "testStrategy": ""
+            "dependencies": [
+              5
+            ],
+            "details": "1. Create pod list view component\n2. Implement pod data fetching from K8s client\n3. Display pod name, status, and age in list\n4. Add loading indicator during data fetch\n5. Implement error handling for failed pod listing\n6. Add automatic refresh of pod list\n7. Create pod selection capability",
+            "testStrategy": "1. Test pod data fetching\n2. Verify correct display of pod information\n3. Test loading state visibility\n4. Verify error handling for network issues"
           },
           {
             "id": 7,
-            "title": "API Abstraction Layer with Rate Limiting",
-            "description": "Create an API abstraction layer with rate limiting, retry logic, and version compatibility handling for reliable OpenShift API communication.",
-            "dependencies": [],
-            "details": "1. Implement API client abstraction for resource operations\n2. Add rate limiting with configurable thresholds\n3. Create exponential backoff retry mechanism\n4. Implement request batching for bulk operations\n5. Add version compatibility checks and adaptations\n6. Create request context propagation\n7. Implement request cancellation support\n8. Add comprehensive error handling with categorization",
+            "title": "Connection Status Display",
+            "description": "Update status bar with connection information and implement loading states",
             "status": "pending",
-            "testStrategy": ""
+            "dependencies": [
+              5
+            ],
+            "details": "1. Add connection status indicator to status bar\n2. Display current namespace in status bar\n3. Show cluster version information\n4. Implement loading spinner during API operations\n5. Add error notification for connection failures\n6. Display reconnection attempts in status bar",
+            "testStrategy": "1. Test status bar updates with connection changes\n2. Verify loading state visibility\n3. Test error notification display\n4. Verify namespace display accuracy"
           },
           {
             "id": 8,
-            "title": "Connection Monitoring and Metrics Collection",
-            "description": "Implement connection monitoring and metrics collection for OpenShift API interactions to track performance and reliability.",
-            "dependencies": [],
-            "details": "1. Create connection health checking mechanism\n2. Implement API latency metrics collection\n3. Add request success/failure rate tracking\n4. Create connection status dashboard data\n5. Implement automatic reconnection for failed connections\n6. Add resource utilization metrics (memory, connections)\n7. Create alerting mechanism for connection issues\n8. Implement metrics export for external monitoring",
+            "title": "Error Handling and Recovery",
+            "description": "Implement comprehensive error handling for connection issues with user-friendly messages",
             "status": "pending",
-            "testStrategy": ""
+            "dependencies": [
+              5,
+              6,
+              7
+            ],
+            "details": "1. Create error message component for TUI\n2. Implement specific error handling for common K8s errors\n3. Add retry mechanism for transient errors\n4. Create user-friendly error messages\n5. Implement graceful degradation for partial connection failures\n6. Add manual reconnect option in TUI",
+            "testStrategy": "1. Test error message display for various error types\n2. Verify retry mechanism functionality\n3. Test manual reconnection feature\n4. Verify graceful degradation behavior"
           }
         ]
       },
       {
         "id": 4,
         "title": "Resource Listing and Management",
-        "description": "Implement core resource listing and management functionality for basic OpenShift resources (Pods, Services, etc.) with real-time updates.",
-        "details": "1. Create resource models for core OpenShift resources:\n   - Pods\n   - Services\n   - Routes\n   - Deployments\n   - ConfigMaps\n   - Secrets\n2. Implement resource listing with pagination\n3. Add filtering and search functionality\n4. Create watch streams for real-time updates\n5. Implement basic resource operations:\n   - Describe (detailed view)\n   - Logs (streaming)\n   - Delete\n   - Restart\n6. Add multi-selection support with batch operations\n7. Implement namespace/project filtering\n8. Create resource caching layer for performance\n9. Add sorting options for resource lists",
-        "testStrategy": "1. Unit tests for resource models and operations\n2. Integration tests for resource listing and filtering\n3. Test watch streams with simulated resource changes\n4. Verify pagination works correctly with large resource sets\n5. Test search and filtering performance\n6. Verify cache invalidation works correctly\n7. Test batch operations on multiple resources",
-        "priority": "high",
+        "description": "Implement basic pod display and navigation functionality for the MVP, focusing on essential functionality to view and interact with pods in the current namespace.",
+        "status": "pending",
         "dependencies": [
           2,
           3
         ],
-        "status": "pending",
+        "priority": "high",
+        "details": "1. Display pods from current namespace in content pane\n2. Show pod information in columns:\n   - Name\n   - Status\n   - Ready count\n   - Age\n3. Implement basic keyboard navigation:\n   - j/k to move up/down\n   - Enter to select pod\n4. Display selected pod details in detail pane\n5. Add manual refresh with 'r' key",
+        "testStrategy": "1. Unit tests for pod model and display\n2. Integration tests for pod listing\n3. Test keyboard navigation functionality\n4. Verify pod details display correctly\n5. Test manual refresh functionality",
         "subtasks": [
           {
             "id": 1,
             "title": "Core Resource Model Definitions",
-            "description": "Create comprehensive data models and interfaces for Kubernetes/OpenShift resources including Pods, Services, Routes, Deployments, ConfigMaps, and Secrets",
-            "dependencies": [],
-            "details": "Define Go structs for core Kubernetes resources with proper JSON/YAML tags. Create interfaces for resource operations (CRUD, watch, describe). Implement resource metadata handling including labels, annotations, and ownership references. Add resource status parsing and state management. Create type-safe resource accessors and converters. Implement resource validation and error handling patterns.",
+            "description": "Create basic data model and interface for Pod resources",
             "status": "pending",
+            "dependencies": [],
+            "details": "Define Go struct for Pod resources with proper JSON/YAML tags. Create interface for basic pod operations (list, get details). Implement resource metadata handling including name, status, ready count, and age. Add pod status parsing and state management. Implement error handling patterns for pod retrieval.",
             "testStrategy": ""
           },
           {
             "id": 2,
-            "title": "Resource Listing with Pagination and Caching",
-            "description": "Implement efficient resource listing functionality with server-side pagination support and intelligent caching layer for performance optimization",
+            "title": "Basic Pod Listing",
+            "description": "Implement basic pod listing functionality for the current namespace",
+            "status": "pending",
             "dependencies": [
               1
             ],
-            "details": "Create paginated list requests using limit/continue tokens. Implement in-memory cache with TTL and invalidation strategies. Add resource indexing for fast lookups by name, namespace, and labels. Create background refresh mechanism for cache updates. Implement resource version tracking for consistency. Add metrics for cache hit/miss rates and performance monitoring.",
-            "status": "pending",
+            "details": "Create pod list request for current namespace. Display pods in a table format with columns for name, status, ready count, and age. Implement manual refresh functionality with 'r' key. Add error handling for failed pod list requests.",
             "testStrategy": ""
           },
           {
             "id": 3,
-            "title": "Filtering, Search, and Sorting Functionality",
-            "description": "Build comprehensive filtering system with field selectors, label selectors, full-text search, and multi-column sorting capabilities",
+            "title": "Keyboard Navigation",
+            "description": "Implement basic keyboard navigation for pod list",
+            "status": "pending",
             "dependencies": [
               2
             ],
-            "details": "Implement Kubernetes field and label selector parsing. Create full-text search across resource names and descriptions. Add fuzzy search support for user-friendly matching. Implement multi-column sorting with custom comparators. Create saved filter presets and search history. Add performance optimizations for large result sets including result streaming.",
-            "status": "pending",
+            "details": "Add j/k key bindings for moving up and down the pod list. Implement visual indicator for currently selected pod. Add Enter key binding to view selected pod details. Ensure navigation wraps correctly at list boundaries.",
             "testStrategy": ""
           },
           {
             "id": 4,
-            "title": "Real-time Updates via Watch Streams",
-            "description": "Implement WebSocket-based watch streams for real-time resource updates with automatic reconnection and event deduplication",
-            "dependencies": [
-              1,
-              2
-            ],
-            "details": "Create watch stream manager with connection pooling. Implement event buffering and deduplication logic. Add automatic reconnection with exponential backoff. Create delta processing for efficient UI updates. Implement watch bookmark support for resume capability. Add event filtering at the stream level for reduced bandwidth usage.",
+            "title": "Pod Detail View",
+            "description": "Implement detailed view for selected pod",
             "status": "pending",
-            "testStrategy": ""
-          },
-          {
-            "id": 5,
-            "title": "Resource Operations with Batch Support",
-            "description": "Implement resource operations including describe, logs, delete, and restart with support for batch operations on multiple resources",
             "dependencies": [
               1,
               3
             ],
-            "details": "Create describe operation with detailed resource information formatting. Implement streaming log retrieval with tail and follow options. Add safe delete operations with cascade and orphan options. Implement pod restart via rolling update strategy. Create batch operation framework with progress tracking. Add operation queuing and rate limiting for cluster protection.",
+            "details": "Create pod detail view in the detail pane. Display comprehensive pod information including labels, annotations, container details, volumes, and conditions. Format information for readability. Add error handling for failed pod detail requests.",
+            "testStrategy": ""
+          },
+          {
+            "id": 5,
+            "title": "Manual Refresh Functionality",
+            "description": "Implement manual refresh of pod list with 'r' key",
             "status": "pending",
+            "dependencies": [
+              2
+            ],
+            "details": "Add 'r' key binding to trigger manual refresh of pod list. Implement visual indicator during refresh operation. Handle refresh errors gracefully with user feedback. Ensure pod selection is maintained when possible after refresh.",
             "testStrategy": ""
           }
         ]
@@ -406,7 +417,7 @@
           3,
           4
         ],
-        "status": "pending",
+        "status": "deferred",
         "subtasks": [
           {
             "id": 1,
@@ -455,15 +466,52 @@
       {
         "id": 6,
         "title": "Log Streaming and Event Monitoring",
-        "description": "Implement real-time log streaming from containers and event monitoring with filtering capabilities.",
-        "details": "1. Create log streaming component using API watch endpoints\n2. Implement log filtering with regex support\n3. Add timestamp filtering for logs\n4. Create log highlighting and coloring based on content\n5. Implement log export functionality\n6. Add event monitoring with filtering\n7. Create event alerting system\n8. Implement log aggregation across multiple pods\n9. Add build log streaming with progress updates\n10. Create log retention and rotation management",
-        "testStrategy": "1. Test log streaming performance with high-volume logs\n2. Verify filtering correctly narrows log output\n3. Test regex performance with complex patterns\n4. Verify log highlighting works correctly\n5. Test event monitoring with simulated cluster events\n6. Verify alerting triggers correctly\n7. Test log aggregation across multiple sources",
-        "priority": "medium",
+        "description": "Implement basic pod logs viewing functionality for MVP.",
+        "status": "pending",
         "dependencies": [
           4
         ],
-        "status": "pending",
-        "subtasks": []
+        "priority": "medium",
+        "details": "1. Create component to view logs from selected pod's main container\n2. Display last 100 lines in log pane\n3. Implement basic scrolling with arrow keys\n4. Add functionality to clear log view when switching pods",
+        "testStrategy": "1. Verify logs are correctly retrieved from selected pod's main container\n2. Test that only the last 100 lines are displayed initially\n3. Verify scrolling works correctly with arrow keys\n4. Test that log view clears properly when switching between pods\n5. Verify performance with large log outputs",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement pod logs retrieval",
+            "description": "Create function to fetch the last 100 lines of logs from a pod's main container",
+            "status": "pending",
+            "dependencies": [],
+            "details": "",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Create log display component",
+            "description": "Implement a component to display retrieved logs in the log pane",
+            "status": "pending",
+            "dependencies": [],
+            "details": "",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Add basic scrolling functionality",
+            "description": "Implement scrolling through logs using arrow keys",
+            "status": "pending",
+            "dependencies": [],
+            "details": "",
+            "testStrategy": ""
+          },
+          {
+            "id": 4,
+            "title": "Implement log view clearing",
+            "description": "Add functionality to clear the log view when switching between pods",
+            "status": "pending",
+            "dependencies": [],
+            "details": "",
+            "testStrategy": ""
+          }
+        ]
       },
       {
         "id": 7,
@@ -475,7 +523,7 @@
         "dependencies": [
           4
         ],
-        "status": "pending",
+        "status": "deferred",
         "subtasks": [
           {
             "id": 1,
@@ -542,7 +590,7 @@
         "id": 8,
         "title": "Developer Workflow Integration",
         "description": "Implement core developer-focused features including port forwarding, shell access, file transfer, and resource editing for MVP.",
-        "status": "pending",
+        "status": "deferred",
         "dependencies": [
           4,
           7
@@ -600,7 +648,7 @@
           4,
           6
         ],
-        "status": "pending",
+        "status": "deferred",
         "subtasks": [
           {
             "id": 1,
@@ -725,7 +773,7 @@
     ],
     "metadata": {
       "created": "2025-07-19T19:01:35.351Z",
-      "updated": "2025-07-20T19:09:01.506Z",
+      "updated": "2025-07-20T19:23:03.005Z",
       "description": "Tasks for master context"
     }
   }

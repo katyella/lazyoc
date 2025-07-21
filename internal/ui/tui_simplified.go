@@ -1,16 +1,25 @@
 package ui
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/katyella/lazyoc/internal/k8s"
+	"github.com/katyella/lazyoc/internal/k8s/auth"
+	"github.com/katyella/lazyoc/internal/k8s/monitor"
+	"github.com/katyella/lazyoc/internal/k8s/resources"
 	"github.com/katyella/lazyoc/internal/logging"
 	"github.com/katyella/lazyoc/internal/ui/messages"
 	"github.com/katyella/lazyoc/internal/ui/models"
 	"github.com/katyella/lazyoc/internal/ui/navigation"
+	"k8s.io/client-go/kubernetes"
 )
 
 // SimplifiedTUI is a streamlined version without complex component initialization
@@ -19,6 +28,24 @@ type SimplifiedTUI struct {
 	
 	// Navigation system (keep this as it works well)
 	navController *navigation.NavigationController
+	
+	// Kubernetes client integration
+	k8sClient      k8s.Client
+	resourceClient resources.ResourceClient
+	connMonitor    monitor.ConnectionMonitor
+	authProvider   auth.AuthProvider
+	
+	// Connection state
+	connected      bool
+	connecting     bool
+	connectionErr  error
+	namespace      string
+	context        string
+	
+	// Resource data
+	pods           []resources.PodInfo
+	selectedPod    int
+	loadingPods    bool
 	
 	// Simple state instead of components
 	width         int
@@ -38,6 +65,9 @@ type SimplifiedTUI struct {
 	
 	// Theme
 	theme string
+	
+	// Kubeconfig path
+	KubeconfigPath string
 }
 
 // NewSimplifiedTUI creates a new simplified TUI instance
@@ -55,25 +85,84 @@ func NewSimplifiedTUI(version string, debug bool) *SimplifiedTUI {
 		showDetails:   true,
 		showLogs:      true,
 		focusedPanel:  0, // 0=main, 1=details, 2=logs
-		mainContent:   fmt.Sprintf("📦 %s Resources\n\nNo cluster connected yet.\n\nPress ? for help", "Pods"),
-		logContent:    []string{"LazyOC started", "Waiting for cluster connection..."},
+		mainContent:   "",  // Will be set by updateMainContent
+		logContent:    []string{"LazyOC started"},
 		detailContent: "Select a resource to view details",
+		namespace:     "default", // default namespace
+		pods:          []resources.PodInfo{},
+		selectedPod:   0,
 	}
 	
 	// Set up navigation callbacks
 	tui.setupNavigationCallbacks()
 	
+	// Initialize main content
+	tui.updateMainContent()
+	
 	return tui
+}
+
+// SetKubeconfig sets the kubeconfig path and returns a command to initialize the connection
+func (t *SimplifiedTUI) SetKubeconfig(kubeconfigPath string) tea.Cmd {
+	if kubeconfigPath == "" {
+		// Try default location
+		home, err := os.UserHomeDir()
+		if err == nil {
+			kubeconfigPath = filepath.Join(home, ".kube", "config")
+		}
+	}
+	
+	return tea.Batch(
+		// First send connecting message
+		func() tea.Msg {
+			return messages.ConnectingMsg{KubeconfigPath: kubeconfigPath}
+		},
+		// Then initialize the client
+		t.InitializeK8sClient(kubeconfigPath),
+	)
 }
 
 // Init implements tea.Model
 func (t *SimplifiedTUI) Init() tea.Cmd {
-	return tea.Batch(
+	var cmds []tea.Cmd
+	
+	// Basic initialization commands
+	cmds = append(cmds, 
 		tea.WindowSize(),
-		func() tea.Msg {
+		tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
 			return messages.InitMsg{}
-		},
+		}),
 	)
+	
+	// If kubeconfig is provided, initialize the connection
+	if t.KubeconfigPath != "" {
+		cmds = append(cmds, t.SetKubeconfig(t.KubeconfigPath))
+	} else {
+		// Try default kubeconfig location
+		home, err := os.UserHomeDir()
+		if err == nil {
+			defaultPath := filepath.Join(home, ".kube", "config")
+			if _, err := os.Stat(defaultPath); err == nil {
+				cmds = append(cmds, t.SetKubeconfig(defaultPath))
+			} else {
+				// No kubeconfig found - send message
+				cmds = append(cmds, func() tea.Msg {
+					return messages.NoKubeconfigMsg{
+						Message: "No kubeconfig found at ~/.kube/config",
+					}
+				})
+			}
+		} else {
+			// Couldn't get home dir - send message
+			cmds = append(cmds, func() tea.Msg {
+				return messages.NoKubeconfigMsg{
+					Message: "No kubeconfig specified",
+				}
+			})
+		}
+	}
+	
+	return tea.Batch(cmds...)
 }
 
 // Update implements tea.Model
@@ -145,21 +234,6 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			t.updateMainContent()
 			return t, nil
 			
-		case "j", "down":
-			// Move focus down through panels
-			if t.focusedPanel == 0 && t.showLogs {
-				t.focusedPanel = 2
-			} else if t.focusedPanel == 1 && t.showLogs {
-				t.focusedPanel = 2
-			}
-			return t, nil
-			
-		case "k", "up":
-			// Move focus up through panels
-			if t.focusedPanel == 2 {
-				t.focusedPanel = 0
-			}
-			return t, nil
 			
 		case "1":
 			t.focusedPanel = 0 // Focus main panel
@@ -185,16 +259,105 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				t.theme = "dark"
 			}
 			return t, nil
+			
+		case "r":
+			// Refresh pod list
+			if t.connected && t.focusedPanel == 0 {
+				return t, t.loadPods()
+			}
+			return t, nil
+			
+		case "j":
+			if t.focusedPanel == 0 && len(t.pods) > 0 {
+				// Move selection down in pod list
+				t.selectedPod = (t.selectedPod + 1) % len(t.pods)
+				t.updatePodDisplay()
+			} else if t.focusedPanel == 0 && t.showLogs {
+				// Move focus down to logs panel
+				t.focusedPanel = 2
+			} else if t.focusedPanel == 1 && t.showLogs {
+				// Move focus from details to logs
+				t.focusedPanel = 2
+			}
+			return t, nil
+			
+		case "k":
+			if t.focusedPanel == 0 && len(t.pods) > 0 {
+				// Move selection up in pod list
+				t.selectedPod = t.selectedPod - 1
+				if t.selectedPod < 0 {
+					t.selectedPod = len(t.pods) - 1
+				}
+				t.updatePodDisplay()
+			} else if t.focusedPanel == 2 {
+				// Move focus up from logs to main panel
+				t.focusedPanel = 0
+			}
+			return t, nil
+			
+		case "down":
+			// Panel navigation
+			if t.focusedPanel == 0 && t.showLogs {
+				t.focusedPanel = 2
+			} else if t.focusedPanel == 1 && t.showLogs {
+				t.focusedPanel = 2
+			}
+			return t, nil
+			
+		case "up":
+			// Panel navigation
+			if t.focusedPanel == 2 {
+				t.focusedPanel = 0
+			}
+			return t, nil
 		}
 		
 	case messages.InitMsg:
 		t.ClearLoading()
 		t.State = models.StateMain
-		// Add initial log entries
-		t.logContent = append(t.logContent, "Application initialized")
-		// Update main content for current tab
+		// Don't overwrite log entries from Init()
+		// Just update main content for current tab
 		t.updateMainContent()
 		logging.Info(t.Logger, "Application initialized successfully")
+		
+	case messages.ConnectionSuccess:
+		t.connected = true
+		t.connecting = false
+		t.connectionErr = nil
+		t.context = msg.Context
+		t.namespace = msg.Namespace
+		t.logContent = append(t.logContent, fmt.Sprintf("✅ Connected to %s", msg.Context))
+		// Load pods automatically after connection
+		return t, t.loadPods()
+		
+	case messages.ConnectionError:
+		t.connected = false
+		t.connecting = false
+		t.connectionErr = msg.Err
+		t.logContent = append(t.logContent, fmt.Sprintf("❌ Connection failed: %v", msg.Err))
+		t.updatePodDisplay()
+		
+	case messages.PodsLoaded:
+		t.pods = msg.Pods
+		t.loadingPods = false
+		t.selectedPod = 0
+		t.updatePodDisplay()
+		t.logContent = append(t.logContent, fmt.Sprintf("Loaded %d pods from namespace %s", len(msg.Pods), t.namespace))
+		
+	case messages.LoadPodsError:
+		t.loadingPods = false
+		t.logContent = append(t.logContent, fmt.Sprintf("❌ Failed to load pods: %v", msg.Err))
+		t.updatePodDisplay()
+		
+	case messages.NoKubeconfigMsg:
+		t.logContent = append(t.logContent, fmt.Sprintf("⚠️  %s", msg.Message))
+		t.logContent = append(t.logContent, "💡 To connect: Run 'oc login' or use --kubeconfig flag")
+		t.updateMainContent()
+		
+	case messages.ConnectingMsg:
+		t.connecting = true
+		t.logContent = append(t.logContent, fmt.Sprintf("Found kubeconfig at: %s", msg.KubeconfigPath))
+		t.logContent = append(t.logContent, "Connecting to cluster...")
 	}
 	
 	return t, nil
@@ -255,16 +418,42 @@ func (t *SimplifiedTUI) renderHeader(height int) string {
 		Bold(true)
 	
 	if height == 1 {
-		return headerStyle.Render(fmt.Sprintf("🚀 LazyOC v%s", t.Version))
+		// Single line header - show connection status inline
+		title := fmt.Sprintf("🚀 LazyOC v%s", t.Version)
+		var status string
+		if t.connecting {
+			status = " - ⟳ Connecting..."
+		} else if t.connected {
+			status = fmt.Sprintf(" - ● %s", t.context)
+		} else {
+			status = " - ○ Disconnected"
+		}
+		return headerStyle.Render(title + status)
 	}
 	
 	// Two line header
 	line1 := headerStyle.Render(fmt.Sprintf("🚀 LazyOC v%s", t.Version))
+	
+	// Connection status
+	var statusText string
+	var statusColor lipgloss.Color
+	
+	if t.connecting {
+		statusText = "⟳ Connecting..."
+		statusColor = primaryColor
+	} else if t.connected {
+		statusText = fmt.Sprintf("● Connected to %s (namespace: %s)", t.context, t.namespace)
+		statusColor = lipgloss.Color("2") // green
+	} else {
+		statusText = "○ Not connected - Run 'oc login' or use --kubeconfig"
+		statusColor = errorColor
+	}
+	
 	line2 := lipgloss.NewStyle().
 		Width(t.width).
 		Align(lipgloss.Center).
-		Foreground(errorColor).
-		Render("○ Disconnected")
+		Foreground(statusColor).
+		Render(statusText)
 		
 	return lipgloss.JoinVertical(lipgloss.Left, line1, line2)
 }
@@ -428,15 +617,17 @@ func (t *SimplifiedTUI) renderHelp() string {
 Navigation:
   tab        Next panel
   shift+tab  Previous panel
-  j/k        Move focus down/up
+  j/k        Move down/up in pod list
   h/l        Previous/Next tab (in main panel)
-  arrow keys Navigate tabs
+  arrow keys Navigate tabs/list
   1/2/3      Jump to main/detail/log panel
   
 Commands:
   ?          Toggle help
   d          Toggle details panel
   L          Toggle log panel (shift+l)
+  r          Refresh pod list
+  t          Toggle theme
   q          Quit
   
 Press ? or ESC to close`
@@ -473,7 +664,24 @@ func (t *SimplifiedTUI) setupNavigationCallbacks() {
 // updateMainContent updates the main content based on the active tab
 func (t *SimplifiedTUI) updateMainContent() {
 	tabName := t.GetTabName(t.ActiveTab)
-	t.mainContent = fmt.Sprintf("📦 %s Resources\n\nNo cluster connected yet.\n\nUse h/l or arrow keys to navigate tabs\nPress ? for help", tabName)
+	if !t.connected {
+		t.mainContent = fmt.Sprintf(`📦 %s
+
+❌ Not connected to any cluster
+
+To connect to a cluster:
+1. Run 'oc login <cluster-url>' in your terminal
+2. Or start LazyOC with: lazyoc --kubeconfig /path/to/config
+
+Press 'q' to quit`, tabName)
+		return
+	}
+	
+	if t.ActiveTab == 0 { // Pods tab
+		t.updatePodDisplay()
+	} else {
+		t.mainContent = fmt.Sprintf("📦 %s Resources\n\nComing soon...\n\nUse h/l or arrow keys to navigate tabs\nPress ? for help", tabName)
+	}
 }
 
 // getThemeColors returns primary and error colors based on current theme
@@ -490,4 +698,178 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// K8s Integration Methods
+
+// InitializeK8sClient initializes the Kubernetes client with the given kubeconfig path
+func (t *SimplifiedTUI) InitializeK8sClient(kubeconfigPath string) tea.Cmd {
+	return func() tea.Msg {
+		
+		// Create auth provider
+		t.authProvider = auth.NewKubeconfigProvider(kubeconfigPath)
+		
+		// Authenticate
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		
+		config, err := t.authProvider.Authenticate(ctx)
+		if err != nil {
+			return messages.ConnectionError{Err: fmt.Errorf("authentication failed: %w", err)}
+		}
+		
+		// Create client factory
+		k8sClient := k8s.NewClientFactory()
+		err = k8sClient.Initialize()
+		if err != nil {
+			return messages.ConnectionError{Err: fmt.Errorf("client initialization failed: %w", err)}
+		}
+		
+		// Create clientset
+		clientset, err := kubernetes.NewForConfig(config)
+		if err != nil {
+			return messages.ConnectionError{Err: fmt.Errorf("clientset creation failed: %w", err)}
+		}
+		
+		// Create resource client
+		namespace := t.authProvider.GetNamespace()
+		clusterContext := t.authProvider.GetContext()
+		resourceClient := resources.NewK8sResourceClient(clientset, namespace)
+		
+		// Create connection monitor
+		connMonitor := monitor.NewK8sConnectionMonitor(t.authProvider, resourceClient)
+		err = connMonitor.Start(context.Background())
+		if err != nil {
+			logging.Warn(t.Logger, "Failed to start connection monitor: %v", err)
+		}
+		
+		// Test connection
+		err = resourceClient.TestConnection(ctx)
+		if err != nil {
+			return messages.ConnectionError{Err: fmt.Errorf("connection test failed: %w", err)}
+		}
+		
+		// Store everything in the success message
+		t.k8sClient = k8sClient
+		t.resourceClient = resourceClient
+		t.connMonitor = connMonitor
+		
+		return messages.ConnectionSuccess{
+			Context:   clusterContext,
+			Namespace: namespace,
+		}
+	}
+}
+
+// loadPods fetches pods from the current namespace
+func (t *SimplifiedTUI) loadPods() tea.Cmd {
+	return func() tea.Msg {
+		if !t.connected || t.resourceClient == nil {
+			return messages.LoadPodsError{Err: fmt.Errorf("not connected to cluster")}
+		}
+		
+		t.loadingPods = true
+		
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		
+		opts := resources.ListOptions{
+			Namespace: t.namespace,
+		}
+		
+		podList, err := t.resourceClient.ListPods(ctx, opts)
+		if err != nil {
+			t.loadingPods = false
+			return messages.LoadPodsError{Err: err}
+		}
+		
+		t.loadingPods = false
+		return messages.PodsLoaded{Pods: podList.Items}
+	}
+}
+
+// updatePodDisplay updates the main content with pod information
+func (t *SimplifiedTUI) updatePodDisplay() {
+	if !t.connected {
+		t.mainContent = `📦 Pods
+
+❌ Not connected to any cluster
+
+To connect to a cluster:
+1. Run 'oc login <cluster-url>' in your terminal
+2. Or start LazyOC with: lazyoc --kubeconfig /path/to/config
+
+Press 'q' to quit`
+		return
+	}
+	
+	if t.loadingPods {
+		t.mainContent = "📦 Pods\n\nLoading pods..."
+		return
+	}
+	
+	if len(t.pods) == 0 {
+		t.mainContent = fmt.Sprintf("📦 Pods in %s\n\nNo pods found in this namespace.", t.namespace)
+		return
+	}
+	
+	// Build pod list display
+	var content strings.Builder
+	content.WriteString(fmt.Sprintf("📦 Pods in %s\n\n", t.namespace))
+	
+	// Header
+	content.WriteString("NAME                                    STATUS    READY   AGE\n")
+	content.WriteString("────────────────────────────────────    ──────    ─────   ───\n")
+	
+	// Pod rows
+	for i, pod := range t.pods {
+		// Highlight selected pod
+		prefix := "  "
+		if i == t.selectedPod && t.focusedPanel == 0 {
+			prefix = "▶ "
+		}
+		
+		// Truncate name if too long
+		name := pod.Name
+		if len(name) > 38 {
+			name = name[:35] + "..."
+		}
+		
+		content.WriteString(fmt.Sprintf("%s%-38s  %-8s  %-5s   %s\n",
+			prefix, name, pod.Phase, pod.Ready, pod.Age))
+	}
+	
+	t.mainContent = content.String()
+	
+	// Update detail pane with selected pod info
+	if t.selectedPod < len(t.pods) && t.selectedPod >= 0 {
+		t.updatePodDetails(t.pods[t.selectedPod])
+	}
+}
+
+// updatePodDetails updates the detail pane with pod information
+func (t *SimplifiedTUI) updatePodDetails(pod resources.PodInfo) {
+	var details strings.Builder
+	details.WriteString(fmt.Sprintf("📄 Pod Details: %s\n\n", pod.Name))
+	
+	details.WriteString(fmt.Sprintf("Namespace:  %s\n", pod.Namespace))
+	details.WriteString(fmt.Sprintf("Status:     %s\n", pod.Phase))
+	details.WriteString(fmt.Sprintf("Ready:      %s\n", pod.Ready))
+	details.WriteString(fmt.Sprintf("Restarts:   %d\n", pod.Restarts))
+	details.WriteString(fmt.Sprintf("Age:        %s\n", pod.Age))
+	details.WriteString(fmt.Sprintf("Node:       %s\n", pod.Node))
+	details.WriteString(fmt.Sprintf("IP:         %s\n", pod.IP))
+	
+	if len(pod.ContainerInfo) > 0 {
+		details.WriteString("\nContainers:\n")
+		for _, container := range pod.ContainerInfo {
+			status := "🟢"
+			if !container.Ready {
+				status = "🔴"
+			}
+			details.WriteString(fmt.Sprintf("  %s %s (%s)\n", status, container.Name, container.State))
+		}
+	}
+	
+	t.detailContent = details.String()
 }

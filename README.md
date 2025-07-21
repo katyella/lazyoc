@@ -78,6 +78,95 @@ LazyOC uses your existing kubeconfig file by default. You can specify a differen
 lazyoc --kubeconfig=/path/to/config
 ```
 
+## 🔐 Authentication & Kubeconfig
+
+### Understanding Kubeconfig
+
+The kubeconfig file is a YAML configuration that stores:
+- **Clusters**: API server endpoints and certificate authorities
+- **Users**: Authentication credentials (tokens, certificates)
+- **Contexts**: Combinations of cluster + user + namespace
+- **Current Context**: The active cluster/user/namespace
+
+Default location: `~/.kube/config`
+
+### Working with `oc login`
+
+When you authenticate to an OpenShift cluster using `oc login`, it automatically updates your kubeconfig:
+
+```bash
+# Login to OpenShift
+oc login https://api.cluster.example.com:6443 --token=sha256~ABC123...
+
+# This updates ~/.kube/config with:
+# - Cluster endpoint and CA certificate
+# - Your authentication token
+# - A new context for this cluster
+
+# LazyOC automatically uses this configuration
+lazyoc
+```
+
+### Relationship between `oc login` and LazyOC
+
+```
+┌──────────┐     writes to      ┌─────────────────┐     reads from    ┌─────────┐
+│ oc login │ ─────────────────> │ ~/.kube/config  │ <───────────────── │ LazyOC  │
+└──────────┘                    └─────────────────┘                    └─────────┘
+                                         ↑
+                                    also used by
+                                         ↑
+                                ┌─────────────────┐
+                                │ kubectl/oc CLI  │
+                                └─────────────────┘
+```
+
+### Multiple Clusters
+
+Manage multiple clusters easily:
+
+```bash
+# Login to different clusters
+oc login https://dev.openshift.com --token=dev-token
+oc login https://prod.openshift.com --token=prod-token
+
+# Switch active context
+oc config use-context dev-cluster
+
+# LazyOC uses the current context
+lazyoc
+
+# Or explicitly specify a different kubeconfig
+lazyoc --kubeconfig=/path/to/other/config
+```
+
+### Authentication Methods
+
+LazyOC supports all Kubernetes/OpenShift authentication methods:
+- **OAuth Tokens**: From `oc login` (most common for OpenShift)
+- **Client Certificates**: X.509 certificates
+- **Service Account Tokens**: For automation
+- **Basic Auth**: Username/password (if enabled)
+- **OIDC Tokens**: From external identity providers
+
+### Troubleshooting Authentication
+
+If LazyOC cannot connect:
+
+```bash
+# Check current context
+kubectl config current-context
+
+# List all contexts
+kubectl config get-contexts
+
+# Verify cluster connectivity
+kubectl cluster-info
+
+# Re-authenticate if needed
+oc login https://your-cluster.com
+```
+
 ## ⚡ Performance Targets
 
 LazyOC is designed to be lightweight and efficient:

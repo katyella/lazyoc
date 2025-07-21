@@ -7,10 +7,11 @@ import (
 
 // ProgramOptions holds configuration for the Bubble Tea program
 type ProgramOptions struct {
-	Version     string
-	Debug       bool
-	AltScreen   bool
+	Version      string
+	Debug        bool
+	AltScreen    bool
 	MouseSupport bool
+	KubeConfig   string
 }
 
 // DefaultProgramOptions returns sensible defaults for the TUI program
@@ -27,6 +28,11 @@ func DefaultProgramOptions() ProgramOptions {
 func NewProgram(opts ProgramOptions) *tea.Program {
 	// Create the simplified TUI model
 	tui := NewSimplifiedTUI(opts.Version, opts.Debug)
+	
+	// Set kubeconfig if provided
+	if opts.KubeConfig != "" {
+		tui.KubeconfigPath = opts.KubeConfig
+	}
 	
 	// Configure program options
 	var programOpts []tea.ProgramOption
