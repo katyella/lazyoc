@@ -14,6 +14,7 @@ import (
 	"github.com/katyella/lazyoc/internal/k8s"
 	"github.com/katyella/lazyoc/internal/k8s/auth"
 	"github.com/katyella/lazyoc/internal/k8s/monitor"
+	"github.com/katyella/lazyoc/internal/k8s/projects"
 	"github.com/katyella/lazyoc/internal/k8s/resources"
 	"github.com/katyella/lazyoc/internal/logging"
 	"github.com/katyella/lazyoc/internal/ui/messages"
@@ -30,10 +31,12 @@ type SimplifiedTUI struct {
 	navController *navigation.NavigationController
 	
 	// Kubernetes client integration
-	k8sClient      k8s.Client
-	resourceClient resources.ResourceClient
-	connMonitor    monitor.ConnectionMonitor
-	authProvider   auth.AuthProvider
+	k8sClient       k8s.Client
+	resourceClient  resources.ResourceClient
+	connMonitor     monitor.ConnectionMonitor
+	authProvider    auth.AuthProvider
+	projectManager  projects.ProjectManager
+	projectFactory  *projects.DefaultProjectManagerFactory
 	
 	// Connection state
 	connected      bool
@@ -62,6 +65,16 @@ type SimplifiedTUI struct {
 	// Visibility
 	showDetails   bool
 	showLogs      bool
+	
+	// Project switching modal
+	showProjectModal   bool
+	projectList        []projects.ProjectInfo
+	selectedProject    int
+	currentProject     *projects.ProjectInfo
+	loadingProjects    bool
+	switchingProject   bool
+	projectModalHeight int
+	projectError       string
 	
 	// Theme
 	theme string
@@ -185,10 +198,22 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return t, nil
 		}
 		
+		// Special handling for project modal
+		if t.showProjectModal {
+			return t.handleProjectModalKeys(msg)
+		}
+		
 		// Normal key handling
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return t, tea.Quit
+			
+		case "ctrl+p":
+			// Open project switching modal
+			if t.connected {
+				return t, t.openProjectModal()
+			}
+			return t, nil
 			
 		case "?":
 			t.showHelp = true
@@ -327,6 +352,10 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.context = msg.Context
 		t.namespace = msg.Namespace
 		t.logContent = append(t.logContent, fmt.Sprintf("✅ Connected to %s", msg.Context))
+		
+		// Initialize project manager after successful connection
+		t.initializeProjectManager()
+		
 		// Load pods automatically after connection
 		return t, t.loadPods()
 		
@@ -358,6 +387,39 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.connecting = true
 		t.logContent = append(t.logContent, fmt.Sprintf("Found kubeconfig at: %s", msg.KubeconfigPath))
 		t.logContent = append(t.logContent, "Connecting to cluster...")
+		
+	case ProjectListLoadedMsg:
+		t.loadingProjects = false
+		t.projectList = msg.Projects
+		t.selectedProject = 0
+		// Find current project index
+		for i, proj := range t.projectList {
+			if t.currentProject != nil && proj.Name == t.currentProject.Name {
+				t.selectedProject = i
+				break
+			}
+		}
+		
+	case ProjectSwitchedMsg:
+		t.showProjectModal = false
+		t.switchingProject = false
+		t.projectError = "" // Clear any errors on successful switch
+		t.currentProject = &msg.Project
+		t.namespace = msg.Project.Name
+		t.logContent = append(t.logContent, fmt.Sprintf("Switched to %s '%s'", msg.Project.Type, msg.Project.Name))
+		// Update main content to ensure tabs are visible
+		t.updateMainContent()
+		// Reload pods for the new project
+		if t.connected {
+			return t, t.loadPods()
+		}
+		
+	case ProjectErrorMsg:
+		t.loadingProjects = false
+		t.switchingProject = false
+		t.projectError = msg.Error
+		t.logContent = append(t.logContent, fmt.Sprintf("Project error: %s", msg.Error))
+		// Keep modal open to show error
 	}
 	
 	return t, nil
@@ -373,6 +435,11 @@ func (t *SimplifiedTUI) View() string {
 	// Show help overlay if active
 	if t.showHelp {
 		return t.renderHelp()
+	}
+	
+	// Show project modal if active
+	if t.showProjectModal {
+		return t.renderProjectModal()
 	}
 	
 	// Render main interface
@@ -624,6 +691,7 @@ Navigation:
   
 Commands:
   ?          Toggle help
+  ctrl+p     Switch project/namespace
   d          Toggle details panel
   L          Toggle log panel (shift+l)
   r          Refresh pod list
@@ -706,54 +774,71 @@ func max(a, b int) int {
 func (t *SimplifiedTUI) InitializeK8sClient(kubeconfigPath string) tea.Cmd {
 	return func() tea.Msg {
 		
+		logging.Info(t.Logger, "🔄 Starting K8s client initialization with kubeconfig: %s", kubeconfigPath)
+		
 		// Create auth provider
+		logging.Info(t.Logger, "📝 Creating auth provider")
 		t.authProvider = auth.NewKubeconfigProvider(kubeconfigPath)
 		
-		// Authenticate
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		// Authenticate with shorter timeout to avoid hanging
+		logging.Info(t.Logger, "🔐 Starting authentication (timeout: 5s)")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		
 		config, err := t.authProvider.Authenticate(ctx)
 		if err != nil {
+			logging.Error(t.Logger, "❌ Authentication failed: %v", err)
 			return messages.ConnectionError{Err: fmt.Errorf("authentication failed: %w", err)}
 		}
+		logging.Info(t.Logger, "✅ Authentication successful")
 		
-		// Create client factory
-		k8sClient := k8s.NewClientFactory()
-		err = k8sClient.Initialize()
-		if err != nil {
-			return messages.ConnectionError{Err: fmt.Errorf("client initialization failed: %w", err)}
-		}
-		
-		// Create clientset
+		// Create clientset directly (no need for duplicate client factory)
+		logging.Info(t.Logger, "🔧 Creating Kubernetes clientset")
 		clientset, err := kubernetes.NewForConfig(config)
 		if err != nil {
+			logging.Error(t.Logger, "❌ Clientset creation failed: %v", err)
 			return messages.ConnectionError{Err: fmt.Errorf("clientset creation failed: %w", err)}
 		}
+		logging.Info(t.Logger, "✅ Clientset created successfully")
+		
+		// Create a simple client factory for backward compatibility
+		logging.Info(t.Logger, "🏭 Setting up client factory")
+		k8sClient := k8s.NewClientFactory()
+		k8sClient.SetClientset(clientset)
+		k8sClient.SetConfig(config)
 		
 		// Create resource client
+		logging.Info(t.Logger, "📦 Getting namespace and context info")
 		namespace := t.authProvider.GetNamespace()
 		clusterContext := t.authProvider.GetContext()
+		logging.Info(t.Logger, "📍 Namespace: %s, Context: %s", namespace, clusterContext)
+		
+		logging.Info(t.Logger, "🔗 Creating resource client")
 		resourceClient := resources.NewK8sResourceClient(clientset, namespace)
 		
-		// Create connection monitor
-		connMonitor := monitor.NewK8sConnectionMonitor(t.authProvider, resourceClient)
-		err = connMonitor.Start(context.Background())
-		if err != nil {
-			logging.Warn(t.Logger, "Failed to start connection monitor: %v", err)
-		}
+		// TODO: Re-enable connection monitor once connection issue is resolved
+		// connMonitor := monitor.NewK8sConnectionMonitor(t.authProvider, resourceClient)
+		var connMonitor monitor.ConnectionMonitor = nil
 		
-		// Test connection
-		err = resourceClient.TestConnection(ctx)
+		// Test connection with a separate, shorter timeout
+		logging.Info(t.Logger, "🧪 Testing connection (timeout: 3s)")
+		testCtx, testCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer testCancel()
+		
+		err = resourceClient.TestConnection(testCtx)
 		if err != nil {
+			logging.Error(t.Logger, "❌ Connection test failed: %v", err)
 			return messages.ConnectionError{Err: fmt.Errorf("connection test failed: %w", err)}
 		}
+		logging.Info(t.Logger, "✅ Connection test successful")
 		
 		// Store everything in the success message
+		logging.Info(t.Logger, "💾 Storing connection components")
 		t.k8sClient = k8sClient
 		t.resourceClient = resourceClient
 		t.connMonitor = connMonitor
 		
+		logging.Info(t.Logger, "🎉 K8s client initialization complete!")
 		return messages.ConnectionSuccess{
 			Context:   clusterContext,
 			Namespace: namespace,
@@ -873,3 +958,344 @@ func (t *SimplifiedTUI) updatePodDetails(pod resources.PodInfo) {
 	
 	t.detailContent = details.String()
 }
+
+// Project-related message types
+type ProjectListLoadedMsg struct {
+	Projects []projects.ProjectInfo
+}
+
+type ProjectSwitchedMsg struct {
+	Project projects.ProjectInfo
+}
+
+type ProjectErrorMsg struct {
+	Error string
+}
+
+// openProjectModal opens the project switching modal
+func (t *SimplifiedTUI) openProjectModal() tea.Cmd {
+	t.showProjectModal = true
+	t.loadingProjects = true
+	t.switchingProject = false
+	t.projectError = "" // Clear any previous errors
+	t.projectModalHeight = min(t.height-6, 15) // Leave space for borders and headers
+	
+	return tea.Batch(
+		t.loadProjectList(),
+		t.getCurrentProject(),
+	)
+}
+
+// loadProjectList loads the list of available projects/namespaces
+func (t *SimplifiedTUI) loadProjectList() tea.Cmd {
+	return tea.Cmd(func() tea.Msg {
+		if t.projectManager == nil {
+			return ProjectErrorMsg{Error: "Project manager not initialized"}
+		}
+		
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		
+		projectList, err := t.projectManager.List(ctx, projects.ListOptions{
+			IncludeQuotas: false, // Don't load quotas for the list view
+			IncludeLimits: false,
+		})
+		if err != nil {
+			return ProjectErrorMsg{Error: fmt.Sprintf("Failed to load projects: %v", err)}
+		}
+		
+		return ProjectListLoadedMsg{Projects: projectList}
+	})
+}
+
+// getCurrentProject loads the current project information
+func (t *SimplifiedTUI) getCurrentProject() tea.Cmd {
+	return tea.Cmd(func() tea.Msg {
+		if t.projectManager == nil {
+			return nil // No error, just skip
+		}
+		
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		
+		current, err := t.projectManager.GetCurrent(ctx)
+		if err == nil && current != nil {
+			t.currentProject = current
+		}
+		
+		return nil // We handle current project setting in the loadProjectList response
+	})
+}
+
+// handleProjectModalKeys handles keyboard input when the project modal is open
+func (t *SimplifiedTUI) handleProjectModalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if t.loadingProjects || t.switchingProject {
+		// Only allow escape while loading or switching
+		if msg.String() == "esc" {
+			t.showProjectModal = false
+			t.loadingProjects = false
+			t.switchingProject = false
+			t.updateMainContent() // Ensure tabs are visible when modal closes
+			return t, nil
+		}
+		return t, nil
+	}
+	
+	switch msg.String() {
+	case "esc":
+		t.showProjectModal = false
+		t.updateMainContent() // Ensure tabs are visible when modal closes
+		return t, nil
+		
+	case "enter":
+		// Switch to selected project (prevent double-switching)
+		if !t.switchingProject && len(t.projectList) > 0 && t.selectedProject >= 0 && t.selectedProject < len(t.projectList) {
+			t.switchingProject = true
+			t.projectError = "" // Clear error when attempting a switch
+			return t, t.switchToProject(t.projectList[t.selectedProject])
+		}
+		return t, nil
+		
+	case "j", "down":
+		if len(t.projectList) > 0 {
+			t.selectedProject = (t.selectedProject + 1) % len(t.projectList)
+			// Don't clear error - let user navigate while seeing the error
+		}
+		return t, nil
+		
+	case "k", "up":
+		if len(t.projectList) > 0 {
+			t.selectedProject = t.selectedProject - 1
+			if t.selectedProject < 0 {
+				t.selectedProject = len(t.projectList) - 1
+			}
+			// Don't clear error - let user navigate while seeing the error
+		}
+		return t, nil
+		
+	case "r":
+		// Refresh project list and clear errors
+		t.loadingProjects = true
+		t.projectError = ""
+		return t, t.loadProjectList()
+	}
+	
+	return t, nil
+}
+
+// switchToProject switches to the specified project
+func (t *SimplifiedTUI) switchToProject(project projects.ProjectInfo) tea.Cmd {
+	return tea.Cmd(func() tea.Msg {
+		if t.projectManager == nil {
+			return ProjectErrorMsg{Error: "Project manager not initialized"}
+		}
+		
+		// Check if we're already on this project
+		if t.currentProject != nil && t.currentProject.Name == project.Name {
+			return ProjectSwitchedMsg{Project: project} // Just close modal, no actual switch needed
+		}
+		
+		logging.Info(t.Logger, "🔄 Switching to %s: %s", project.Type, project.Name)
+		
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second) // Increased timeout
+		defer cancel()
+		
+		result, err := t.projectManager.SwitchTo(ctx, project.Name)
+		if err != nil {
+			logging.Error(t.Logger, "❌ Failed to switch to %s '%s': %v", project.Type, project.Name, err)
+			return ProjectErrorMsg{Error: fmt.Sprintf("Failed to switch to %s '%s': %v", project.Type, project.Name, err)}
+		}
+		
+		if !result.Success {
+			logging.Error(t.Logger, "❌ Project switch failed: %s", result.Message)
+			return ProjectErrorMsg{Error: result.Message}
+		}
+		
+		logging.Info(t.Logger, "✅ Successfully switched to %s: %s", project.Type, project.Name)
+		
+		// Return success with the project info
+		if result.ProjectInfo != nil {
+			return ProjectSwitchedMsg{Project: *result.ProjectInfo}
+		}
+		return ProjectSwitchedMsg{Project: project}
+	})
+}
+
+// renderProjectModal renders the project switching modal
+func (t *SimplifiedTUI) renderProjectModal() string {
+	modalWidth := min(t.width-4, 60)
+	modalHeight := t.projectModalHeight
+	
+	// Create the modal box with error styling if needed
+	borderColor := lipgloss.Color("12") // Default blue
+	if t.projectError != "" {
+		borderColor = lipgloss.Color("9") // Red for errors
+	}
+	
+	modalStyle := lipgloss.NewStyle().
+		Width(modalWidth).
+		Height(modalHeight).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Padding(1).
+		Align(lipgloss.Center)
+	
+	var content strings.Builder
+	
+	// Header
+	if t.currentProject != nil {
+		content.WriteString(fmt.Sprintf("Current %s: %s\n\n", t.currentProject.Type, t.currentProject.Name))
+	} else {
+		content.WriteString("Switch Project/Namespace\n\n")
+	}
+	
+	// Show error prominently if there is one
+	if t.projectError != "" {
+		// Format error message for better display
+		errorMsg := t.projectError
+		maxErrorLen := modalWidth - 10 // Leave space for padding and borders
+		
+		// Truncate very long errors and add ellipsis
+		if len(errorMsg) > maxErrorLen {
+			errorMsg = errorMsg[:maxErrorLen-3] + "..."
+		}
+		
+		content.WriteString("❌ Switch Failed\n\n")
+		content.WriteString(fmt.Sprintf("%s\n\n", errorMsg))
+		
+		// Still show project list even with error so user can try another project
+		if len(t.projectList) > 0 {
+			content.WriteString("Select a different project:\n\n")
+		}
+	}
+	
+	if t.loadingProjects {
+		content.WriteString("Loading projects...")
+	} else if t.switchingProject {
+		selectedProject := ""
+		if len(t.projectList) > 0 && t.selectedProject >= 0 && t.selectedProject < len(t.projectList) {
+			selectedProject = t.projectList[t.selectedProject].Name
+		}
+		content.WriteString(fmt.Sprintf("Switching to: %s\n\nPlease wait...", selectedProject))
+	} else if len(t.projectList) == 0 && t.projectError == "" {
+		content.WriteString("No projects found")
+	} else if len(t.projectList) > 0 {
+		// List projects
+		maxItems := modalHeight - 6 // Account for header, footer, padding
+		startIdx := max(0, t.selectedProject-maxItems/2)
+		endIdx := min(len(t.projectList), startIdx+maxItems)
+		
+		for i := startIdx; i < endIdx; i++ {
+			project := t.projectList[i]
+			
+			prefix := "  "
+			if i == t.selectedProject {
+				prefix = "▶ "
+			}
+			
+			// Show project type icon
+			typeIcon := "📦" // namespace
+			if project.Type == projects.ProjectTypeOpenShiftProject {
+				typeIcon = "🎯" // project
+			}
+			
+			// Current project indicator
+			currentIndicator := ""
+			if t.currentProject != nil && project.Name == t.currentProject.Name {
+				currentIndicator = " (current)"
+			}
+			
+			line := fmt.Sprintf("%s%s %s%s", prefix, typeIcon, project.Name, currentIndicator)
+			if project.DisplayName != "" && project.DisplayName != project.Name {
+				line += fmt.Sprintf(" - %s", project.DisplayName)
+			}
+			
+			content.WriteString(line + "\n")
+		}
+		
+		// Show scroll indicator if needed
+		if len(t.projectList) > maxItems {
+			content.WriteString(fmt.Sprintf("\n[%d/%d projects]", t.selectedProject+1, len(t.projectList)))
+		}
+	}
+	
+	// Footer
+	content.WriteString("\n\n")
+	if t.loadingProjects {
+		content.WriteString("Press 'esc' to cancel")
+	} else if t.switchingProject {
+		content.WriteString("Switching project... • esc: cancel")
+	} else if t.projectError != "" {
+		content.WriteString("↑↓/j,k: select different • enter: try selected • r: refresh • esc: cancel")
+	} else {
+		content.WriteString("↑↓/j,k: navigate • enter: switch • r: refresh • esc: cancel")
+	}
+	
+	modal := modalStyle.Render(content.String())
+	
+	// Center the modal on screen
+	return lipgloss.Place(t.width, t.height, lipgloss.Center, lipgloss.Center, modal)
+}
+
+// initializeProjectManager initializes the project manager after K8s client is ready
+func (t *SimplifiedTUI) initializeProjectManager() {
+	if t.k8sClient == nil {
+		logging.Warn(t.Logger, "Cannot initialize project manager: K8s client not ready")
+		return
+	}
+	
+	config := t.k8sClient.GetConfig()
+	if config == nil {
+		logging.Error(t.Logger, "Failed to get K8s config for project manager: config is nil")
+		return
+	}
+	
+	clientset := t.k8sClient.GetClientset()
+	if clientset == nil {
+		logging.Error(t.Logger, "Failed to get clientset for project manager: clientset is nil")
+		return
+	}
+	
+	// Create project manager factory
+	factory, err := projects.NewProjectManagerFactory(clientset, config, t.KubeconfigPath)
+	if err != nil {
+		logging.Error(t.Logger, "Failed to create project manager factory: %v", err)
+		return
+	}
+	
+	t.projectFactory = factory
+	
+	// Create the appropriate project manager
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	
+	manager, err := factory.CreateAutoDetectManager(ctx)
+	if err != nil {
+		logging.Error(t.Logger, "Failed to create project manager: %v", err)
+		return
+	}
+	
+	t.projectManager = manager
+	logging.Info(t.Logger, "✅ Project manager initialized for %s", manager.GetClusterType())
+	
+	// Load current project info
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		
+		current, err := manager.GetCurrent(ctx)
+		if err == nil && current != nil {
+			t.currentProject = current
+			logging.Info(t.Logger, "Current %s: %s", current.Type, current.Name)
+		}
+	}()
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+

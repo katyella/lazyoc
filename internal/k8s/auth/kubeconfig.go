@@ -40,6 +40,7 @@ func NewKubeconfigProviderWithContext(kubeconfigPath, context string) *Kubeconfi
 
 // Authenticate loads and validates the kubeconfig
 func (kp *KubeconfigProvider) Authenticate(ctx context.Context) (*rest.Config, error) {
+	
 	// Check if kubeconfig file exists
 	if _, err := os.Stat(kp.kubeconfigPath); os.IsNotExist(err) {
 		return nil, NewAuthError(
@@ -122,6 +123,7 @@ func (kp *KubeconfigProvider) Authenticate(ctx context.Context) (*rest.Config, e
 			)
 		}
 		config = contextConfig
+	} else {
 	}
 	
 	kp.config = config

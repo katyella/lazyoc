@@ -58,6 +58,16 @@ func (cf *ClientFactory) GetConfig() *rest.Config {
 	return cf.config
 }
 
+// SetClientset sets the clientset directly (for external initialization)
+func (cf *ClientFactory) SetClientset(clientset *kubernetes.Clientset) {
+	cf.clientset = clientset
+}
+
+// SetConfig sets the rest config directly (for external initialization)
+func (cf *ClientFactory) SetConfig(config *rest.Config) {
+	cf.config = config
+}
+
 // TestConnection tests the connection to the Kubernetes cluster
 func (cf *ClientFactory) TestConnection(ctx context.Context) error {
 	if cf.clientset == nil {

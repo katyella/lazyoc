@@ -416,5 +416,5 @@ These commands make AI calls and may take up to a minute:
 
 _This guide ensures Claude Code has immediate access to Task Master's essential functionality for agentic development workflows._
 
-you cannot run the code tell the user to run it for you
+IMPORTANT: you cannot run the code or lazyoc tell the user to run it for you
 
