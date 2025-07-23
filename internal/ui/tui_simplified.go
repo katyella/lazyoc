@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -58,6 +59,10 @@ type SimplifiedTUI struct {
 	loadingLogs    bool
 	logScrollOffset int
 	maxLogLines     int
+	userScrolled    bool  // Track if user manually scrolled
+	
+	// Log view mode: "app" or "pod"
+	logViewMode    string
 	
 	// Simple state instead of components
 	width         int
@@ -124,6 +129,7 @@ func NewSimplifiedTUI(version string, debug bool) *SimplifiedTUI {
 		// Pod logs
 		podLogs:       []string{},
 		maxLogLines:   1000, // Keep last 1000 lines
+		logViewMode:   "app", // Default to app logs
 		// Error handling
 		errorDisplay:   components.NewErrorDisplayComponent("dark"),
 		maxRetries:     3,
@@ -297,7 +303,18 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return t, nil
 			
 		case "l":
-			if t.focusedPanel == 0 { // Only navigate tabs when in main panel
+			if t.focusedPanel == 2 { // Toggle log view when in log panel
+				if t.logViewMode == "app" {
+					t.logViewMode = "pod"
+					// Auto-load pod logs if not loaded and we have a selected pod
+					if len(t.podLogs) == 0 && len(t.pods) > 0 && t.selectedPod < len(t.pods) {
+						t.clearPodLogs() // This sets loadingLogs = true
+						return t, t.loadPodLogs()
+					}
+				} else {
+					t.logViewMode = "app"
+				}
+			} else if t.focusedPanel == 0 { // Navigate tabs when in main panel
 				t.NextTab()
 				t.updateMainContent()
 			}
@@ -355,11 +372,12 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if t.focusedPanel == 1 && t.showLogs {
 				// Move focus from details to logs
 				t.focusedPanel = 2
-			} else if t.focusedPanel == 2 && len(t.podLogs) > 0 {
-				// Scroll down in logs - improved bounds checking
+			} else if t.focusedPanel == 2 && t.logViewMode == "pod" && len(t.podLogs) > 0 {
+				// Scroll down in pod logs - improved bounds checking
 				maxScroll := t.getMaxLogScrollOffset()
 				if t.logScrollOffset < maxScroll {
 					t.logScrollOffset += 1
+					t.userScrolled = true
 				}
 			}
 			return t, nil
@@ -375,48 +393,51 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Clear logs and load logs for newly selected pod
 				t.clearPodLogs()
 				return t, t.loadPodLogs()
-			} else if t.focusedPanel == 2 && len(t.podLogs) > 0 {
-				// Scroll up in logs - improved bounds checking
+			} else if t.focusedPanel == 2 && t.logViewMode == "pod" && len(t.podLogs) > 0 {
+				// Scroll up in pod logs - improved bounds checking
 				if t.logScrollOffset > 0 {
 					t.logScrollOffset -= 1
-				} else {
-					// Move focus up from logs to main panel when at top
-					t.focusedPanel = 0
+					t.userScrolled = true
 				}
+				// Stay in log panel even at the top
 			} else if t.focusedPanel == 2 {
-				// Move focus up from logs to main panel
-				t.focusedPanel = 0
+				// Stay in log panel for app logs too
+				// Don't change focus
 			}
 			return t, nil
 			
 		case "pgup":
-			if t.focusedPanel == 2 && len(t.podLogs) > 0 {
-				// Page up in logs
+			if t.focusedPanel == 2 && t.logViewMode == "pod" && len(t.podLogs) > 0 {
+				// Page up in pod logs
 				pageSize := t.getLogPageSize()
 				t.logScrollOffset = max(0, t.logScrollOffset-pageSize)
+				t.userScrolled = true
 			}
 			return t, nil
 			
 		case "pgdn":
-			if t.focusedPanel == 2 && len(t.podLogs) > 0 {
-				// Page down in logs
+			if t.focusedPanel == 2 && t.logViewMode == "pod" && len(t.podLogs) > 0 {
+				// Page down in pod logs
 				pageSize := t.getLogPageSize()
 				maxScroll := t.getMaxLogScrollOffset()
 				t.logScrollOffset = min(maxScroll, t.logScrollOffset+pageSize)
+				t.userScrolled = true
 			}
 			return t, nil
 			
 		case "home":
-			if t.focusedPanel == 2 && len(t.podLogs) > 0 {
-				// Go to top of logs
+			if t.focusedPanel == 2 && t.logViewMode == "pod" && len(t.podLogs) > 0 {
+				// Go to top of pod logs
 				t.logScrollOffset = 0
+				t.userScrolled = true
 			}
 			return t, nil
 			
 		case "end":
-			if t.focusedPanel == 2 && len(t.podLogs) > 0 {
-				// Go to bottom of logs
+			if t.focusedPanel == 2 && t.logViewMode == "pod" && len(t.podLogs) > 0 {
+				// Go to bottom of pod logs
 				t.logScrollOffset = t.getMaxLogScrollOffset()
+				t.userScrolled = false  // At bottom means auto-scroll is re-enabled
 			}
 			return t, nil
 			
@@ -480,13 +501,34 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.updatePodDisplay()
 		
 	case messages.PodsLoaded:
+		// Store the previously selected pod name to preserve selection during refresh
+		var previouslySelectedPodName string
+		if len(t.pods) > 0 && t.selectedPod < len(t.pods) {
+			previouslySelectedPodName = t.pods[t.selectedPod].Name
+		}
+		
 		t.pods = msg.Pods
 		t.loadingPods = false
-		t.selectedPod = 0
-		// Clear pod logs when new pod list is loaded (happens after project switch)
-		t.podLogs = []string{}
-		t.logScrollOffset = 0
-		t.loadingLogs = false
+		
+		// Try to preserve the selected pod after refresh
+		newSelectedPod := 0
+		if previouslySelectedPodName != "" {
+			for i, pod := range msg.Pods {
+				if pod.Name == previouslySelectedPodName {
+					newSelectedPod = i
+					break
+				}
+			}
+		}
+		t.selectedPod = newSelectedPod
+		
+		// Only clear pod logs if we switched to a different pod or there's no previous selection
+		if previouslySelectedPodName == "" || (len(msg.Pods) > 0 && newSelectedPod < len(msg.Pods) && msg.Pods[newSelectedPod].Name != previouslySelectedPodName) {
+			t.podLogs = []string{}
+			t.logScrollOffset = 0
+			t.loadingLogs = false
+		}
+		
 		t.updatePodDisplay()
 		t.logContent = append(t.logContent, fmt.Sprintf("Loaded %d pods from namespace %s", len(msg.Pods), t.namespace))
 		
@@ -600,11 +642,13 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Pod logs successfully loaded
 		t.loadingLogs = false
 		t.podLogs = msg.Logs
-		t.logScrollOffset = 0 // Reset scroll to top
 		// Limit log lines to prevent memory issues
 		if len(t.podLogs) > t.maxLogLines {
 			t.podLogs = t.podLogs[len(t.podLogs)-t.maxLogLines:] // Keep last N lines
 		}
+		// Auto-scroll to bottom on new logs
+		t.userScrolled = false
+		t.logScrollOffset = t.getMaxLogScrollOffset()
 		t.logContent = append(t.logContent, fmt.Sprintf("📋 Loaded %d log lines from %s", len(msg.Logs), msg.PodName))
 		
 	case PodLogsError:
@@ -656,12 +700,13 @@ func (t *SimplifiedTUI) renderMain() string {
 	// Tabs (1 line)
 	sections = append(sections, t.renderTabs())
 	
-	// Calculate remaining height
-	usedHeight := headerHeight + 1 + 1 // header + tabs + status
-	remainingHeight := t.height - usedHeight
+	// Calculate remaining height strictly
+	// Fixed elements: header + tabs + status bar
+	fixedHeight := headerHeight + 1 + 1 // header + tabs + status
+	remainingHeight := t.height - fixedHeight
 	
-	// Main content area
-	if remainingHeight > 3 {
+	// Main content area - ensure we always render content if we have any space
+	if remainingHeight > 0 {
 		sections = append(sections, t.renderContent(remainingHeight))
 	}
 	
@@ -669,6 +714,16 @@ func (t *SimplifiedTUI) renderMain() string {
 	sections = append(sections, t.renderStatusBar())
 	
 	baseView := lipgloss.JoinVertical(lipgloss.Left, sections...)
+	
+	// Ensure output doesn't exceed terminal height
+	lines := strings.Count(baseView, "\n") + 1
+	if lines > t.height {
+		// Truncate to fit terminal
+		allLines := strings.Split(baseView, "\n")
+		if len(allLines) > t.height {
+			baseView = strings.Join(allLines[:t.height], "\n")
+		}
+	}
 	
 	// Overlay error modal if showing
 	if t.showErrorModal {
@@ -757,7 +812,7 @@ func (t *SimplifiedTUI) renderTabs() string {
 				Background(lipgloss.Color("12")).
 				Bold(true)
 		} else {
-			style = style.Foreground(lipgloss.Color("8"))
+			style = style.Foreground(lipgloss.Color("244")) // Brighter gray for inactive tabs
 		}
 		tabViews = append(tabViews, style.Render(tab))
 	}
@@ -769,6 +824,13 @@ func (t *SimplifiedTUI) renderTabs() string {
 		Render(tabBar)
 }
 
+// Constants for visual overhead
+const (
+	borderOverhead = 2 // top + bottom border
+	paddingOverhead = 2 // top + bottom padding
+	logHeaderOverhead = 2 // header line + separator line
+)
+
 // renderContent renders the main content area
 func (t *SimplifiedTUI) renderContent(availableHeight int) string {
 	// Calculate dimensions
@@ -777,11 +839,36 @@ func (t *SimplifiedTUI) renderContent(availableHeight int) string {
 		mainWidth = t.width * 2 / 3
 	}
 	
+	// Calculate log panel's total overhead
+	logPanelTotalOverhead := borderOverhead + paddingOverhead + logHeaderOverhead
+	
 	logHeight := 0
+	maxLogContentLines := 0
 	if t.showLogs && availableHeight > 10 {
-		logHeight = availableHeight / 3
-		if logHeight < 5 {
-			logHeight = 5
+		// Reserve at least 10 lines for main content and detail panel
+		minMainContentHeight := 10
+		
+		// Calculate maximum allowed log height
+		maxAllowedLogHeight := availableHeight - minMainContentHeight
+		
+		// Target log height is 1/3 of available or 15 lines, whichever is smaller
+		targetLogHeight := min(availableHeight/3, 15)
+		
+		// Apply constraints
+		logHeight = min(targetLogHeight, maxAllowedLogHeight)
+		
+		// Ensure minimum log height includes overhead
+		minLogHeight := logPanelTotalOverhead + 2 // At least 2 lines of content
+		if logHeight < minLogHeight {
+			logHeight = 0 // Don't show logs if we can't meet minimum
+		}
+		
+		// Calculate actual visible lines for log content
+		if logHeight > 0 {
+			maxLogContentLines = logHeight - logPanelTotalOverhead
+			if maxLogContentLines < 1 {
+				maxLogContentLines = 1
+			}
 		}
 	}
 	
@@ -844,52 +931,143 @@ func (t *SimplifiedTUI) renderContent(availableHeight int) string {
 			BorderForeground(logBorderColor).
 			Padding(1)
 		
-		// Show pod logs when focusing on logs panel, otherwise show app logs
+		// Show logs based on current log view mode
 		var logText string
-		if t.focusedPanel == 2 && t.loadingLogs {
-			// Show loading indicator for pod logs
-			logText = "🔄 Loading pod logs..."
-		} else if t.focusedPanel == 2 && len(t.podLogs) > 0 {
-			// Show pod logs with scrolling support
-			visibleLines := logHeight - 4 // Account for border and padding
-			if visibleLines < 1 {
-				visibleLines = 1
-			}
-			
-			start := t.logScrollOffset
-			end := start + visibleLines
-			if end > len(t.podLogs) {
-				end = len(t.podLogs)
-			}
-			if start >= len(t.podLogs) {
-				start = max(0, len(t.podLogs)-visibleLines)
-				end = len(t.podLogs)
-			}
-			
-			visibleLogs := t.podLogs[start:end]
-			logText = strings.Join(visibleLogs, "\n")
-			
-			// Add enhanced scroll indicator
-			if len(t.podLogs) > visibleLines {
-				percentage := int(float64(start) / float64(len(t.podLogs)) * 100)
-				scrollInfo := fmt.Sprintf("\n[%d-%d of %d lines (%d%%)] j/k line • PgUp/PgDn page • Home/End", 
-					start+1, end, len(t.podLogs), percentage)
-				logText += scrollInfo
-			}
-		} else if t.focusedPanel == 2 {
-			// Show message when no pod logs are available
-			if len(t.pods) > 0 && t.selectedPod < len(t.pods) {
-				selectedPodName := t.pods[t.selectedPod].Name
-				logText = fmt.Sprintf("📋 No logs loaded for pod '%s'\nPress 'l' to load logs", selectedPodName)
+		var logHeader string
+		if t.logViewMode == "pod" {
+			// Pod logs mode
+			if t.loadingLogs {
+				logText = "🔄 Loading pod logs..."
+				logHeader = "Pod Logs (Loading...)"
+			} else if len(t.podLogs) > 0 {
+				// Calculate visible lines strictly based on maxLogContentLines
+				visibleLines := maxLogContentLines
+				if visibleLines < 1 {
+					visibleLines = 1
+				}
+				
+				start := t.logScrollOffset
+				end := start + visibleLines
+				if end > len(t.podLogs) {
+					end = len(t.podLogs)
+				}
+				if start >= len(t.podLogs) {
+					start = max(0, len(t.podLogs)-visibleLines)
+					end = len(t.podLogs)
+				}
+				
+				visibleLogs := t.podLogs[start:end]
+				
+				// Apply coloring to each log line and count actual rendered lines
+				// Account for both newlines and wrapped lines
+				coloredLogs := []string{}
+				totalLines := 0
+				logWidth := t.width - 6 // Account for borders and padding
+				
+				for _, line := range visibleLogs {
+					colored := t.colorizePodLog(line)
+					
+					// Count how many actual lines this log entry will render as
+					// This includes both explicit newlines and wrapped lines
+					lineCount := 0
+					for _, subline := range strings.Split(colored, "\n") {
+						// Calculate wrapped lines for each subline
+						sublineLen := len(subline)
+						if sublineLen == 0 {
+							lineCount++
+						} else {
+							lineCount += (sublineLen + logWidth - 1) / logWidth
+						}
+					}
+					
+					// Only add if we have room
+					if totalLines + lineCount <= maxLogContentLines {
+						coloredLogs = append(coloredLogs, colored)
+						totalLines += lineCount
+					} else if totalLines < maxLogContentLines {
+						// Just skip partially visible entries to avoid complexity
+						break
+					} else {
+						break
+					}
+				}
+				logText = strings.Join(coloredLogs, "\n")
+				
+				if len(t.pods) > 0 && t.selectedPod < len(t.pods) {
+					logHeader = fmt.Sprintf("Pod Logs: %s", t.pods[t.selectedPod].Name)
+				} else {
+					logHeader = "Pod Logs"
+				}
 			} else {
-				logText = "📋 No pod selected\nSelect a pod to view logs"
+				// Show message when no pod logs are available
+				if len(t.pods) > 0 && t.selectedPod < len(t.pods) {
+					selectedPodName := t.pods[t.selectedPod].Name
+					logText = fmt.Sprintf("📋 No logs loaded for pod '%s'", selectedPodName)
+					logHeader = fmt.Sprintf("Pod Logs: %s (Not loaded)", selectedPodName)
+				} else {
+					logText = "📋 No pod selected"
+					logHeader = "Pod Logs (No pod selected)"
+				}
 			}
 		} else {
-			// Show application logs (existing behavior)
-			logText = strings.Join(t.logContent[max(0, len(t.logContent)-10):], "\n")
+			// App logs mode
+			// Get recent logs but account for multiline entries
+			startIdx := max(0, len(t.logContent)-100) // Start with last 100 entries
+			recentLogs := t.logContent[startIdx:]
+			
+			// Apply coloring and count actual rendered lines
+			// Account for both newlines and wrapped lines
+			coloredAppLogs := []string{}
+			totalLines := 0
+			logWidth := t.width - 6 // Account for borders and padding
+			
+			for _, line := range recentLogs {
+				colored := t.colorizeAppLog(line)
+				
+				// Count how many actual lines this log entry will render as
+				// This includes both explicit newlines and wrapped lines
+				lineCount := 0
+				for _, subline := range strings.Split(colored, "\n") {
+					// Calculate wrapped lines for each subline
+					sublineLen := len(subline)
+					if sublineLen == 0 {
+						lineCount++
+					} else {
+						lineCount += (sublineLen + logWidth - 1) / logWidth
+					}
+				}
+				
+				// Only add if we have room
+				if totalLines + lineCount <= maxLogContentLines {
+					coloredAppLogs = append(coloredAppLogs, colored)
+					totalLines += lineCount
+				} else if totalLines < maxLogContentLines {
+					// Just skip partially visible entries to avoid complexity
+					break
+				} else {
+					break
+				}
+			}
+			logText = strings.Join(coloredAppLogs, "\n")
+			logHeader = "App Logs"
 		}
 		
-		logPanel := logStyle.Render(logText)
+		// Color the header based on log type with brighter colors
+		headerStyle := lipgloss.NewStyle().Bold(true)
+		if t.logViewMode == "pod" {
+			headerStyle = headerStyle.Foreground(lipgloss.Color("207")) // Bright magenta for pod logs
+		} else {
+			headerStyle = headerStyle.Foreground(lipgloss.Color("51"))  // Bright cyan for app logs
+		}
+		
+		coloredHeader := headerStyle.Render(logHeader)
+		
+		separatorLength := len(logHeader)
+		separator := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(strings.Repeat("─", separatorLength))
+		
+		fullLogText := fmt.Sprintf("%s\n%s\n%s", coloredHeader, separator, logText)
+		
+		logPanel := logStyle.Render(fullLogText)
 		
 		return lipgloss.JoinVertical(lipgloss.Left, topSection, logPanel)
 	}
@@ -1121,7 +1299,7 @@ Log Scrolling (when in log panel):
   
 Commands:
   ?          Toggle help  
-  l          Load pod logs (lowercase L)
+  l          Toggle app/pod logs (when in log panel) OR navigate tabs
   ctrl+p     Switch project/namespace
   d          Toggle details panel
   L          Toggle log panel (shift+l)
@@ -1357,6 +1535,7 @@ func (t *SimplifiedTUI) clearPodLogs() {
 	t.podLogs = []string{}
 	t.logScrollOffset = 0
 	t.loadingLogs = true
+	t.userScrolled = false  // Reset scroll tracking
 }
 
 // loadPodLogs fetches logs from the currently selected pod
@@ -2040,5 +2219,70 @@ func (t *SimplifiedTUI) getLogPageSize() int {
 		visibleLines = 1
 	}
 	return visibleLines
+}
+
+// Log coloring helper functions
+
+// colorizeAppLog applies color to app log messages based on content
+func (t *SimplifiedTUI) colorizeAppLog(logLine string) string {
+	// Define brighter, more readable color styles
+	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true) // Bright red + bold
+	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))             // Orange
+	successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46"))           // Bright green
+	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("81"))              // Bright blue
+	
+	// Apply colors based on content patterns
+	switch {
+	case strings.Contains(logLine, "❌") || strings.Contains(logLine, "Failed") || strings.Contains(logLine, "Error"):
+		return errorStyle.Render(logLine)
+	case strings.Contains(logLine, "⟳") || strings.Contains(logLine, "retry") || strings.Contains(logLine, "Retry"):
+		return warnStyle.Render(logLine)
+	case strings.Contains(logLine, "✓") || strings.Contains(logLine, "Connected") || strings.Contains(logLine, "Loaded") || strings.Contains(logLine, "Switched"):
+		return successStyle.Render(logLine)
+	case strings.Contains(logLine, "🔄") || strings.Contains(logLine, "●") || strings.Contains(logLine, "Loading"):
+		return infoStyle.Render(logLine)
+	default:
+		return logLine // No coloring for neutral messages
+	}
+}
+
+// colorizePodLog applies color to pod log lines based on log level patterns
+func (t *SimplifiedTUI) colorizePodLog(logLine string) string {
+	// Define brighter, more readable color styles
+	timestampStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("246"))  // Brighter gray
+	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)     // Bright red + bold
+	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))       // Orange/yellow
+	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46"))        // Bright green
+	debugStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("81"))       // Bright blue
+	noticeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("51"))      // Cyan for notice
+	
+	// Improved log level patterns - more comprehensive
+	errorPattern := regexp.MustCompile(`(?i)\b(error|fatal|err|panic|exception|fail|critical)\b`)
+	warnPattern := regexp.MustCompile(`(?i)\b(warn|warning|deprecated|caution)\b`)
+	infoPattern := regexp.MustCompile(`(?i)\b(info|information|starting|started|listening)\b`)
+	debugPattern := regexp.MustCompile(`(?i)\b(debug|trace|verbose)\b`)
+	noticePattern := regexp.MustCompile(`(?i)\b(notice|configured|loaded|compiled)\b`)
+	
+	// More flexible timestamp pattern
+	timestampPattern := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[\.\d]*`)
+	
+	// Simple approach - color the entire line based on content
+	switch {
+	case errorPattern.MatchString(logLine):
+		return errorStyle.Render(logLine)
+	case warnPattern.MatchString(logLine):
+		return warnStyle.Render(logLine)
+	case infoPattern.MatchString(logLine):
+		return infoStyle.Render(logLine)
+	case debugPattern.MatchString(logLine):
+		return debugStyle.Render(logLine)
+	case noticePattern.MatchString(logLine):
+		return noticeStyle.Render(logLine)
+	case timestampPattern.MatchString(logLine):
+		// If it's mainly a timestamp line, color it with timestamp style
+		return timestampStyle.Render(logLine)
+	default:
+		return logLine // Default color for unmatched content
+	}
 }
 
