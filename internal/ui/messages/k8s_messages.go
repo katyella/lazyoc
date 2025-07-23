@@ -40,3 +40,14 @@ type NoKubeconfigMsg struct {
 type ConnectingMsg struct {
 	KubeconfigPath string
 }
+
+// ClusterInfoLoaded is sent when cluster information is successfully loaded
+type ClusterInfoLoaded struct {
+	Version    string
+	ServerInfo map[string]interface{}
+}
+
+// ClusterInfoError is sent when cluster information loading fails
+type ClusterInfoError struct {
+	Err error
+}

@@ -418,3 +418,17 @@ _This guide ensures Claude Code has immediate access to Task Master's essential 
 
 IMPORTANT: you cannot run the code or lazyoc tell the user to run it for you
 
+## LazyOC Build Instructions
+
+When building LazyOC during development, always build to the correct location:
+
+```bash
+# Correct build command
+go build -o ./bin/lazyoc ./cmd/lazyoc
+
+# Then run with
+./bin/lazyoc
+```
+
+**Important**: Do NOT use `go build ./cmd/lazyoc` as this creates the binary in the wrong location and the user will run an outdated version.
+

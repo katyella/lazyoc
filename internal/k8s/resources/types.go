@@ -107,3 +107,30 @@ type NamespaceContext struct {
 	Available []string `json:"available"`
 	Context   string   `json:"context"`
 }
+
+// ProjectInfo represents simplified Project/Namespace information
+type ProjectInfo struct {
+	ResourceInfo
+	DisplayName string            `json:"displayName,omitempty"` // OpenShift display name
+	Description string            `json:"description,omitempty"` // OpenShift description
+	Phase       string            `json:"phase"`
+	Age         string            `json:"age"`
+	Requester   string            `json:"requester,omitempty"`   // OpenShift requester
+	IsOpenShift bool              `json:"isOpenShift"`           // Whether this is an OpenShift project or K8s namespace
+	Quota       *ProjectQuota     `json:"quota,omitempty"`       // Resource quotas if any
+}
+
+// ProjectQuota represents resource quota information
+type ProjectQuota struct {
+	Hard map[string]string `json:"hard,omitempty"`
+	Used map[string]string `json:"used,omitempty"`
+}
+
+// ProjectContext represents current project context
+type ProjectContext struct {
+	Current      string        `json:"current"`
+	Available    []ProjectInfo `json:"available"`
+	Context      string        `json:"context"`
+	IsOpenShift  bool          `json:"isOpenShift"`
+	ClusterInfo  string        `json:"clusterInfo,omitempty"`
+}

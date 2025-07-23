@@ -69,3 +69,6 @@ type ConnectedMsg struct {
 
 // DisconnectedMsg represents cluster disconnection
 type DisconnectedMsg struct{}
+
+// SpinnerTick represents a spinner animation tick
+type SpinnerTick struct{}

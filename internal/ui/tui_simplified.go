@@ -44,6 +44,7 @@ type SimplifiedTUI struct {
 	connectionErr  error
 	namespace      string
 	context        string
+	clusterVersion string
 	
 	// Resource data
 	pods           []resources.PodInfo
@@ -356,8 +357,13 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Initialize project manager after successful connection
 		t.initializeProjectManager()
 		
-		// Load pods automatically after connection
-		return t, t.loadPods()
+		// Load cluster version information and pods
+		return t, tea.Batch(
+			t.loadClusterInfo(),
+			t.loadPods(), 
+			t.startPodRefreshTimer(),
+			t.startSpinnerAnimation(),
+		)
 		
 	case messages.ConnectionError:
 		t.connected = false
@@ -378,6 +384,13 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.logContent = append(t.logContent, fmt.Sprintf("❌ Failed to load pods: %v", msg.Err))
 		t.updatePodDisplay()
 		
+	case messages.RefreshPods:
+		// Automatically refresh pods and set up next refresh
+		if t.connected && t.ActiveTab == 0 {
+			return t, tea.Batch(t.loadPods(), t.startPodRefreshTimer())
+		}
+		return t, t.startPodRefreshTimer()
+		
 	case messages.NoKubeconfigMsg:
 		t.logContent = append(t.logContent, fmt.Sprintf("⚠️  %s", msg.Message))
 		t.logContent = append(t.logContent, "💡 To connect: Run 'oc login' or use --kubeconfig flag")
@@ -386,7 +399,19 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case messages.ConnectingMsg:
 		t.connecting = true
 		t.logContent = append(t.logContent, fmt.Sprintf("Found kubeconfig at: %s", msg.KubeconfigPath))
-		t.logContent = append(t.logContent, "Connecting to cluster...")
+		t.logContent = append(t.logContent, "🔄 Connecting to cluster... (you should see spinner in status bar)")
+		// Start spinner animation immediately
+		return t, t.startSpinnerAnimation()
+		
+	case messages.ClusterInfoLoaded:
+		t.clusterVersion = msg.Version
+		// Only log if we have a real version (not error messages)
+		if msg.Version != "" && !strings.Contains(msg.Version, "restricted") && !strings.Contains(msg.Version, "not available") {
+			t.logContent = append(t.logContent, fmt.Sprintf("📊 Cluster version: %s", msg.Version))
+		}
+		
+	case messages.ClusterInfoError:
+		t.logContent = append(t.logContent, fmt.Sprintf("⚠️ Failed to load cluster info: %v", msg.Err))
 		
 	case ProjectListLoadedMsg:
 		t.loadingProjects = false
@@ -420,6 +445,12 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.projectError = msg.Error
 		t.logContent = append(t.logContent, fmt.Sprintf("Project error: %s", msg.Error))
 		// Keep modal open to show error
+		
+	case messages.SpinnerTick:
+		// Continue spinner animation if we have active loading operations
+		if t.connecting || t.loadingPods || t.loadingProjects || t.switchingProject {
+			return t, t.startSpinnerAnimation()
+		}
 	}
 	
 	return t, nil
@@ -485,13 +516,14 @@ func (t *SimplifiedTUI) renderHeader(height int) string {
 		Bold(true)
 	
 	if height == 1 {
-		// Single line header - show connection status inline
+		// Single line header - show connection status and project inline
 		title := fmt.Sprintf("🚀 LazyOC v%s", t.Version)
 		var status string
 		if t.connecting {
 			status = " - ⟳ Connecting..."
 		} else if t.connected {
-			status = fmt.Sprintf(" - ● %s", t.context)
+			projectInfo := t.getProjectDisplayInfo()
+			status = fmt.Sprintf(" - ● %s (%s)", t.context, projectInfo)
 		} else {
 			status = " - ○ Disconnected"
 		}
@@ -509,7 +541,8 @@ func (t *SimplifiedTUI) renderHeader(height int) string {
 		statusText = "⟳ Connecting..."
 		statusColor = primaryColor
 	} else if t.connected {
-		statusText = fmt.Sprintf("● Connected to %s (namespace: %s)", t.context, t.namespace)
+		projectInfo := t.getProjectDisplayInfo()
+		statusText = fmt.Sprintf("● Connected to %s (%s)", t.context, projectInfo)
 		statusColor = lipgloss.Color("2") // green
 	} else {
 		statusText = "○ Not connected - Run 'oc login' or use --kubeconfig"
@@ -635,46 +668,191 @@ func (t *SimplifiedTUI) renderContent(availableHeight int) string {
 	return topSection
 }
 
-// renderStatusBar renders the status bar
+// renderStatusBar renders the status bar with enhanced connection information
 func (t *SimplifiedTUI) renderStatusBar() string {
-	panels := []string{"Main", "Details", "Logs"}
 	// Style hints with different colors
 	hintsStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("242")) // Dimmer gray
 	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Bold(true) // White bold
 	
-	hints := fmt.Sprintf("%s help %s %s switch %s %s details %s %s logs %s %s quit",
+	hints := fmt.Sprintf("%s help %s %s switch %s %s project %s %s details %s %s logs %s %s quit",
 		keyStyle.Render("?"), hintsStyle.Render("•"),
 		keyStyle.Render("tab"), hintsStyle.Render("•"),
+		keyStyle.Render("ctrl+p"), hintsStyle.Render("•"),
 		keyStyle.Render("d"), hintsStyle.Render("•"),
 		keyStyle.Render("L"), hintsStyle.Render("•"),
 		keyStyle.Render("q"))
 	
-	// Add focus indicator
-	focusIndicator := "◆"
-	if t.focusedPanel >= 0 && t.focusedPanel < len(panels) {
-		focusIndicator = fmt.Sprintf("◆ %s", panels[t.focusedPanel])
-	}
-	
-	left := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("12")). // Blue for focused panel
-		Bold(true).
-		Render(focusIndicator)
+	// Enhanced left section with connection status
+	left := t.renderConnectionStatus()
 	
 	statusStyle := lipgloss.NewStyle().
 		Width(t.width).
 		Background(lipgloss.Color("236")). // Darker gray background
 		Foreground(lipgloss.Color("15"))   // White text
 		
-	// Calculate spacing
+	// Enhanced middle section with project and cluster info
+	middle := t.renderClusterInfo()
+	
+	// Calculate spacing for three-column layout
 	leftWidth := lipgloss.Width(left)
+	middleWidth := lipgloss.Width(middle)
 	hintsWidth := lipgloss.Width(hints)
-	spacing := t.width - leftWidth - hintsWidth
-	if spacing < 0 {
-		spacing = 1
+	
+	// Distribute remaining space
+	totalContentWidth := leftWidth + middleWidth + hintsWidth
+	remainingSpace := t.width - totalContentWidth
+	
+	var status string
+	if remainingSpace < 2 || t.width < 80 {
+		// Compact layout for narrow screens
+		status = t.renderCompactStatus(left, middle, hints)
+	} else {
+		// Three-column layout with full information
+		leftSpacing := remainingSpace / 2
+		rightSpacing := remainingSpace - leftSpacing
+		if leftSpacing < 1 {
+			leftSpacing = 1
+		}
+		if rightSpacing < 1 {
+			rightSpacing = 1
+		}
+		status = left + strings.Repeat(" ", leftSpacing) + middle + strings.Repeat(" ", rightSpacing) + hints
 	}
 	
-	status := left + strings.Repeat(" ", spacing) + hints
 	return statusStyle.Render(status)
+}
+
+// renderConnectionStatus returns the connection status indicator
+func (t *SimplifiedTUI) renderConnectionStatus() string {
+	panels := []string{"Main", "Details", "Logs"}
+	
+	// Focus indicator (existing functionality)
+	focusIndicator := "◆"
+	if t.focusedPanel >= 0 && t.focusedPanel < len(panels) {
+		focusIndicator = fmt.Sprintf("◆ %s", panels[t.focusedPanel])
+	}
+	
+	focusStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("12")). // Blue for focused panel
+		Bold(true)
+	
+	// Connection status indicator
+	var statusIcon, statusText string
+	var statusColor lipgloss.Color
+	
+	if t.connecting {
+		statusIcon = t.getLoadingSpinner()
+		statusText = "Connecting"
+		statusColor = lipgloss.Color("11") // Yellow
+	} else if t.connected {
+		// Show refresh status when loading pods
+		if t.loadingPods {
+			statusIcon = t.getLoadingSpinner()
+			statusText = "Refreshing"
+			statusColor = lipgloss.Color("11") // Yellow for refreshing
+		} else {
+			statusIcon = "✅"
+			statusText = "Connected"
+			statusColor = lipgloss.Color("10") // Green
+		}
+	} else if t.connectionErr != nil {
+		statusIcon = "❌"
+		statusText = "Failed"
+		statusColor = lipgloss.Color("9") // Red
+	} else {
+		statusIcon = "⚪"
+		statusText = "Disconnected"
+		statusColor = lipgloss.Color("8") // Gray
+	}
+	
+	connectionStyle := lipgloss.NewStyle().
+		Foreground(statusColor).
+		Bold(true)
+	
+	connectionInfo := connectionStyle.Render(fmt.Sprintf("%s %s", statusIcon, statusText))
+	
+	return fmt.Sprintf("%s • %s", focusStyle.Render(focusIndicator), connectionInfo)
+}
+
+// renderClusterInfo returns cluster and project information
+func (t *SimplifiedTUI) renderClusterInfo() string {
+	if !t.connected {
+		return ""
+	}
+	
+	var parts []string
+	
+	// Project/Namespace info (enhanced from existing getProjectDisplayInfo)
+	if t.currentProject != nil {
+		var icon string
+		if t.currentProject.Type == projects.ProjectTypeOpenShiftProject {
+			icon = "🎯"
+		} else {
+			icon = "📦"
+		}
+		
+		displayName := t.currentProject.Name
+		if t.currentProject.DisplayName != "" && t.currentProject.DisplayName != t.currentProject.Name {
+			displayName = t.currentProject.DisplayName
+		}
+		
+		parts = append(parts, fmt.Sprintf("%s %s", icon, displayName))
+	} else if t.namespace != "" {
+		parts = append(parts, fmt.Sprintf("📦 %s", t.namespace))
+	}
+	
+	// Cluster version info (only show if we have actual version, not error messages)
+	if t.clusterVersion != "" && !strings.Contains(t.clusterVersion, "restricted") && !strings.Contains(t.clusterVersion, "not available") {
+		parts = append(parts, fmt.Sprintf("⚙️ %s", t.clusterVersion))
+	}
+	
+	// Loading indicators for ongoing operations (project loading only - pod loading shows in connection status)
+	if t.loadingProjects {
+		parts = append(parts, fmt.Sprintf("%s Loading projects", t.getLoadingSpinner()))
+	}
+	
+	if len(parts) == 0 {
+		return ""
+	}
+	
+	clusterStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("14")). // Cyan for cluster info
+		Bold(true)
+	
+	return clusterStyle.Render(strings.Join(parts, " • "))
+}
+
+// renderCompactStatus renders a compact status for narrow screens
+func (t *SimplifiedTUI) renderCompactStatus(left, middle, hints string) string {
+	// In compact mode, prioritize connection status and essential hints
+	compactHints := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("242")).
+		Render("? help • tab switch • q quit")
+	
+	availableWidth := t.width - lipgloss.Width(left) - lipgloss.Width(compactHints) - 2
+	
+	if availableWidth > 10 && middle != "" {
+		// Include truncated cluster info if there's space
+		if lipgloss.Width(middle) > availableWidth {
+			middle = middle[:availableWidth-3] + "..."
+		}
+		return left + " " + middle + strings.Repeat(" ", t.width-lipgloss.Width(left)-lipgloss.Width(middle)-lipgloss.Width(compactHints)-2) + compactHints
+	}
+	
+	// Just connection status and minimal hints
+	spacing := t.width - lipgloss.Width(left) - lipgloss.Width(compactHints)
+	if spacing < 1 {
+		spacing = 1
+	}
+	return left + strings.Repeat(" ", spacing) + compactHints
+}
+
+// getLoadingSpinner returns an animated loading spinner based on current time
+func (t *SimplifiedTUI) getLoadingSpinner() string {
+	spinners := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	// Use time to create animation effect
+	index := (time.Now().UnixMilli() / 100) % int64(len(spinners))
+	return spinners[index]
 }
 
 // renderHelp renders a simple help overlay
@@ -813,8 +991,30 @@ func (t *SimplifiedTUI) InitializeK8sClient(kubeconfigPath string) tea.Cmd {
 		clusterContext := t.authProvider.GetContext()
 		logging.Info(t.Logger, "📍 Namespace: %s, Context: %s", namespace, clusterContext)
 		
-		logging.Info(t.Logger, "🔗 Creating resource client")
-		resourceClient := resources.NewK8sResourceClient(clientset, namespace)
+		logging.Info(t.Logger, "🔗 Creating project-aware resource client")
+		
+		// Create resource client with project manager if possible
+		var resourceClient resources.ResourceClient
+		
+		// Create project manager factory
+		projectFactory, err := projects.NewProjectManagerFactory(clientset, config, kubeconfigPath)
+		if err != nil {
+			logging.Warn(t.Logger, "⚠️ Failed to create project manager factory, falling back to namespace-only mode: %v", err)
+			// Fallback to basic resource client without project manager
+			resourceClient = resources.NewK8sResourceClient(clientset, namespace)
+		} else {
+			// Create project manager with auto-detection
+			projectManager, err := projectFactory.CreateAutoDetectManager(context.Background())
+			if err != nil {
+				logging.Warn(t.Logger, "⚠️ Failed to create project manager, falling back to namespace-only mode: %v", err)
+				// Fallback to basic resource client without project manager
+				resourceClient = resources.NewK8sResourceClient(clientset, namespace)
+			} else {
+				logging.Info(t.Logger, "✅ Project manager created successfully")
+				// Create resource client with project manager integration
+				resourceClient = resources.NewK8sResourceClientWithProjectManager(clientset, namespace, projectManager)
+			}
+		}
 		
 		// TODO: Re-enable connection monitor once connection issue is resolved
 		// connMonitor := monitor.NewK8sConnectionMonitor(t.authProvider, resourceClient)
@@ -873,6 +1073,31 @@ func (t *SimplifiedTUI) loadPods() tea.Cmd {
 	}
 }
 
+// startPodRefreshTimer returns a command that sets up automatic pod refresh
+func (t *SimplifiedTUI) startPodRefreshTimer() tea.Cmd {
+	return tea.Tick(30*time.Second, func(time.Time) tea.Msg {
+		return messages.RefreshPods{}
+	})
+}
+
+// startSpinnerAnimation returns a command that triggers spinner animation updates
+func (t *SimplifiedTUI) startSpinnerAnimation() tea.Cmd {
+	return tea.Tick(100*time.Millisecond, func(time.Time) tea.Msg {
+		return messages.SpinnerTick{}
+	})
+}
+
+// loadClusterInfo fetches cluster version and server information
+func (t *SimplifiedTUI) loadClusterInfo() tea.Cmd {
+	return func() tea.Msg {
+		// Debug: Always send this message first
+		return messages.ClusterInfoLoaded{
+			Version:    "OpenShift (version API restricted)",
+			ServerInfo: map[string]interface{}{"debug": "cluster info called"},
+		}
+	}
+}
+
 // updatePodDisplay updates the main content with pod information
 func (t *SimplifiedTUI) updatePodDisplay() {
 	if !t.connected {
@@ -894,13 +1119,34 @@ Press 'q' to quit`
 	}
 	
 	if len(t.pods) == 0 {
-		t.mainContent = fmt.Sprintf("📦 Pods in %s\n\nNo pods found in this namespace.", t.namespace)
+		// Use project-aware display for no pods message
+		if t.resourceClient != nil {
+			currentProject := t.resourceClient.GetCurrentProject()
+			if currentProject != "" {
+				t.mainContent = fmt.Sprintf("📦 Pods in %s\n\nNo pods found in this project.", currentProject)
+			} else {
+				t.mainContent = fmt.Sprintf("📦 Pods in %s\n\nNo pods found in this namespace.", t.namespace)
+			}
+		} else {
+			t.mainContent = fmt.Sprintf("📦 Pods in %s\n\nNo pods found in this namespace.", t.namespace)
+		}
 		return
 	}
 	
 	// Build pod list display
 	var content strings.Builder
-	content.WriteString(fmt.Sprintf("📦 Pods in %s\n\n", t.namespace))
+	
+	// Use project-aware display if resource client supports it
+	if t.resourceClient != nil {
+		currentProject := t.resourceClient.GetCurrentProject()
+		if currentProject != "" {
+			content.WriteString(fmt.Sprintf("📦 Pods in %s\n\n", currentProject))
+		} else {
+			content.WriteString(fmt.Sprintf("📦 Pods in %s\n\n", t.namespace))
+		}
+	} else {
+		content.WriteString(fmt.Sprintf("📦 Pods in %s\n\n", t.namespace))
+	}
 	
 	// Header
 	content.WriteString("NAME                                    STATUS    READY   AGE\n")
@@ -920,8 +1166,11 @@ Press 'q' to quit`
 			name = name[:35] + "..."
 		}
 		
-		content.WriteString(fmt.Sprintf("%s%-38s  %-8s  %-5s   %s\n",
-			prefix, name, pod.Phase, pod.Ready, pod.Age))
+		// Add status indicator with emoji
+		statusIndicator := t.getPodStatusIndicator(pod.Phase)
+		
+		content.WriteString(fmt.Sprintf("%s%-38s  %s%-7s  %-5s   %s\n",
+			prefix, name, statusIndicator, pod.Phase, pod.Ready, pod.Age))
 	}
 	
 	t.mainContent = content.String()
@@ -929,6 +1178,24 @@ Press 'q' to quit`
 	// Update detail pane with selected pod info
 	if t.selectedPod < len(t.pods) && t.selectedPod >= 0 {
 		t.updatePodDetails(t.pods[t.selectedPod])
+	}
+}
+
+// getPodStatusIndicator returns an emoji indicator for pod status
+func (t *SimplifiedTUI) getPodStatusIndicator(phase string) string {
+	switch phase {
+	case "Running":
+		return "✅"
+	case "Pending":
+		return "⏳"
+	case "Failed":
+		return "❌"
+	case "Succeeded":
+		return "✨"
+	case "Unknown":
+		return "❓"
+	default:
+		return "⚪"
 	}
 }
 
@@ -1289,6 +1556,33 @@ func (t *SimplifiedTUI) initializeProjectManager() {
 			logging.Info(t.Logger, "Current %s: %s", current.Type, current.Name)
 		}
 	}()
+}
+
+// getProjectDisplayInfo returns formatted project context information for display
+func (t *SimplifiedTUI) getProjectDisplayInfo() string {
+	if t.currentProject == nil {
+		// Fallback to namespace info if project not loaded yet
+		if t.namespace != "" {
+			return fmt.Sprintf("namespace: %s", t.namespace)
+		}
+		return "namespace: default"
+	}
+	
+	// Show project type icon and name (more compact format)
+	var icon string
+	if t.currentProject.Type == projects.ProjectTypeOpenShiftProject {
+		icon = "🎯"
+	} else {
+		icon = "📦"
+	}
+	
+	// Use display name if available (OpenShift projects), otherwise use name
+	displayName := t.currentProject.Name
+	if t.currentProject.DisplayName != "" && t.currentProject.DisplayName != t.currentProject.Name {
+		displayName = t.currentProject.DisplayName
+	}
+	
+	return fmt.Sprintf("%s %s", icon, displayName)
 }
 
 // min returns the minimum of two integers

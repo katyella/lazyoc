@@ -26,7 +26,14 @@ type ResourceClient interface {
 	ListSecrets(ctx context.Context, opts ListOptions) (*ResourceList[SecretInfo], error)
 	GetSecret(ctx context.Context, namespace, name string) (*SecretInfo, error)
 
-	// Namespace operations
+	// Project/Namespace operations (unified interface)
+	ListProjects(ctx context.Context) (*ResourceList[ProjectInfo], error)
+	GetCurrentProject() string
+	SetCurrentProject(project string) error
+	GetProjectContext() (*ProjectContext, error)
+	SwitchToProject(ctx context.Context, project string) error
+
+	// Legacy namespace operations (for backward compatibility)
 	ListNamespaces(ctx context.Context) (*ResourceList[NamespaceInfo], error)
 	GetCurrentNamespace() string
 	SetCurrentNamespace(namespace string) error

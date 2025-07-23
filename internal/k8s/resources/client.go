@@ -11,6 +11,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	
+	"github.com/katyella/lazyoc/internal/k8s/projects"
 )
 
 // K8sResourceClient implements ResourceClient using Kubernetes client-go
@@ -18,6 +20,7 @@ type K8sResourceClient struct {
 	clientset        *kubernetes.Clientset
 	currentNamespace string
 	defaultLimit     int64
+	projectManager   projects.ProjectManager
 }
 
 // NewK8sResourceClient creates a new Kubernetes resource client
@@ -26,6 +29,16 @@ func NewK8sResourceClient(clientset *kubernetes.Clientset, defaultNamespace stri
 		clientset:        clientset,
 		currentNamespace: defaultNamespace,
 		defaultLimit:     100, // Default limit for list operations
+	}
+}
+
+// NewK8sResourceClientWithProjectManager creates a new client with project manager integration
+func NewK8sResourceClientWithProjectManager(clientset *kubernetes.Clientset, defaultNamespace string, projectManager projects.ProjectManager) *K8sResourceClient {
+	return &K8sResourceClient{
+		clientset:        clientset,
+		currentNamespace: defaultNamespace,
+		defaultLimit:     100,
+		projectManager:   projectManager,
 	}
 }
 
@@ -396,6 +409,110 @@ func (c *K8sResourceClient) GetServerInfo(ctx context.Context) (map[string]inter
 	}, nil
 }
 
+// Project/Namespace operations (unified interface)
+
+// ListProjects lists all projects/namespaces using the project manager
+func (c *K8sResourceClient) ListProjects(ctx context.Context) (*ResourceList[ProjectInfo], error) {
+	if c.projectManager == nil {
+		// Fallback to listing namespaces as projects
+		namespaceList, err := c.ListNamespaces(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list projects (no project manager): %w", err)
+		}
+		
+		projects := make([]ProjectInfo, len(namespaceList.Items))
+		for i, ns := range namespaceList.Items {
+			projects[i] = c.convertNamespaceToProject(&ns)
+		}
+		
+		return &ResourceList[ProjectInfo]{
+			Items:     projects,
+			Total:     len(projects),
+			Namespace: "",
+		}, nil
+	}
+
+	projectList, err := c.projectManager.List(ctx, projects.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list projects: %w", err)
+	}
+
+	resourceProjects := make([]ProjectInfo, len(projectList))
+	for i, proj := range projectList {
+		resourceProjects[i] = c.convertProjectInfo(&proj)
+	}
+
+	return &ResourceList[ProjectInfo]{
+		Items:     resourceProjects,
+		Total:     len(resourceProjects),
+		Namespace: "",
+	}, nil
+}
+
+// GetCurrentProject returns the current project/namespace
+func (c *K8sResourceClient) GetCurrentProject() string {
+	return c.currentNamespace
+}
+
+// SetCurrentProject sets the current project/namespace
+func (c *K8sResourceClient) SetCurrentProject(project string) error {
+	if project == "" {
+		return fmt.Errorf("project cannot be empty")
+	}
+	c.currentNamespace = project
+	return nil
+}
+
+// GetProjectContext returns project context information
+func (c *K8sResourceClient) GetProjectContext() (*ProjectContext, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	projectList, err := c.ListProjects(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get project context: %w", err)
+	}
+
+	isOpenShift := c.projectManager != nil
+	context := ""
+	if isOpenShift && len(projectList.Items) > 0 {
+		context = "OpenShift Cluster"
+	} else {
+		context = "Kubernetes Cluster"
+	}
+
+	return &ProjectContext{
+		Current:     c.currentNamespace,
+		Available:   projectList.Items,
+		Context:     context,
+		IsOpenShift: isOpenShift,
+		ClusterInfo: context,
+	}, nil
+}
+
+// SwitchToProject switches to a different project/namespace
+func (c *K8sResourceClient) SwitchToProject(ctx context.Context, project string) error {
+	if c.projectManager != nil {
+		// Use project manager for OpenShift-aware switching
+		result, err := c.projectManager.SwitchTo(ctx, project)
+		if err != nil {
+			return fmt.Errorf("failed to switch to project %s: %w", project, err)
+		}
+		
+		c.currentNamespace = result.To
+		return nil
+	}
+
+	// Fallback: verify namespace exists for vanilla K8s
+	_, err := c.clientset.CoreV1().Namespaces().Get(ctx, project, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to switch to project %s: %w", project, err)
+	}
+
+	c.currentNamespace = project
+	return nil
+}
+
 // Helper methods for conversion
 
 func (c *K8sResourceClient) convertPod(pod *corev1.Pod) PodInfo {
@@ -624,5 +741,69 @@ func formatAge(createdAt time.Time) string {
 		return fmt.Sprintf("%dm", minutes)
 	} else {
 		return fmt.Sprintf("%ds", int(age.Seconds()))
+	}
+}
+
+// convertProjectInfo converts projects.ProjectInfo to resources.ProjectInfo
+func (c *K8sResourceClient) convertProjectInfo(proj *projects.ProjectInfo) ProjectInfo {
+	var quota *ProjectQuota
+	if len(proj.ResourceQuotas) > 0 {
+		// Use the first resource quota for display
+		rq := proj.ResourceQuotas[0]
+		quota = &ProjectQuota{
+			Hard: rq.Hard,
+			Used: rq.Used,
+		}
+	}
+
+	// Determine kind and API version based on project type
+	kind := "Namespace"
+	apiVersion := "v1"
+	if proj.Type == projects.ProjectTypeOpenShiftProject {
+		kind = "Project"
+		apiVersion = "project.openshift.io/v1"
+	}
+
+	return ProjectInfo{
+		ResourceInfo: ResourceInfo{
+			Name:        proj.Name,
+			Namespace:   "", // Projects are cluster-scoped
+			Kind:        kind,
+			APIVersion:  apiVersion,
+			Labels:      proj.Labels,
+			Annotations: proj.Annotations,
+			CreatedAt:   proj.CreatedAt,
+			Status:      proj.Status,
+		},
+		DisplayName: proj.DisplayName,
+		Description: proj.Description,
+		Phase:       proj.Status, // Use status as phase
+		Age:         formatAge(proj.CreatedAt),
+		Requester:   proj.Requester,
+		IsOpenShift: proj.Type == projects.ProjectTypeOpenShiftProject,
+		Quota:       quota,
+	}
+}
+
+// convertNamespaceToProject converts NamespaceInfo to ProjectInfo for fallback
+func (c *K8sResourceClient) convertNamespaceToProject(ns *NamespaceInfo) ProjectInfo {
+	return ProjectInfo{
+		ResourceInfo: ResourceInfo{
+			Name:        ns.Name,
+			Namespace:   ns.Namespace,
+			Kind:        ns.Kind,
+			APIVersion:  ns.APIVersion,
+			Labels:      ns.Labels,
+			Annotations: ns.Annotations,
+			CreatedAt:   ns.CreatedAt,
+			Status:      ns.Status,
+		},
+		DisplayName: ns.Name, // Use name as display name for K8s namespaces
+		Description: "",
+		Phase:       ns.Phase,
+		Age:         ns.Age,
+		Requester:   "",
+		IsOpenShift: false,
+		Quota:       nil,
 	}
 }
