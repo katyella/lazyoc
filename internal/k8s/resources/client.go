@@ -15,6 +15,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	
 	"github.com/katyella/lazyoc/internal/k8s/projects"
+	"github.com/katyella/lazyoc/internal/constants"
 )
 
 // K8sResourceClient implements ResourceClient using Kubernetes client-go
@@ -30,7 +31,7 @@ func NewK8sResourceClient(clientset *kubernetes.Clientset, defaultNamespace stri
 	return &K8sResourceClient{
 		clientset:        clientset,
 		currentNamespace: defaultNamespace,
-		defaultLimit:     100, // Default limit for list operations
+		defaultLimit:     constants.DefaultListLimit,
 	}
 }
 
@@ -39,7 +40,7 @@ func NewK8sResourceClientWithProjectManager(clientset *kubernetes.Clientset, def
 	return &K8sResourceClient{
 		clientset:        clientset,
 		currentNamespace: defaultNamespace,
-		defaultLimit:     100,
+		defaultLimit:     constants.DefaultListLimit,
 		projectManager:   projectManager,
 	}
 }
@@ -883,7 +884,7 @@ func (c *K8sResourceClient) StreamPodLogs(ctx context.Context, namespace, podNam
 	}
 	
 	// Create channel for log lines
-	logChan := make(chan string, 100)
+	logChan := make(chan string, constants.LogChannelBufferSize)
 	
 	// Start goroutine to read stream
 	go func() {

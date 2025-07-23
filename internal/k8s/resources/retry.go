@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+
+	"github.com/katyella/lazyoc/internal/constants"
 )
 
 // RetryableError represents an error that can be retried
@@ -40,7 +42,10 @@ func IsRetryable(err error) bool {
 		switch statusErr.ErrStatus.Code {
 		case 429: // Too Many Requests
 			return true
-		case 500, 502, 503, 504: // Server errors
+		case constants.HTTPStatusInternalServerError, 
+			constants.HTTPStatusBadGateway, 
+			constants.HTTPStatusServiceUnavailable, 
+			constants.HTTPStatusGatewayTimeout: // Server errors
 			return true
 		case 408: // Request Timeout
 			return true

@@ -9,6 +9,8 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+
+	"github.com/katyella/lazyoc/internal/constants"
 )
 
 // ClusterType represents the type of Kubernetes cluster
@@ -65,7 +67,7 @@ func NewClusterTypeDetector(config *rest.Config) (*ClusterTypeDetector, error) {
 		config:    config,
 		clientset: clientset,
 		discovery: clientset.Discovery(),
-		cacheTime: 10 * time.Minute, // Cache results for 10 minutes
+		cacheTime: constants.DefaultClusterCacheTime,
 	}, nil
 }
 
@@ -81,7 +83,7 @@ func (d *ClusterTypeDetector) DetectClusterType(ctx context.Context) (*ClusterIn
 	d.mu.RUnlock()
 
 	// Set timeout for detection
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, constants.ClusterDetectionTimeout)
 	defer cancel()
 
 	// Start with unknown cluster info
@@ -138,7 +140,7 @@ func (d *ClusterTypeDetector) DetectClusterType(ctx context.Context) (*ClusterIn
 	}
 
 	// Determine cluster type based on found APIs
-	if foundOpenShiftAPIs >= 3 { // Need at least 3 OpenShift APIs to be confident
+	if foundOpenShiftAPIs >= constants.MinOpenShiftAPIsThreshold {
 		info.Type = ClusterTypeOpenShift
 	} else {
 		info.Type = ClusterTypeKubernetes

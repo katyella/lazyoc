@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 	"math"
+
+	"github.com/katyella/lazyoc/internal/constants"
 )
 
 // RetryStrategy defines the retry behavior for different error types
@@ -18,10 +20,10 @@ type RetryStrategy struct {
 // DefaultRetryStrategy returns a default retry strategy
 func DefaultRetryStrategy() *RetryStrategy {
 	return &RetryStrategy{
-		MaxAttempts:   3,
-		InitialDelay:  1 * time.Second,
-		MaxDelay:      30 * time.Second,
-		BackoffFactor: 2.0,
+		MaxAttempts:   constants.DefaultRetryAttempts,
+		InitialDelay:  constants.DefaultInitialDelay,
+		MaxDelay:      constants.DefaultMaxDelay,
+		BackoffFactor: constants.DefaultBackoffFactor,
 		Retryable:     IsRetryableError,
 	}
 }
@@ -30,8 +32,8 @@ func DefaultRetryStrategy() *RetryStrategy {
 func ConnectionRetryStrategy() *RetryStrategy {
 	return &RetryStrategy{
 		MaxAttempts:   5,
-		InitialDelay:  2 * time.Second,
-		MaxDelay:      60 * time.Second,
+		InitialDelay:  constants.ConnectionInitialDelay,
+		MaxDelay:      constants.ConnectionMaxDelay,
 		BackoffFactor: 1.5,
 		Retryable:     IsConnectionError,
 	}

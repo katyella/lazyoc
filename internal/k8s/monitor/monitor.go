@@ -8,6 +8,7 @@ import (
 
 	"github.com/katyella/lazyoc/internal/k8s/auth"
 	"github.com/katyella/lazyoc/internal/k8s/resources"
+	"github.com/katyella/lazyoc/internal/constants"
 )
 
 // K8sConnectionMonitor implements ConnectionMonitor for Kubernetes
@@ -34,11 +35,11 @@ type K8sConnectionMonitor struct {
 // NewK8sConnectionMonitor creates a new Kubernetes connection monitor
 func NewK8sConnectionMonitor(authProvider auth.AuthProvider, resourceClient resources.ResourceClient) *K8sConnectionMonitor {
 	config := MonitorConfig{
-		HealthCheckInterval: 30 * time.Second,
-		RequestTimeout:      10 * time.Second,
-		MaxEvents:          100,
-		RetryAttempts:      3,
-		RetryDelay:         5 * time.Second,
+		HealthCheckInterval: constants.DefaultHealthCheckInterval,
+		RequestTimeout:      constants.DefaultRequestTimeout,
+		MaxEvents:          constants.DefaultMaxEvents,
+		RetryAttempts:      constants.DefaultRetryAttempts,
+		RetryDelay:         constants.DefaultRetryDelay,
 	}
 	
 	return &K8sConnectionMonitor{

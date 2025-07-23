@@ -4,6 +4,8 @@ import (
 	"io"
 	"log"
 	"os"
+
+	"github.com/katyella/lazyoc/internal/constants"
 )
 
 // Logger levels
@@ -19,7 +21,7 @@ const (
 func SetupLogger(debug bool) *log.Logger {
 	if debug {
 		// Create or append to debug log file
-		file, err := os.OpenFile("lazyoc.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		file, err := os.OpenFile(constants.LogFileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, constants.LogFilePermissions)
 		if err != nil {
 			// Fallback to stderr if file creation fails
 			return log.New(os.Stderr, "[LazyOC] ", log.LstdFlags|log.Lshortfile)

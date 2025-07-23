@@ -3,11 +3,12 @@ package auth
 import (
 	"context"
 	"fmt"
-	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+
+	"github.com/katyella/lazyoc/internal/constants"
 )
 
 // CredentialValidator provides methods to validate authentication credentials
@@ -36,7 +37,7 @@ func NewCredentialValidator(config *rest.Config) (*CredentialValidator, error) {
 // ValidateConnection tests if the credentials can successfully connect to the cluster
 func (cv *CredentialValidator) ValidateConnection(ctx context.Context) error {
 	// Set a reasonable timeout for validation
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, constants.ValidationTimeout)
 	defer cancel()
 	
 	// Try to get server version as a lightweight connectivity test
@@ -64,7 +65,7 @@ func (cv *CredentialValidator) ValidateConnection(ctx context.Context) error {
 // ValidatePermissions checks if the credentials have basic permissions
 func (cv *CredentialValidator) ValidatePermissions(ctx context.Context) error {
 	// Set a reasonable timeout
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, constants.ValidationTimeout)
 	defer cancel()
 	
 	// Try to list namespaces (a basic permission check)
@@ -82,7 +83,7 @@ func (cv *CredentialValidator) ValidatePermissions(ctx context.Context) error {
 
 // GetServerInfo returns basic information about the connected server
 func (cv *CredentialValidator) GetServerInfo(ctx context.Context) (*ServerInfo, error) {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, constants.ValidationTimeout)
 	defer cancel()
 	
 	version, err := cv.clientset.Discovery().ServerVersion()

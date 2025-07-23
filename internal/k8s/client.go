@@ -9,6 +9,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+
+	"github.com/katyella/lazyoc/internal/constants"
 )
 
 // ClientFactory creates and manages Kubernetes clients
@@ -71,7 +73,7 @@ func (cf *ClientFactory) SetConfig(config *rest.Config) {
 // TestConnection tests the connection to the Kubernetes cluster
 func (cf *ClientFactory) TestConnection(ctx context.Context) error {
 	if cf.clientset == nil {
-		return fmt.Errorf("clientset not initialized")
+		return fmt.Errorf(constants.ErrClientNotInitialized)
 	}
 	
 	// Try to get server version as a connectivity test
@@ -86,7 +88,7 @@ func (cf *ClientFactory) TestConnection(ctx context.Context) error {
 // GetCurrentContext returns the current context name
 func (cf *ClientFactory) GetCurrentContext() (string, error) {
 	if cf.kubeconfig == "" {
-		return "", fmt.Errorf("kubeconfig not loaded")
+		return "", fmt.Errorf(constants.ErrKubeconfigNotLoaded)
 	}
 	
 	config, err := clientcmd.LoadFromFile(cf.kubeconfig)
@@ -100,7 +102,7 @@ func (cf *ClientFactory) GetCurrentContext() (string, error) {
 // GetCurrentNamespace returns the current namespace
 func (cf *ClientFactory) GetCurrentNamespace() (string, error) {
 	if cf.kubeconfig == "" {
-		return "", fmt.Errorf("kubeconfig not loaded")
+		return "", fmt.Errorf(constants.ErrKubeconfigNotLoaded)
 	}
 	
 	config, err := clientcmd.LoadFromFile(cf.kubeconfig)
@@ -110,11 +112,11 @@ func (cf *ClientFactory) GetCurrentNamespace() (string, error) {
 	
 	context := config.Contexts[config.CurrentContext]
 	if context == nil {
-		return "default", nil
+		return constants.DefaultNamespace, nil
 	}
 	
 	if context.Namespace == "" {
-		return "default", nil
+		return constants.DefaultNamespace, nil
 	}
 	
 	return context.Namespace, nil
@@ -133,7 +135,7 @@ func (cf *ClientFactory) getKubeconfigPath() string {
 		return ""
 	}
 	
-	return filepath.Join(home, ".kube", "config")
+	return filepath.Join(home, constants.KubeConfigDir, constants.KubeConfigFile)
 }
 
 // loadKubeconfig loads the Kubernetes configuration
@@ -145,7 +147,7 @@ func (cf *ClientFactory) loadKubeconfig(kubeconfigPath string) (*rest.Config, er
 	
 	// Fall back to kubeconfig file
 	if kubeconfigPath == "" {
-		return nil, fmt.Errorf("no kubeconfig path found")
+		return nil, fmt.Errorf(constants.ErrNoKubeconfigPath)
 	}
 	
 	// Check if file exists

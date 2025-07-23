@@ -837,11 +837,147 @@
             "testStrategy": "1. Test resource listings are project-scoped\n2. Verify API calls include correct project\n3. Test project-scoped authentication tokens\n4. Verify pod operations use correct project\n5. Test resource creation in current project\n6. Test search scoping behavior"
           }
         ]
+      },
+      {
+        "id": 12,
+        "title": "Extract Magic Numbers to Centralized Constants",
+        "description": "Identify and extract all magic numbers, hardcoded strings, and configuration values from the codebase into a centralized constants.go file for improved maintainability and consistency.",
+        "details": "1. Audit the codebase for magic numbers and hardcoded values:\n   - Scan all Go files for numeric literals used in logic (timeouts, limits, thresholds)\n   - Identify hardcoded strings (error messages, API endpoints, resource names)\n   - Find repeated string patterns across multiple files\n   - Document configuration values currently embedded in code\n\n2. Create pkg/constants/constants.go with organized sections:\n   ```go\n   package constants\n   \n   // Time-related constants\n   const (\n       DefaultTimeout = 30 * time.Second\n       APIRequestTimeout = 10 * time.Second\n       RefreshInterval = 5 * time.Second\n   )\n   \n   // Resource limits\n   const (\n       MaxPods = 1000\n       MaxContainers = 50\n       DefaultPageSize = 20\n   )\n   \n   // UI dimensions\n   const (\n       MinTerminalWidth = 80\n       MinTerminalHeight = 24\n       StatusBarHeight = 3\n   )\n   \n   // API endpoints and paths\n   const (\n       OpenShiftAPIPath = \"/oapi\"\n       MetricsEndpoint = \"/metrics\"\n   )\n   \n   // Error messages\n   const (\n       ErrClusterUnreachable = \"unable to connect to cluster\"\n       ErrInvalidKubeconfig = \"invalid kubeconfig file\"\n   )\n   ```\n\n3. Replace magic numbers throughout codebase:\n   - Update timeout values in API calls\n   - Replace hardcoded limits in validation logic\n   - Update UI layout calculations\n   - Replace error message strings\n   - Update configuration defaults\n\n4. Add documentation for each constant:\n   - Explain the purpose and impact of changing each value\n   - Note any dependencies or relationships between constants\n   - Include units where applicable (seconds, bytes, etc.)\n\n5. Consider creating sub-packages for domain-specific constants:\n   - pkg/constants/ui for UI-related values\n   - pkg/constants/api for API timeouts and limits\n   - pkg/constants/resources for Kubernetes resource limits",
+        "testStrategy": "1. Verify constant usage:\n   - Ensure all replaced magic numbers reference the constants package\n   - Check that no new magic numbers were introduced\n   - Verify constants are used consistently across the codebase\n\n2. Test value correctness:\n   - Confirm timeout values still provide adequate time for operations\n   - Verify UI dimensions render correctly with constant values\n   - Test that resource limits are appropriately enforced\n\n3. Compilation and import verification:\n   - Ensure all files importing constants compile successfully\n   - Check for circular dependencies\n   - Verify constants package has no external dependencies\n\n4. Documentation validation:\n   - Confirm each constant has clear documentation\n   - Verify godoc generates correctly for the constants package\n   - Check that units are clearly specified where applicable\n\n5. Performance testing:\n   - Ensure constant lookups don't impact performance\n   - Verify no runtime overhead from constant usage\n   - Check binary size impact is minimal",
+        "status": "done",
+        "dependencies": [
+          3,
+          4
+        ],
+        "priority": "medium",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Audit codebase for magic numbers and hardcoded values",
+            "description": "Scan entire Go codebase to identify and document all magic numbers, hardcoded strings, and configuration values that should be extracted to constants",
+            "dependencies": [],
+            "details": "Systematically review all Go files in the project to identify: numeric literals used in logic (timeouts, limits, thresholds), hardcoded strings (error messages, API endpoints, resource names), repeated string patterns across multiple files, and configuration values currently embedded in code. Create a comprehensive list documenting each finding with its location, current value, and suggested constant name.\n<info added on 2025-07-23T17:59:02.316Z>\nCompleted comprehensive audit of the codebase. Identified magic numbers in 9 major categories:\n\n1) Time durations/timeouts (20+ instances) - Including connection timeouts, refresh intervals, and animation delays\n2) Numeric limits/thresholds (10+ instances) - Buffer sizes, pagination limits, and retry counts\n3) File paths/system config (15+ instances) - Config file locations, cache directories, and default paths\n4) UI/display constants - Window dimensions, padding values, and color codes\n5) Status/state strings - Pod states, deployment conditions, and service types\n6) Error messages - Common error text patterns and notification messages\n7) HTTP status codes - Response codes used in API handling\n8) Retry/backoff config - Exponential backoff parameters and jitter values\n9) Resource/API config - Endpoint paths, header values, and API version strings\n\nAll findings have been documented in a spreadsheet with file locations, current values, and suggested constant names following Go naming conventions. This documentation will serve as the reference for implementing the constants package in the next subtask.\n</info added on 2025-07-23T17:59:02.316Z>",
+            "status": "done",
+            "testStrategy": "Verify audit completeness by using grep and regex patterns to search for common magic number patterns, review the audit list against the codebase to ensure no values were missed, and validate that all identified values are appropriate for extraction to constants"
+          },
+          {
+            "id": 2,
+            "title": "Design and create the constants package structure",
+            "description": "Create pkg/constants/constants.go with a well-organized structure for different categories of constants",
+            "dependencies": [
+              "12.1"
+            ],
+            "details": "Create the pkg/constants directory and constants.go file with organized sections including: time-related constants (timeouts, intervals), resource limits (max pods, containers, page sizes), UI dimensions (terminal sizes, panel heights), API endpoints and paths, error messages, and any other domain-specific categories identified during the audit. Include comprehensive documentation for each constant explaining its purpose, impact of changes, units, and relationships to other constants.\n<info added on 2025-07-23T18:01:14.532Z>\nSuccessfully created the constants package structure at internal/constants/ with 9 organized files: constants.go (package doc), time.go (timeouts/intervals), limits.go (resource limits), paths.go (file paths), ui.go (UI constants), status.go (status strings), errors.go (error messages), http.go (HTTP codes), api.go (API endpoints). All files include comprehensive documentation. Package compiles successfully.\n</info added on 2025-07-23T18:01:14.532Z>",
+            "status": "done",
+            "testStrategy": "Verify the constants package compiles without errors, check that all constant names follow Go naming conventions, ensure documentation is clear and complete for each constant, and validate that the package structure allows for easy extension"
+          },
+          {
+            "id": 3,
+            "title": "Replace magic numbers and strings in core packages",
+            "description": "Update all core packages (pkg/, internal/) to use the new constants instead of hardcoded values",
+            "dependencies": [
+              "12.2"
+            ],
+            "details": "Replace all identified magic numbers and hardcoded strings in core packages with references to the constants package. This includes updating timeout values in API calls, replacing hardcoded limits in validation logic, updating error message strings, and replacing configuration defaults. Ensure proper imports are added and that the code remains readable and maintainable.\n<info added on 2025-07-23T18:38:03.863Z>\nSuccessfully replaced magic numbers in core packages with references to the constants package:\n- cluster_detector.go: Replaced cache time, detection timeout, and minimum APIs threshold values\n- validator.go: Updated validation timeout constants\n- monitor.go: Replaced health check interval, request timeout, max events, retry attempts and delay\n- client.go: Extracted error messages, kubeconfig paths, and default namespace\n- resources/client.go: Updated default list limit and log channel buffer size\n- retry.go: Replaced HTTP status code magic numbers\n- recovery.go: Extracted retry strategy constants\n- logger.go: Updated log file name and permissions constants\n- auth/kubeconfig.go & projects/factory.go: Replaced hardcoded kubeconfig paths\n\nAll code builds successfully with the new constant references.\n</info added on 2025-07-23T18:38:03.863Z>",
+            "status": "done",
+            "testStrategy": "Run all existing tests to ensure functionality is preserved, verify no magic numbers remain in core packages using automated scanning, check that all constant references are correctly imported and used, and validate that the code compiles and runs correctly"
+          },
+          {
+            "id": 4,
+            "title": "Replace magic numbers and strings in UI/TUI components",
+            "description": "Update all UI-related code to use constants for dimensions, layouts, and display values",
+            "dependencies": [
+              "12.2"
+            ],
+            "details": "Replace hardcoded values in the TUI components including terminal size constraints, panel dimensions, UI layout calculations, status messages, and any other UI-specific magic numbers. Pay special attention to the tui_simplified.go file and ensure all UI-related constants are properly categorized and used consistently across all UI components.\n<info added on 2025-07-23T18:48:28.981Z>\nSuccessfully replaced magic numbers in UI/TUI components:\n\n1) Updated tui_simplified.go - replaced all time durations (12 instances), UI dimensions (20+ instances), status strings, theme values, resource tabs, panel names\n2) Updated theme.go - replaced config paths, default theme references, and all color codes with color constants\n3) Created constants/colors.go with terminal color constants\n4) Extended constants/ui.go with 40+ UI-specific constants including messages, dimensions, animations\n\nAll builds successfully. Constants are properly categorized and used consistently across all UI components, improving maintainability and readability of the codebase.\n</info added on 2025-07-23T18:48:28.981Z>",
+            "status": "done",
+            "testStrategy": "Test UI functionality with different terminal sizes to ensure layout calculations work correctly, verify all UI messages and labels use constants, check that UI remains responsive and properly laid out, and validate that no hardcoded UI values remain"
+          },
+          {
+            "id": 5,
+            "title": "Create domain-specific constant sub-packages if needed",
+            "description": "Evaluate the need for and potentially create sub-packages for better organization of domain-specific constants",
+            "dependencies": [
+              "12.3",
+              "12.4"
+            ],
+            "details": "Based on the volume and categories of constants created, evaluate whether sub-packages would improve organization and maintainability. If beneficial, create sub-packages such as pkg/constants/ui for UI-related values, pkg/constants/api for API timeouts and limits, and pkg/constants/resources for Kubernetes resource limits. Refactor the main constants package to use these sub-packages while maintaining backward compatibility.\n<info added on 2025-07-23T18:49:23.453Z>\nAfter evaluating the constants package structure, I've determined that creating sub-packages is unnecessary. The current organization consists of 10 domain-specific files (442 lines total): api.go (15 lines), colors.go (30 lines), errors.go (52 lines), http.go (15 lines), limits.go (36 lines), paths.go (24 lines), status.go (48 lines), time.go (59 lines), and ui.go (143 lines). Each file maintains clear domain separation with manageable size. The existing flat structure with domain-specific files already provides good organization, easy imports, and clear separation of concerns. Creating sub-packages would introduce unnecessary complexity without significant benefits to maintainability or organization.\n</info added on 2025-07-23T18:49:23.453Z>",
+            "status": "done",
+            "testStrategy": "Verify all sub-packages compile correctly, ensure imports are updated throughout the codebase, validate that constant access patterns remain clean and intuitive, and run full test suite to ensure no regressions"
+          }
+        ]
+      },
+      {
+        "id": 13,
+        "title": "Refactor tui_simplified.go into Modular Architecture",
+        "description": "Break down the 2288-line tui_simplified.go file into smaller, focused modules organized by functionality, improving code maintainability, testability, and adhering to single responsibility principle.",
+        "details": "1. Analyze current tui_simplified.go structure and identify logical boundaries:\n   - UI component initialization and setup\n   - Event handling and keyboard input processing\n   - State management and data models\n   - Rendering logic for different panels (logs, pods, containers)\n   - API client interactions and data fetching\n   - Utility functions and helpers\n\n2. Create modular package structure:\n   ```\n   internal/tui/\n   ├── app.go              // Main TUI application struct and initialization\n   ├── components/\n   │   ├── layout.go       // Layout management and screen division\n   │   ├── header.go       // Header component with status and info\n   │   ├── footer.go       // Footer with keybindings display\n   │   ├── sidebar.go      // Resource list sidebar\n   │   └── mainpanel.go    // Main content panel\n   ├── views/\n   │   ├── pods.go         // Pod view logic and rendering\n   │   ├── containers.go   // Container view logic\n   │   ├── logs.go         // Log streaming view\n   │   └── resources.go    // Generic resource views\n   ├── handlers/\n   │   ├── keyboard.go     // Keyboard event handlers\n   │   ├── mouse.go        // Mouse event handlers\n   │   └── commands.go     // Command execution handlers\n   ├── state/\n   │   ├── manager.go      // Central state management\n   │   ├── selection.go    // Selection state tracking\n   │   └── filters.go      // Filter state management\n   ├── services/\n   │   ├── kubernetes.go   // K8s API interactions\n   │   ├── logs.go         // Log streaming service\n   │   └── watch.go        // Resource watching service\n   └── utils/\n       ├── formatting.go   // Text formatting utilities\n       ├── colors.go       // Color scheme management\n       └── helpers.go      // Misc helper functions\n   ```\n\n3. Extract interfaces for key components:\n   ```go\n   // Component interface for UI elements\n   type Component interface {\n       Init() error\n       Update(msg tea.Msg) (tea.Cmd, error)\n       View() string\n       Focus() error\n       Blur() error\n   }\n   \n   // ViewManager for switching between views\n   type ViewManager interface {\n       CurrentView() View\n       SwitchTo(viewType ViewType) error\n       RegisterView(viewType ViewType, view View)\n   }\n   ```\n\n4. Implement dependency injection pattern:\n   - Create factory functions for components\n   - Use interfaces to decouple dependencies\n   - Implement service locator for shared services\n\n5. Refactor state management:\n   - Centralize application state in state.Manager\n   - Implement observer pattern for state changes\n   - Create immutable state updates\n\n6. Extract constants and configuration:\n   - Move all UI constants to internal/tui/constants.go\n   - Create theme configuration in internal/tui/theme/theme.go\n   - Extract keybinding definitions to internal/tui/keybindings/keybindings.go\n\n7. Implement proper error handling:\n   - Create error types for different failure scenarios\n   - Implement error propagation through component hierarchy\n   - Add error recovery mechanisms\n\n8. Add unit tests for each module:\n   - Test components in isolation\n   - Mock dependencies using interfaces\n   - Achieve >80% code coverage per module",
+        "testStrategy": "1. Unit testing for each module:\n   - Test component initialization and lifecycle\n   - Verify event handling with mock messages\n   - Test state transitions and updates\n   - Validate rendering output for each component\n\n2. Integration testing:\n   - Test component interaction and communication\n   - Verify state propagation between modules\n   - Test keyboard navigation flow\n   - Validate API client integration\n\n3. Regression testing:\n   - Ensure all existing functionality remains intact\n   - Compare UI output before and after refactoring\n   - Test all keyboard shortcuts and commands\n   - Verify performance hasn't degraded\n\n4. Module boundary testing:\n   - Ensure no circular dependencies between modules\n   - Verify proper encapsulation and data hiding\n   - Test that modules can be tested in isolation\n\n5. Performance benchmarking:\n   - Measure rendering performance\n   - Test memory usage with large datasets\n   - Verify no goroutine leaks\n   - Profile CPU usage during heavy operations",
+        "status": "pending",
+        "dependencies": [
+          12
+        ],
+        "priority": "medium",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Analyze and Document Current Architecture",
+            "description": "Perform comprehensive analysis of tui_simplified.go to identify component boundaries, dependencies, and refactoring opportunities",
+            "dependencies": [],
+            "details": "1. Create detailed component dependency graph\n2. Identify all state management patterns and data flows\n3. Map event handling chains and UI update cycles\n4. Document all external API interactions\n5. List all utility functions and their usage\n6. Identify code duplication and common patterns\n7. Create refactoring roadmap with priority order",
+            "status": "pending",
+            "testStrategy": "1. Validate dependency graph completeness by tracing all imports\n2. Verify state flow documentation covers all state mutations\n3. Ensure all event handlers are mapped\n4. Cross-reference API calls with kubernetes client usage"
+          },
+          {
+            "id": 2,
+            "title": "Extract Core Components and Layout System",
+            "description": "Create foundational component system with layout management, extracting header, footer, sidebar, and main panel components",
+            "dependencies": [
+              "13.1"
+            ],
+            "details": "1. Define Component interface with Init(), Update(), View(), Focus(), Blur() methods\n2. Extract layout.go with screen division logic and responsive handling\n3. Create header.go with status bar, connection info, and title rendering\n4. Extract footer.go with keybinding display and help text\n5. Create sidebar.go for resource list with selection tracking\n6. Extract mainpanel.go as container for different view types\n7. Implement component lifecycle management\n8. Add component communication via message passing",
+            "status": "pending",
+            "testStrategy": "1. Unit test each component's View() output\n2. Test component initialization and lifecycle\n3. Verify layout calculations for different terminal sizes\n4. Test focus/blur state transitions\n5. Validate component message handling"
+          },
+          {
+            "id": 3,
+            "title": "Implement State Management and Services Layer",
+            "description": "Create centralized state management system and extract kubernetes/OpenShift service interactions into dedicated service layer",
+            "dependencies": [
+              "13.2"
+            ],
+            "details": "1. Create state.Manager with immutable state updates\n2. Implement selection.go for tracking selected resources\n3. Create filters.go for search and filter state\n4. Extract kubernetes.go service with client wrapper\n5. Create logs.go service for log streaming logic\n6. Implement watch.go for resource watching\n7. Add observer pattern for state change notifications\n8. Create service locator for dependency injection",
+            "status": "pending",
+            "testStrategy": "1. Test state immutability and update patterns\n2. Verify observer notifications on state changes\n3. Mock kubernetes client for service testing\n4. Test concurrent state updates\n5. Validate service error handling"
+          },
+          {
+            "id": 4,
+            "title": "Extract Views and Event Handlers",
+            "description": "Separate view-specific logic and event handling into dedicated modules with clear interfaces",
+            "dependencies": [
+              "13.3"
+            ],
+            "details": "1. Create ViewManager interface for view switching\n2. Extract pods.go with pod list rendering and details\n3. Create containers.go for container view logic\n4. Extract logs.go for log streaming view\n5. Create resources.go for generic resource views\n6. Extract keyboard.go with all key event handlers\n7. Create mouse.go for mouse event support\n8. Implement commands.go for command execution\n9. Wire views to state manager and services",
+            "status": "pending",
+            "testStrategy": "1. Test view rendering with mock data\n2. Verify keyboard handler mapping\n3. Test view switching logic\n4. Validate event propagation\n5. Test command execution flow"
+          },
+          {
+            "id": 5,
+            "title": "Complete Refactoring with Tests and Documentation",
+            "description": "Finalize the modular architecture by extracting remaining utilities, adding comprehensive tests, and updating documentation",
+            "dependencies": [
+              "13.4"
+            ],
+            "details": "1. Extract formatting.go with text formatting utilities\n2. Create colors.go for theme and color management\n3. Extract helpers.go for remaining utility functions\n4. Move constants to internal/tui/constants.go\n5. Create theme configuration in theme/theme.go\n6. Extract keybinding definitions to keybindings/keybindings.go\n7. Write unit tests achieving >80% coverage per module\n8. Create integration tests for component interactions\n9. Update cmd/lazyoc/main.go to use new architecture\n10. Write architecture documentation and migration guide",
+            "status": "pending",
+            "testStrategy": "1. Verify >80% test coverage per module\n2. Run integration tests for full TUI flow\n3. Performance test to ensure no regression\n4. Manual testing of all UI interactions\n5. Validate backward compatibility"
+          }
+        ]
       }
     ],
     "metadata": {
       "created": "2025-07-19T19:01:35.351Z",
-      "updated": "2025-07-23T09:05:21.036Z",
+      "updated": "2025-07-23T18:49:40.187Z",
       "description": "Tasks for master context"
     }
   }

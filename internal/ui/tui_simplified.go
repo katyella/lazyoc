@@ -24,6 +24,8 @@ import (
 	"github.com/katyella/lazyoc/internal/ui/models"
 	"github.com/katyella/lazyoc/internal/ui/navigation"
 	"k8s.io/client-go/kubernetes"
+
+	"github.com/katyella/lazyoc/internal/constants"
 )
 
 // SimplifiedTUI is a streamlined version without complex component initialization
@@ -116,23 +118,23 @@ func NewSimplifiedTUI(version string, debug bool) *SimplifiedTUI {
 	tui := &SimplifiedTUI{
 		App:           app,
 		navController: navigation.NewNavigationController(),
-		theme:         "dark", // default theme
+		theme:         constants.DefaultTheme,
 		showDetails:   true,
 		showLogs:      true,
-		focusedPanel:  0, // 0=main, 1=details, 2=logs
+		focusedPanel:  constants.DefaultFocusedPanel,
 		mainContent:   "",  // Will be set by updateMainContent
-		logContent:    []string{"LazyOC started"},
-		detailContent: "Select a resource to view details",
-		namespace:     "default", // default namespace
+		logContent:    []string{constants.InitialLogMessage},
+		detailContent: constants.DefaultDetailContent,
+		namespace:     constants.DefaultNamespace,
 		pods:          []resources.PodInfo{},
 		selectedPod:   0,
 		// Pod logs
 		podLogs:       []string{},
-		maxLogLines:   1000, // Keep last 1000 lines
-		logViewMode:   "app", // Default to app logs
+		maxLogLines:   constants.MaxLogLines,
+		logViewMode:   constants.DefaultLogViewMode,
 		// Error handling
 		errorDisplay:   components.NewErrorDisplayComponent("dark"),
-		maxRetries:     3,
+		maxRetries:     constants.DefaultRetryAttempts,
 	}
 	
 	// Set up navigation callbacks
@@ -150,7 +152,7 @@ func (t *SimplifiedTUI) SetKubeconfig(kubeconfigPath string) tea.Cmd {
 		// Try default location
 		home, err := os.UserHomeDir()
 		if err == nil {
-			kubeconfigPath = filepath.Join(home, ".kube", "config")
+			kubeconfigPath = filepath.Join(home, constants.KubeConfigDir, constants.KubeConfigFile)
 		}
 	}
 	
@@ -171,7 +173,7 @@ func (t *SimplifiedTUI) Init() tea.Cmd {
 	// Basic initialization commands
 	cmds = append(cmds, 
 		tea.WindowSize(),
-		tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
+		tea.Tick(constants.InitialTickDelay, func(t time.Time) tea.Msg {
 			return messages.InitMsg{}
 		}),
 	)
@@ -183,7 +185,7 @@ func (t *SimplifiedTUI) Init() tea.Cmd {
 		// Try default kubeconfig location
 		home, err := os.UserHomeDir()
 		if err == nil {
-			defaultPath := filepath.Join(home, ".kube", "config")
+			defaultPath := filepath.Join(home, constants.KubeConfigDir, constants.KubeConfigFile)
 			if _, err := os.Stat(defaultPath); err == nil {
 				cmds = append(cmds, t.SetKubeconfig(defaultPath))
 			} else {
@@ -273,11 +275,11 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return t, nil
 			
 		case "tab":
-			t.focusedPanel = (t.focusedPanel + 1) % 3
+			t.focusedPanel = (t.focusedPanel + 1) % constants.PanelCount
 			return t, nil
 			
 		case "shift+tab":
-			t.focusedPanel = (t.focusedPanel + 2) % 3
+			t.focusedPanel = (t.focusedPanel + 2) % constants.PanelCount
 			return t, nil
 			
 		case "d":
@@ -304,15 +306,15 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			
 		case "l":
 			if t.focusedPanel == 2 { // Toggle log view when in log panel
-				if t.logViewMode == "app" {
-					t.logViewMode = "pod"
+				if t.logViewMode == constants.DefaultLogViewMode {
+					t.logViewMode = constants.PodLogViewMode
 					// Auto-load pod logs if not loaded and we have a selected pod
 					if len(t.podLogs) == 0 && len(t.pods) > 0 && t.selectedPod < len(t.pods) {
 						t.clearPodLogs() // This sets loadingLogs = true
 						return t, t.loadPodLogs()
 					}
 				} else {
-					t.logViewMode = "app"
+					t.logViewMode = constants.DefaultLogViewMode
 				}
 			} else if t.focusedPanel == 0 { // Navigate tabs when in main panel
 				t.NextTab()
@@ -669,7 +671,7 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (t *SimplifiedTUI) View() string {
 	// Don't render until we have dimensions
 	if !t.ready || t.width == 0 || t.height == 0 {
-		return "Initializing LazyOC..."
+		return constants.InitializingMessage
 	}
 	
 	// Show help overlay if active
@@ -692,7 +694,7 @@ func (t *SimplifiedTUI) renderMain() string {
 	
 	// Header (1-2 lines based on height)
 	headerHeight := 2
-	if t.height < 20 {
+	if t.height < constants.SingleLineHeaderHeightThreshold {
 		headerHeight = 1
 	}
 	sections = append(sections, t.renderHeader(headerHeight))
@@ -761,7 +763,7 @@ func (t *SimplifiedTUI) renderHeader(height int) string {
 		title := fmt.Sprintf("🚀 LazyOC v%s", t.Version)
 		var status string
 		if t.connecting {
-			status = " - ⟳ Connecting..."
+			status = " - " + constants.ConnectingStatus
 		} else if t.connected {
 			projectInfo := t.getProjectDisplayInfo()
 			status = fmt.Sprintf(" - ● %s (%s)", t.context, projectInfo)
@@ -779,14 +781,14 @@ func (t *SimplifiedTUI) renderHeader(height int) string {
 	var statusColor lipgloss.Color
 	
 	if t.connecting {
-		statusText = "⟳ Connecting..."
+		statusText = constants.ConnectingStatus
 		statusColor = primaryColor
 	} else if t.connected {
 		projectInfo := t.getProjectDisplayInfo()
 		statusText = fmt.Sprintf("● Connected to %s (%s)", t.context, projectInfo)
 		statusColor = lipgloss.Color("2") // green
 	} else {
-		statusText = "○ Not connected - Run 'oc login' or use --kubeconfig"
+		statusText = constants.NotConnectedMessage
 		statusColor = errorColor
 	}
 	
@@ -801,7 +803,7 @@ func (t *SimplifiedTUI) renderHeader(height int) string {
 
 // renderTabs renders the tab bar
 func (t *SimplifiedTUI) renderTabs() string {
-	tabs := []string{"Pods", "Services", "Deployments", "ConfigMaps", "Secrets"}
+	tabs := constants.ResourceTabs
 	var tabViews []string
 	
 	for i, tab := range tabs {
@@ -836,7 +838,7 @@ func (t *SimplifiedTUI) renderContent(availableHeight int) string {
 	// Calculate dimensions
 	mainWidth := t.width
 	if t.showDetails {
-		mainWidth = t.width * 2 / 3
+		mainWidth = int(float64(t.width) * constants.MainPanelWidthRatio)
 	}
 	
 	// Calculate log panel's total overhead
@@ -844,21 +846,21 @@ func (t *SimplifiedTUI) renderContent(availableHeight int) string {
 	
 	logHeight := 0
 	maxLogContentLines := 0
-	if t.showLogs && availableHeight > 10 {
+	if t.showLogs && availableHeight > constants.MinMainContentLines {
 		// Reserve at least 10 lines for main content and detail panel
-		minMainContentHeight := 10
+		minMainContentHeight := constants.MinMainContentLines
 		
 		// Calculate maximum allowed log height
 		maxAllowedLogHeight := availableHeight - minMainContentHeight
 		
 		// Target log height is 1/3 of available or 15 lines, whichever is smaller
-		targetLogHeight := min(availableHeight/3, 15)
+		targetLogHeight := min(int(float64(availableHeight)*constants.LogHeightRatio), constants.DefaultLogHeight)
 		
 		// Apply constraints
 		logHeight = min(targetLogHeight, maxAllowedLogHeight)
 		
 		// Ensure minimum log height includes overhead
-		minLogHeight := logPanelTotalOverhead + 2 // At least 2 lines of content
+		minLogHeight := logPanelTotalOverhead + constants.MinLogContentLines // At least 2 lines of content
 		if logHeight < minLogHeight {
 			logHeight = 0 // Don't show logs if we can't meet minimum
 		}
@@ -962,7 +964,7 @@ func (t *SimplifiedTUI) renderContent(availableHeight int) string {
 				// Account for both newlines and wrapped lines
 				coloredLogs := []string{}
 				totalLines := 0
-				logWidth := t.width - 6 // Account for borders and padding
+				logWidth := t.width - constants.LogWidthPadding // Account for borders and padding
 				
 				for _, line := range visibleLogs {
 					colored := t.colorizePodLog(line)
@@ -1012,7 +1014,7 @@ func (t *SimplifiedTUI) renderContent(availableHeight int) string {
 		} else {
 			// App logs mode
 			// Get recent logs but account for multiline entries
-			startIdx := max(0, len(t.logContent)-100) // Start with last 100 entries
+			startIdx := max(0, len(t.logContent)-constants.LastNAppLogEntries) // Start with last 100 entries
 			recentLogs := t.logContent[startIdx:]
 			
 			// Apply coloring and count actual rendered lines
@@ -1118,7 +1120,7 @@ func (t *SimplifiedTUI) renderStatusBar() string {
 	remainingSpace := t.width - totalContentWidth
 	
 	var status string
-	if remainingSpace < 2 || t.width < 80 {
+	if remainingSpace < 2 || t.width < constants.CompactStatusWidthThreshold {
 		// Compact layout for narrow screens
 		status = t.renderCompactStatus(left, middle, hints)
 	} else {
@@ -1139,7 +1141,7 @@ func (t *SimplifiedTUI) renderStatusBar() string {
 
 // renderConnectionStatus returns the connection status indicator
 func (t *SimplifiedTUI) renderConnectionStatus() string {
-	panels := []string{"Main", "Details", "Logs"}
+	panels := constants.PanelNames
 	
 	// Focus indicator (existing functionality)
 	focusIndicator := "◆"
@@ -1312,8 +1314,8 @@ Press ? or ESC to close`
 
 	// Simple centered help box with better styling
 	helpStyle := lipgloss.NewStyle().
-		Width(60).
-		Height(22). // Increased height for additional log scrolling help
+		Width(constants.HelpModalWidth).
+		Height(constants.HelpModalHeight). // Increased height for additional log scrolling help
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("12")).
 		Background(lipgloss.Color("235")).
@@ -1358,7 +1360,7 @@ Press 'q' to quit`, tabName)
 	if t.ActiveTab == 0 { // Pods tab
 		t.updatePodDisplay()
 	} else {
-		t.mainContent = fmt.Sprintf("📦 %s Resources\n\nComing soon...\n\nUse h/l or arrow keys to navigate tabs\nPress ? for help", tabName)
+		t.mainContent = fmt.Sprintf("📦 %s Resources\n\n%s\n\nUse h/l or arrow keys to navigate tabs\nPress ? for help", tabName, constants.ComingSoonMessage)
 	}
 }
 
@@ -1392,7 +1394,7 @@ func (t *SimplifiedTUI) InitializeK8sClient(kubeconfigPath string) tea.Cmd {
 		
 		// Authenticate with shorter timeout to avoid hanging
 		logging.Info(t.Logger, "🔐 Starting authentication (timeout: 5s)")
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), constants.AuthenticationTimeout)
 		defer cancel()
 		
 		config, err := t.authProvider.Authenticate(ctx)
@@ -1454,7 +1456,7 @@ func (t *SimplifiedTUI) InitializeK8sClient(kubeconfigPath string) tea.Cmd {
 		
 		// Test connection with a separate, shorter timeout
 		logging.Info(t.Logger, "🧪 Testing connection (timeout: 3s)")
-		testCtx, testCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		testCtx, testCancel := context.WithTimeout(context.Background(), constants.ConnectionTestTimeout)
 		defer testCancel()
 		
 		err = resourceClient.TestConnection(testCtx)
@@ -1487,7 +1489,7 @@ func (t *SimplifiedTUI) loadPods() tea.Cmd {
 		
 		t.loadingPods = true
 		
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultOperationTimeout)
 		defer cancel()
 		
 		opts := resources.ListOptions{
@@ -1507,14 +1509,14 @@ func (t *SimplifiedTUI) loadPods() tea.Cmd {
 
 // startPodRefreshTimer returns a command that sets up automatic pod refresh
 func (t *SimplifiedTUI) startPodRefreshTimer() tea.Cmd {
-	return tea.Tick(30*time.Second, func(time.Time) tea.Msg {
+	return tea.Tick(constants.PodRefreshInterval, func(time.Time) tea.Msg {
 		return messages.RefreshPods{}
 	})
 }
 
 // startSpinnerAnimation returns a command that triggers spinner animation updates
 func (t *SimplifiedTUI) startSpinnerAnimation() tea.Cmd {
-	return tea.Tick(100*time.Millisecond, func(time.Time) tea.Msg {
+	return tea.Tick(constants.SpinnerAnimationInterval, func(time.Time) tea.Msg {
 		return messages.SpinnerTick{}
 	})
 }
@@ -1546,7 +1548,7 @@ func (t *SimplifiedTUI) loadPodLogs() tea.Cmd {
 		}
 		
 		selectedPod := t.pods[t.selectedPod]
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultOperationTimeout)
 		defer cancel()
 		
 		// Get current project/namespace
@@ -1562,7 +1564,7 @@ func (t *SimplifiedTUI) loadPodLogs() tea.Cmd {
 		}
 		
 		// Set up log options - last 100 lines
-		tailLines := int64(100)
+		tailLines := int64(constants.DefaultPodLogTailLines)
 		logOpts := resources.LogOptions{
 			TailLines:  &tailLines,
 			Timestamps: true,
@@ -1577,7 +1579,7 @@ func (t *SimplifiedTUI) loadPodLogs() tea.Cmd {
 		// Split logs into lines
 		logLines := strings.Split(strings.TrimSpace(logsStr), "\n")
 		if len(logLines) == 1 && logLines[0] == "" {
-			logLines = []string{"No logs available for this pod"}
+			logLines = []string{constants.NoLogsAvailableMessage}
 		}
 		
 		return PodLogsLoaded{Logs: logLines, PodName: selectedPod.Name}
@@ -1600,7 +1602,7 @@ Press 'q' to quit`
 	}
 	
 	if t.loadingPods {
-		t.mainContent = "📦 Pods\n\nLoading pods..."
+		t.mainContent = constants.LoadingPodsMessage
 		return
 	}
 	
@@ -1648,8 +1650,8 @@ Press 'q' to quit`
 		
 		// Truncate name if too long
 		name := pod.Name
-		if len(name) > 38 {
-			name = name[:35] + "..."
+		if len(name) > constants.PodNameTruncateLength {
+			name = name[:constants.PodNameTruncateLengthCompact] + "..."
 		}
 		
 		// Add status indicator with emoji
@@ -1752,7 +1754,7 @@ func (t *SimplifiedTUI) openProjectModal() tea.Cmd {
 	t.loadingProjects = true
 	t.switchingProject = false
 	t.projectError = "" // Clear any previous errors
-	t.projectModalHeight = min(t.height-6, 15) // Leave space for borders and headers
+	t.projectModalHeight = min(t.height-constants.ProjectModalMinHeight, constants.ProjectModalMaxHeight) // Leave space for borders and headers
 	
 	return tea.Batch(
 		t.loadProjectList(),
@@ -1767,7 +1769,7 @@ func (t *SimplifiedTUI) loadProjectList() tea.Cmd {
 			return ProjectErrorMsg{Error: "Project manager not initialized"}
 		}
 		
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultOperationTimeout)
 		defer cancel()
 		
 		projectList, err := t.projectManager.List(ctx, projects.ListOptions{
@@ -1789,7 +1791,7 @@ func (t *SimplifiedTUI) getCurrentProject() tea.Cmd {
 			return nil // No error, just skip
 		}
 		
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), constants.AuthenticationTimeout)
 		defer cancel()
 		
 		current, err := t.projectManager.GetCurrent(ctx)
@@ -1871,7 +1873,7 @@ func (t *SimplifiedTUI) switchToProject(project projects.ProjectInfo) tea.Cmd {
 		
 		logging.Info(t.Logger, "🔄 Switching to %s: %s", project.Type, project.Name)
 		
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second) // Increased timeout
+		ctx, cancel := context.WithTimeout(context.Background(), constants.ClusterDetectionTimeout) // Increased timeout
 		defer cancel()
 		
 		result, err := t.projectManager.SwitchTo(ctx, project.Name)
@@ -1897,7 +1899,7 @@ func (t *SimplifiedTUI) switchToProject(project projects.ProjectInfo) tea.Cmd {
 
 // renderProjectModal renders the project switching modal
 func (t *SimplifiedTUI) renderProjectModal() string {
-	modalWidth := min(t.width-4, 60)
+	modalWidth := min(t.width-constants.ProjectModalMinWidth, constants.ProjectModalMaxWidth)
 	modalHeight := t.projectModalHeight
 	
 	// Create the modal box with error styling if needed
@@ -2040,7 +2042,7 @@ func (t *SimplifiedTUI) initializeProjectManager() {
 	t.projectFactory = factory
 	
 	// Create the appropriate project manager
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), constants.AuthenticationTimeout)
 	defer cancel()
 	
 	manager, err := factory.CreateAutoDetectManager(ctx)
@@ -2054,7 +2056,7 @@ func (t *SimplifiedTUI) initializeProjectManager() {
 	
 	// Load current project info
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), constants.AuthenticationTimeout)
 		defer cancel()
 		
 		current, err := manager.GetCurrent(ctx)

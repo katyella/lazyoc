@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/katyella/lazyoc/internal/k8s"
+	"github.com/katyella/lazyoc/internal/constants"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -123,7 +124,7 @@ func getDefaultKubeconfigPath() string {
 		return ""
 	}
 
-	return filepath.Join(home, ".kube", "config")
+	return filepath.Join(home, constants.KubeConfigDir, constants.KubeConfigFile)
 }
 
 // Utility functions for common operations

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/katyella/lazyoc/internal/constants"
 )
 
 // Theme represents a color theme for the UI
@@ -38,35 +40,35 @@ type Theme struct {
 var PredefinedThemes = map[string]*Theme{
 	"dark": {
 		Name:             "dark",
-		Background:       lipgloss.Color("0"),   // Black
-		Foreground:       lipgloss.Color("15"),  // White
-		Primary:          lipgloss.Color("12"),  // Blue
-		Secondary:        lipgloss.Color("14"),  // Cyan
-		Border:           lipgloss.Color("8"),   // Gray
-		Success:          lipgloss.Color("10"),  // Green
-		Warning:          lipgloss.Color("11"),  // Yellow
-		Error:            lipgloss.Color("9"),   // Red
-		Info:             lipgloss.Color("12"),  // Blue
-		AccentForeground: lipgloss.Color("15"),  // White
-		MutedForeground:  lipgloss.Color("8"),   // Gray
-		SelectedBg:       lipgloss.Color("8"),   // Gray
-		FocusBorder:      lipgloss.Color("12"),  // Blue
+		Background:       lipgloss.Color(constants.ColorBlack),
+		Foreground:       lipgloss.Color(constants.ColorWhite),
+		Primary:          lipgloss.Color(constants.ColorBlue),
+		Secondary:        lipgloss.Color(constants.ColorCyan),
+		Border:           lipgloss.Color(constants.ColorGray),
+		Success:          lipgloss.Color(constants.ColorGreen),
+		Warning:          lipgloss.Color(constants.ColorYellow),
+		Error:            lipgloss.Color(constants.ColorRed),
+		Info:             lipgloss.Color(constants.ColorBlue),
+		AccentForeground: lipgloss.Color(constants.ColorWhite),
+		MutedForeground:  lipgloss.Color(constants.ColorGray),
+		SelectedBg:       lipgloss.Color(constants.ColorGray),
+		FocusBorder:      lipgloss.Color(constants.ColorBlue)
 	},
 	"light": {
 		Name:             "light",
-		Background:       lipgloss.Color("15"),  // White
-		Foreground:       lipgloss.Color("0"),   // Black
-		Primary:          lipgloss.Color("4"),   // Dark Blue
-		Secondary:        lipgloss.Color("6"),   // Dark Cyan
-		Border:           lipgloss.Color("7"),   // Light Gray
-		Success:          lipgloss.Color("2"),   // Dark Green
-		Warning:          lipgloss.Color("3"),   // Dark Yellow
-		Error:            lipgloss.Color("1"),   // Dark Red
-		Info:             lipgloss.Color("4"),   // Dark Blue
-		AccentForeground: lipgloss.Color("0"),   // Black
-		MutedForeground:  lipgloss.Color("8"),   // Gray
-		SelectedBg:       lipgloss.Color("7"),   // Light Gray
-		FocusBorder:      lipgloss.Color("4"),   // Dark Blue
+		Background:       lipgloss.Color(constants.ColorWhite),
+		Foreground:       lipgloss.Color(constants.ColorBlack),
+		Primary:          lipgloss.Color(constants.ColorDarkBlue),
+		Secondary:        lipgloss.Color(constants.ColorDarkCyan),
+		Border:           lipgloss.Color(constants.ColorLightGray),
+		Success:          lipgloss.Color(constants.ColorDarkGreen),
+		Warning:          lipgloss.Color(constants.ColorDarkYellow),
+		Error:            lipgloss.Color(constants.ColorDarkRed),
+		Info:             lipgloss.Color(constants.ColorDarkBlue),
+		AccentForeground: lipgloss.Color(constants.ColorBlack),
+		MutedForeground:  lipgloss.Color(constants.ColorGray),
+		SelectedBg:       lipgloss.Color(constants.ColorLightGray),
+		FocusBorder:      lipgloss.Color(constants.ColorDarkBlue)
 	},
 }
 
@@ -83,11 +85,11 @@ type ThemeConfig struct {
 
 // NewThemeManager creates a new theme manager instance
 func NewThemeManager() *ThemeManager {
-	configDir := filepath.Join(os.Getenv("HOME"), ".lazyoc")
-	configPath := filepath.Join(configDir, "config.json")
+	configDir := filepath.Join(os.Getenv("HOME"), constants.LazyOCConfigDir)
+	configPath := filepath.Join(configDir, constants.ConfigFileName)
 	
 	tm := &ThemeManager{
-		currentTheme: PredefinedThemes["dark"], // Default to dark theme
+		currentTheme: PredefinedThemes[constants.DefaultTheme],
 		configPath:   configPath,
 	}
 	
@@ -111,7 +113,7 @@ func (tm *ThemeManager) GetCurrentTheme() *Theme {
 func (tm *ThemeManager) SetTheme(themeName string) error {
 	theme, exists := PredefinedThemes[themeName]
 	if !exists {
-		theme = PredefinedThemes["dark"] // fallback
+		theme = PredefinedThemes[constants.DefaultTheme] // fallback
 	}
 	
 	tm.currentTheme = theme
@@ -126,10 +128,10 @@ func (tm *ThemeManager) SetTheme(themeName string) error {
 
 // ToggleTheme switches between light and dark themes
 func (tm *ThemeManager) ToggleTheme() {
-	if tm.currentTheme.Name == "dark" {
+	if tm.currentTheme.Name == constants.DefaultTheme {
 		tm.SetTheme("light")
 	} else {
-		tm.SetTheme("dark")
+		tm.SetTheme(constants.DefaultTheme)
 	}
 }
 

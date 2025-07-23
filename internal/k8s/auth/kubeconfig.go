@@ -9,6 +9,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
+
+	"github.com/katyella/lazyoc/internal/constants"
 )
 
 // KubeconfigProvider implements authentication using kubeconfig files
@@ -234,5 +236,5 @@ func getDefaultKubeconfigPath() string {
 		return ""
 	}
 	
-	return filepath.Join(home, ".kube", "config")
+	return filepath.Join(home, constants.KubeConfigDir, constants.KubeConfigFile)
 }
