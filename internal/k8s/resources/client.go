@@ -1,8 +1,10 @@
 package resources
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -806,4 +808,106 @@ func (c *K8sResourceClient) convertNamespaceToProject(ns *NamespaceInfo) Project
 		IsOpenShift: false,
 		Quota:       nil,
 	}
+}
+
+// GetPodLogs retrieves logs from a specific pod container
+func (c *K8sResourceClient) GetPodLogs(ctx context.Context, namespace, podName, containerName string, opts LogOptions) (string, error) {
+	logOptions := &corev1.PodLogOptions{
+		Container: containerName,
+	}
+	
+	// Apply options
+	if opts.TailLines != nil {
+		logOptions.TailLines = opts.TailLines
+	}
+	if opts.Follow {
+		logOptions.Follow = opts.Follow
+	}
+	if opts.Previous {
+		logOptions.Previous = opts.Previous
+	}
+	if opts.SinceSeconds != nil {
+		logOptions.SinceSeconds = opts.SinceSeconds
+	}
+	if opts.Timestamps {
+		logOptions.Timestamps = opts.Timestamps
+	}
+	
+	// Create logs request
+	req := c.clientset.CoreV1().Pods(namespace).GetLogs(podName, logOptions)
+	
+	// Execute request
+	stream, err := req.Stream(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to get pod logs: %w", err)
+	}
+	defer stream.Close()
+	
+	// Read all logs
+	logs, err := io.ReadAll(stream)
+	if err != nil {
+		return "", fmt.Errorf("failed to read pod logs: %w", err)
+	}
+	
+	return string(logs), nil
+}
+
+// StreamPodLogs streams logs from a specific pod container
+func (c *K8sResourceClient) StreamPodLogs(ctx context.Context, namespace, podName, containerName string, opts LogOptions) (<-chan string, error) {
+	logOptions := &corev1.PodLogOptions{
+		Container: containerName,
+		Follow:    true, // Enable follow for streaming
+	}
+	
+	// Apply options
+	if opts.TailLines != nil {
+		logOptions.TailLines = opts.TailLines
+	}
+	if opts.Previous {
+		logOptions.Previous = opts.Previous
+	}
+	if opts.SinceSeconds != nil {
+		logOptions.SinceSeconds = opts.SinceSeconds
+	}
+	if opts.Timestamps {
+		logOptions.Timestamps = opts.Timestamps
+	}
+	
+	// Create logs request
+	req := c.clientset.CoreV1().Pods(namespace).GetLogs(podName, logOptions)
+	
+	// Execute streaming request
+	stream, err := req.Stream(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stream pod logs: %w", err)
+	}
+	
+	// Create channel for log lines
+	logChan := make(chan string, 100)
+	
+	// Start goroutine to read stream
+	go func() {
+		defer close(logChan)
+		defer stream.Close()
+		
+		scanner := bufio.NewScanner(stream)
+		for scanner.Scan() {
+			select {
+			case <-ctx.Done():
+				return
+			case logChan <- scanner.Text():
+				// Line sent successfully
+			}
+		}
+		
+		if err := scanner.Err(); err != nil {
+			// Send error as a log line
+			select {
+			case <-ctx.Done():
+			case logChan <- fmt.Sprintf("Error reading logs: %v", err):
+			}
+		}
+	}()
+	
+	return logChan, nil
 }

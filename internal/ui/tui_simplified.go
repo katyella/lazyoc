@@ -53,6 +53,12 @@ type SimplifiedTUI struct {
 	selectedPod    int
 	loadingPods    bool
 	
+	// Pod logs data
+	podLogs        []string
+	loadingLogs    bool
+	logScrollOffset int
+	maxLogLines     int
+	
 	// Simple state instead of components
 	width         int
 	height        int
@@ -115,6 +121,9 @@ func NewSimplifiedTUI(version string, debug bool) *SimplifiedTUI {
 		namespace:     "default", // default namespace
 		pods:          []resources.PodInfo{},
 		selectedPod:   0,
+		// Pod logs
+		podLogs:       []string{},
+		maxLogLines:   1000, // Keep last 1000 lines
 		// Error handling
 		errorDisplay:   components.NewErrorDisplayComponent("dark"),
 		maxRetries:     3,
@@ -337,12 +346,21 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Move selection down in pod list
 				t.selectedPod = (t.selectedPod + 1) % len(t.pods)
 				t.updatePodDisplay()
+				// Clear logs and load logs for newly selected pod
+				t.clearPodLogs()
+				return t, t.loadPodLogs()
 			} else if t.focusedPanel == 0 && t.showLogs {
 				// Move focus down to logs panel
 				t.focusedPanel = 2
 			} else if t.focusedPanel == 1 && t.showLogs {
 				// Move focus from details to logs
 				t.focusedPanel = 2
+			} else if t.focusedPanel == 2 && len(t.podLogs) > 0 {
+				// Scroll down in logs - improved bounds checking
+				maxScroll := t.getMaxLogScrollOffset()
+				if t.logScrollOffset < maxScroll {
+					t.logScrollOffset += 1
+				}
 			}
 			return t, nil
 			
@@ -354,9 +372,51 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					t.selectedPod = len(t.pods) - 1
 				}
 				t.updatePodDisplay()
+				// Clear logs and load logs for newly selected pod
+				t.clearPodLogs()
+				return t, t.loadPodLogs()
+			} else if t.focusedPanel == 2 && len(t.podLogs) > 0 {
+				// Scroll up in logs - improved bounds checking
+				if t.logScrollOffset > 0 {
+					t.logScrollOffset -= 1
+				} else {
+					// Move focus up from logs to main panel when at top
+					t.focusedPanel = 0
+				}
 			} else if t.focusedPanel == 2 {
 				// Move focus up from logs to main panel
 				t.focusedPanel = 0
+			}
+			return t, nil
+			
+		case "pgup":
+			if t.focusedPanel == 2 && len(t.podLogs) > 0 {
+				// Page up in logs
+				pageSize := t.getLogPageSize()
+				t.logScrollOffset = max(0, t.logScrollOffset-pageSize)
+			}
+			return t, nil
+			
+		case "pgdn":
+			if t.focusedPanel == 2 && len(t.podLogs) > 0 {
+				// Page down in logs
+				pageSize := t.getLogPageSize()
+				maxScroll := t.getMaxLogScrollOffset()
+				t.logScrollOffset = min(maxScroll, t.logScrollOffset+pageSize)
+			}
+			return t, nil
+			
+		case "home":
+			if t.focusedPanel == 2 && len(t.podLogs) > 0 {
+				// Go to top of logs
+				t.logScrollOffset = 0
+			}
+			return t, nil
+			
+		case "end":
+			if t.focusedPanel == 2 && len(t.podLogs) > 0 {
+				// Go to bottom of logs
+				t.logScrollOffset = t.getMaxLogScrollOffset()
 			}
 			return t, nil
 			
@@ -423,6 +483,10 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.pods = msg.Pods
 		t.loadingPods = false
 		t.selectedPod = 0
+		// Clear pod logs when new pod list is loaded (happens after project switch)
+		t.podLogs = []string{}
+		t.logScrollOffset = 0
+		t.loadingLogs = false
 		t.updatePodDisplay()
 		t.logContent = append(t.logContent, fmt.Sprintf("Loaded %d pods from namespace %s", len(msg.Pods), t.namespace))
 		
@@ -479,6 +543,8 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.currentProject = &msg.Project
 		t.namespace = msg.Project.Name
 		t.logContent = append(t.logContent, fmt.Sprintf("Switched to %s '%s'", msg.Project.Type, msg.Project.Name))
+		// Clear pod logs when switching projects
+		t.clearPodLogs()
 		// Update main content to ensure tabs are visible
 		t.updateMainContent()
 		// Reload pods for the new project
@@ -529,6 +595,27 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			t.logContent = append(t.logContent, "🔄 Manual reconnection attempt...")
 			return t, t.InitializeK8sClient(t.KubeconfigPath)
 		}
+		
+	case PodLogsLoaded:
+		// Pod logs successfully loaded
+		t.loadingLogs = false
+		t.podLogs = msg.Logs
+		t.logScrollOffset = 0 // Reset scroll to top
+		// Limit log lines to prevent memory issues
+		if len(t.podLogs) > t.maxLogLines {
+			t.podLogs = t.podLogs[len(t.podLogs)-t.maxLogLines:] // Keep last N lines
+		}
+		t.logContent = append(t.logContent, fmt.Sprintf("📋 Loaded %d log lines from %s", len(msg.Logs), msg.PodName))
+		
+	case PodLogsError:
+		// Pod logs loading failed
+		t.loadingLogs = false
+		t.podLogs = []string{fmt.Sprintf("Failed to load logs: %v", msg.Err)}
+		t.logScrollOffset = 0
+		// Create user-friendly error
+		userError := errors.MapKubernetesError(msg.Err)
+		t.errorDisplay.AddError(userError)
+		t.logContent = append(t.logContent, fmt.Sprintf("❌ Failed to load logs from %s: %s", msg.PodName, userError.GetDisplayMessage()))
 	}
 	
 	return t, nil
@@ -757,8 +844,51 @@ func (t *SimplifiedTUI) renderContent(availableHeight int) string {
 			BorderForeground(logBorderColor).
 			Padding(1)
 		
-		// Join last N log entries
-		logText := strings.Join(t.logContent[max(0, len(t.logContent)-10):], "\n")
+		// Show pod logs when focusing on logs panel, otherwise show app logs
+		var logText string
+		if t.focusedPanel == 2 && t.loadingLogs {
+			// Show loading indicator for pod logs
+			logText = "🔄 Loading pod logs..."
+		} else if t.focusedPanel == 2 && len(t.podLogs) > 0 {
+			// Show pod logs with scrolling support
+			visibleLines := logHeight - 4 // Account for border and padding
+			if visibleLines < 1 {
+				visibleLines = 1
+			}
+			
+			start := t.logScrollOffset
+			end := start + visibleLines
+			if end > len(t.podLogs) {
+				end = len(t.podLogs)
+			}
+			if start >= len(t.podLogs) {
+				start = max(0, len(t.podLogs)-visibleLines)
+				end = len(t.podLogs)
+			}
+			
+			visibleLogs := t.podLogs[start:end]
+			logText = strings.Join(visibleLogs, "\n")
+			
+			// Add enhanced scroll indicator
+			if len(t.podLogs) > visibleLines {
+				percentage := int(float64(start) / float64(len(t.podLogs)) * 100)
+				scrollInfo := fmt.Sprintf("\n[%d-%d of %d lines (%d%%)] j/k line • PgUp/PgDn page • Home/End", 
+					start+1, end, len(t.podLogs), percentage)
+				logText += scrollInfo
+			}
+		} else if t.focusedPanel == 2 {
+			// Show message when no pod logs are available
+			if len(t.pods) > 0 && t.selectedPod < len(t.pods) {
+				selectedPodName := t.pods[t.selectedPod].Name
+				logText = fmt.Sprintf("📋 No logs loaded for pod '%s'\nPress 'l' to load logs", selectedPodName)
+			} else {
+				logText = "📋 No pod selected\nSelect a pod to view logs"
+			}
+		} else {
+			// Show application logs (existing behavior)
+			logText = strings.Join(t.logContent[max(0, len(t.logContent)-10):], "\n")
+		}
+		
 		logPanel := logStyle.Render(logText)
 		
 		return lipgloss.JoinVertical(lipgloss.Left, topSection, logPanel)
@@ -979,13 +1109,19 @@ func (t *SimplifiedTUI) renderHelp() string {
 Navigation:
   tab        Next panel
   shift+tab  Previous panel
-  j/k        Move down/up in pod list
+  j/k        Move down/up in pod list OR scroll logs
   h/l        Previous/Next tab (in main panel)
   arrow keys Navigate tabs/list
   1/2/3      Jump to main/detail/log panel
   
+Log Scrolling (when in log panel):
+  j/k        Scroll up/down line by line
+  PgUp/PgDn  Scroll up/down page by page
+  Home/End   Jump to top/bottom of logs
+  
 Commands:
-  ?          Toggle help
+  ?          Toggle help  
+  l          Load pod logs (lowercase L)
   ctrl+p     Switch project/namespace
   d          Toggle details panel
   L          Toggle log panel (shift+l)
@@ -999,7 +1135,7 @@ Press ? or ESC to close`
 	// Simple centered help box with better styling
 	helpStyle := lipgloss.NewStyle().
 		Width(60).
-		Height(18). // Keep increased height for better content fit
+		Height(22). // Increased height for additional log scrolling help
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("12")).
 		Background(lipgloss.Color("235")).
@@ -1216,6 +1352,59 @@ func (t *SimplifiedTUI) loadClusterInfo() tea.Cmd {
 	}
 }
 
+// clearPodLogs clears the current pod logs and sets loading state
+func (t *SimplifiedTUI) clearPodLogs() {
+	t.podLogs = []string{}
+	t.logScrollOffset = 0
+	t.loadingLogs = true
+}
+
+// loadPodLogs fetches logs from the currently selected pod
+func (t *SimplifiedTUI) loadPodLogs() tea.Cmd {
+	return func() tea.Msg {
+		if !t.connected || t.resourceClient == nil || len(t.pods) == 0 || t.selectedPod >= len(t.pods) {
+			return PodLogsError{Err: fmt.Errorf("no pod selected or not connected"), PodName: ""}
+		}
+		
+		selectedPod := t.pods[t.selectedPod]
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		
+		// Get current project/namespace
+		namespace := t.resourceClient.GetCurrentProject()
+		if namespace == "" {
+			namespace = t.namespace
+		}
+		
+		// Use first container if available
+		containerName := ""
+		if len(selectedPod.ContainerInfo) > 0 {
+			containerName = selectedPod.ContainerInfo[0].Name
+		}
+		
+		// Set up log options - last 100 lines
+		tailLines := int64(100)
+		logOpts := resources.LogOptions{
+			TailLines:  &tailLines,
+			Timestamps: true,
+		}
+		
+		// Fetch logs
+		logsStr, err := t.resourceClient.GetPodLogs(ctx, namespace, selectedPod.Name, containerName, logOpts)
+		if err != nil {
+			return PodLogsError{Err: err, PodName: selectedPod.Name}
+		}
+		
+		// Split logs into lines
+		logLines := strings.Split(strings.TrimSpace(logsStr), "\n")
+		if len(logLines) == 1 && logLines[0] == "" {
+			logLines = []string{"No logs available for this pod"}
+		}
+		
+		return PodLogsLoaded{Logs: logLines, PodName: selectedPod.Name}
+	}
+}
+
 // updatePodDisplay updates the main content with pod information
 func (t *SimplifiedTUI) updatePodDisplay() {
 	if !t.connected {
@@ -1365,6 +1554,18 @@ type RetrySuccessMsg struct{}
 
 // ManualRetryMsg is sent when user manually triggers retry
 type ManualRetryMsg struct{}
+
+// PodLogsLoaded is sent when pod logs are successfully loaded
+type PodLogsLoaded struct {
+	Logs []string
+	PodName string
+}
+
+// PodLogsError is sent when pod logs loading fails
+type PodLogsError struct {
+	Err error
+	PodName string
+}
 
 // openProjectModal opens the project switching modal
 func (t *SimplifiedTUI) openProjectModal() tea.Cmd {
@@ -1804,5 +2005,40 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// getMaxLogScrollOffset returns the maximum scroll offset for logs
+func (t *SimplifiedTUI) getMaxLogScrollOffset() int {
+	if len(t.podLogs) == 0 {
+		return 0
+	}
+	
+	visibleLines := t.getLogPageSize()
+	maxScroll := len(t.podLogs) - visibleLines
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	return maxScroll
+}
+
+// getLogPageSize returns the number of visible log lines per page
+func (t *SimplifiedTUI) getLogPageSize() int {
+	if !t.showLogs {
+		return 10 // fallback
+	}
+	
+	// Calculate log panel height similar to renderContent
+	availableHeight := t.height - 4 // header + tabs + status + margins
+	logHeight := availableHeight / 3
+	if logHeight < 5 {
+		logHeight = 5
+	}
+	
+	// Account for border and padding
+	visibleLines := logHeight - 4
+	if visibleLines < 1 {
+		visibleLines = 1
+	}
+	return visibleLines
 }
 

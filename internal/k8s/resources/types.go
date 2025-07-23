@@ -134,3 +134,12 @@ type ProjectContext struct {
 	IsOpenShift  bool          `json:"isOpenShift"`
 	ClusterInfo  string        `json:"clusterInfo,omitempty"`
 }
+
+// LogOptions represents options for pod log retrieval
+type LogOptions struct {
+	TailLines    *int64 `json:"tailLines,omitempty"`    // Number of lines from the end of logs to show
+	Follow       bool   `json:"follow,omitempty"`       // Follow log output (streaming)
+	Previous     bool   `json:"previous,omitempty"`     // Return previous terminated container logs
+	SinceSeconds *int64 `json:"sinceSeconds,omitempty"` // Show logs since this many seconds ago
+	Timestamps   bool   `json:"timestamps,omitempty"`   // Include timestamps in log lines
+}

@@ -234,7 +234,7 @@
         "id": 3,
         "title": "OpenShift Client Integration",
         "description": "Integrate the OpenShift client libraries to enable communication with OpenShift clusters, including authentication and basic resource retrieval.",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [
           1
         ],
@@ -341,7 +341,7 @@
         "id": 4,
         "title": "Resource Listing and Management",
         "description": "Implement basic pod display and navigation functionality for the MVP, focusing on essential functionality to view and interact with pods in the current namespace.",
-        "status": "pending",
+        "status": "done",
         "dependencies": [
           2,
           3,
@@ -355,7 +355,7 @@
             "id": 1,
             "title": "Core Resource Model Definitions",
             "description": "Create basic data model and interface for Pod resources",
-            "status": "pending",
+            "status": "done",
             "dependencies": [],
             "details": "Define Go struct for Pod resources with proper JSON/YAML tags. Create interface for basic pod operations (list, get details). Implement resource metadata handling including name, status, ready count, and age. Add pod status parsing and state management. Implement error handling patterns for pod retrieval.",
             "testStrategy": ""
@@ -364,7 +364,7 @@
             "id": 2,
             "title": "Basic Pod Listing",
             "description": "Implement basic pod listing functionality for the current namespace",
-            "status": "pending",
+            "status": "done",
             "dependencies": [
               1
             ],
@@ -375,7 +375,7 @@
             "id": 3,
             "title": "Keyboard Navigation",
             "description": "Implement basic keyboard navigation for pod list",
-            "status": "pending",
+            "status": "done",
             "dependencies": [
               2
             ],
@@ -386,7 +386,7 @@
             "id": 4,
             "title": "Pod Detail View",
             "description": "Implement detailed view for selected pod",
-            "status": "pending",
+            "status": "done",
             "dependencies": [
               1,
               3
@@ -398,7 +398,7 @@
             "id": 5,
             "title": "Manual Refresh Functionality",
             "description": "Implement manual refresh of pod list with 'r' key",
-            "status": "pending",
+            "status": "done",
             "dependencies": [
               2
             ],
@@ -468,7 +468,7 @@
         "id": 6,
         "title": "Log Streaming and Event Monitoring",
         "description": "Implement basic pod logs viewing functionality for MVP.",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [
           4
         ],
@@ -777,7 +777,7 @@
         "description": "Implement OpenShift project management capability with automatic cluster type detection, project API integration, context switching, and UI display of current project context.",
         "details": "1. Implement cluster type detection:\n   - Create cluster detection service that queries /oapi endpoint for OpenShift presence\n   - Check for OpenShift-specific APIs (project.openshift.io/v1)\n   - Store cluster type (OpenShift/Kubernetes) in client configuration\n   - Create abstraction layer for namespace/project operations\n\n2. Integrate OpenShift Project API:\n   - Use openshift/client-go for project operations when OpenShift detected\n   - Implement ProjectInterface for listing, creating, switching projects\n   - Map OpenShift projects to Kubernetes namespaces with additional metadata\n   - Handle RBAC metadata specific to OpenShift projects\n   - Create unified interface that works with both namespaces and projects\n\n3. Implement project switching functionality:\n   - Add keyboard shortcut (Ctrl+P) for project switcher\n   - Create project selection modal with fuzzy search\n   - Update kubeconfig current-context with selected project\n   - Refresh all resource views after project switch\n   - Store recent projects for quick access\n   - Add project favorites/bookmarks feature\n\n4. Update UI for project context display:\n   - Modify header component to show current project/namespace\n   - Add visual indicator for OpenShift vs Kubernetes clusters\n   - Display project metadata (display name, description) when available\n   - Show project resource quotas and limits in status bar\n   - Add project annotation badges (e.g., production, development)\n\n5. Handle API differences:\n   - Abstract namespace operations to work with both APIs\n   - Handle OpenShift-specific project annotations and labels\n   - Support project-scoped resource queries\n   - Implement fallback to namespace API for non-OpenShift clusters\n\n6. Add project management commands:\n   - Implement 'oc new-project' equivalent\n   - Add project deletion with safety checks\n   - Support project description and display name updates\n   - Handle project request templates if configured\n\n7. Integrate with existing components:\n   - Update resource listing to be project-aware\n   - Modify authentication to handle project-scoped tokens\n   - Ensure all API calls use correct project context\n   - Update status bar to show project details",
         "testStrategy": "1. Test cluster type detection:\n   - Verify correct identification of OpenShift clusters via /oapi endpoint\n   - Test fallback to Kubernetes when OpenShift APIs not available\n   - Verify cluster type is persisted in configuration\n\n2. Test project API integration:\n   - Verify project listing returns all accessible projects\n   - Test project creation with various configurations\n   - Verify RBAC metadata is correctly retrieved and displayed\n   - Test project/namespace abstraction works seamlessly\n\n3. Test project switching:\n   - Verify Ctrl+P opens project switcher\n   - Test fuzzy search filters projects correctly\n   - Verify kubeconfig is updated after switch\n   - Test that all resource views refresh with new context\n   - Verify recent projects list is maintained\n\n4. Test UI updates:\n   - Verify current project is displayed in header\n   - Test visual indicators for cluster type\n   - Verify project metadata is shown when available\n   - Test resource quota display in status bar\n\n5. Test API compatibility:\n   - Verify operations work on both OpenShift and Kubernetes\n   - Test fallback behavior when project API unavailable\n   - Verify namespace operations continue to work\n\n6. Test project management:\n   - Test project creation with templates\n   - Verify deletion safety checks prevent accidents\n   - Test project metadata updates\n\n7. Integration tests:\n   - Verify resource operations use correct project context\n   - Test authentication with project-scoped tokens\n   - Verify performance with large number of projects",
-        "status": "pending",
+        "status": "done",
         "dependencies": [
           3
         ],
@@ -800,7 +800,7 @@
               "11.1"
             ],
             "details": "Create an abstraction interface that:\n- Defines common operations (list, create, delete, switch)\n- Implements OpenShiftProjectManager using openshift/client-go\n- Implements KubernetesNamespaceManager using standard k8s client\n- Provides factory method that returns appropriate implementation based on cluster type\n- Maps OpenShift project metadata to namespace equivalents\n- Handles RBAC differences between projects and namespaces\n- Implements resource quota and limit handling for both types",
-            "status": "in-progress",
+            "status": "done",
             "testStrategy": "1. Test interface implementation for both managers\n2. Verify correct manager is returned based on cluster type\n3. Test project/namespace listing with different permissions\n4. Test creation with metadata mapping\n5. Verify RBAC handling differences\n6. Test quota and limit operations"
           },
           {
@@ -811,7 +811,7 @@
               "11.2"
             ],
             "details": "Implement project switching functionality:\n- Add Ctrl+P keyboard shortcut handler in main TUI\n- Create ProjectSwitcherModal component with:\n  - Fuzzy search using existing search utilities\n  - List of all available projects/namespaces\n  - Recent projects section (last 5)\n  - Favorites/bookmarks with star icons\n- Update kubeconfig current-context on selection\n- Trigger refresh of all resource views\n- Store recent projects in local config\n- Implement favorites persistence",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "1. Test keyboard shortcut triggers modal\n2. Verify fuzzy search filters projects correctly\n3. Test kubeconfig update on selection\n4. Verify all views refresh after switch\n5. Test recent projects tracking\n6. Test favorites persistence across sessions"
           },
           {
@@ -822,7 +822,7 @@
               "11.3"
             ],
             "details": "Update UI components to show project context:\n- Modify header component to display current project/namespace name\n- Add OpenShift/K8s icon indicator based on cluster type\n- Show project metadata (display name, description) in tooltip\n- Update status bar to include:\n  - Project resource quotas (CPU, memory, storage)\n  - Active resource limits\n  - Project labels/annotations as badges\n- Add color coding for project types (prod=red, dev=green, etc.)\n- Ensure responsive layout with long project names",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "1. Test header displays correct project name\n2. Verify cluster type indicator shows correctly\n3. Test metadata tooltip content and formatting\n4. Verify quota/limit display updates\n5. Test badge rendering for annotations\n6. Test UI responsiveness with various name lengths"
           },
           {
@@ -833,7 +833,7 @@
               "11.4"
             ],
             "details": "Integrate project awareness throughout the application:\n- Update all resource listing components to use current project context\n- Modify API client to inject project/namespace into all requests\n- Update authentication manager to handle project-scoped tokens\n- Ensure pod logs, exec, and port-forward use correct project\n- Update resource creation dialogs to use current project\n- Modify search functionality to be project-scoped by default\n- Add global option to search across all projects\n- Update error messages to include project context",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "1. Test resource listings are project-scoped\n2. Verify API calls include correct project\n3. Test project-scoped authentication tokens\n4. Verify pod operations use correct project\n5. Test resource creation in current project\n6. Test search scoping behavior"
           }
         ]
@@ -841,7 +841,7 @@
     ],
     "metadata": {
       "created": "2025-07-19T19:01:35.351Z",
-      "updated": "2025-07-23T07:37:25.990Z",
+      "updated": "2025-07-23T07:56:56.405Z",
       "description": "Tasks for master context"
     }
   }
