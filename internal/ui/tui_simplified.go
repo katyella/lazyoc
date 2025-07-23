@@ -17,6 +17,8 @@ import (
 	"github.com/katyella/lazyoc/internal/k8s/projects"
 	"github.com/katyella/lazyoc/internal/k8s/resources"
 	"github.com/katyella/lazyoc/internal/logging"
+	"github.com/katyella/lazyoc/internal/ui/components"
+	"github.com/katyella/lazyoc/internal/ui/errors"
 	"github.com/katyella/lazyoc/internal/ui/messages"
 	"github.com/katyella/lazyoc/internal/ui/models"
 	"github.com/katyella/lazyoc/internal/ui/navigation"
@@ -77,6 +79,14 @@ type SimplifiedTUI struct {
 	projectModalHeight int
 	projectError       string
 	
+	// Error handling and recovery
+	errorDisplay       *components.ErrorDisplayComponent
+	showErrorModal     bool
+	retryInProgress    bool
+	lastRetryTime      time.Time
+	retryCount         int
+	maxRetries         int
+	
 	// Theme
 	theme string
 	
@@ -105,6 +115,9 @@ func NewSimplifiedTUI(version string, debug bool) *SimplifiedTUI {
 		namespace:     "default", // default namespace
 		pods:          []resources.PodInfo{},
 		selectedPod:   0,
+		// Error handling
+		errorDisplay:   components.NewErrorDisplayComponent("dark"),
+		maxRetries:     3,
 	}
 	
 	// Set up navigation callbacks
@@ -199,6 +212,11 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return t, nil
 		}
 		
+		// Special handling for error modal
+		if t.showErrorModal {
+			return t.handleErrorModalKeys(msg)
+		}
+		
 		// Special handling for project modal
 		if t.showProjectModal {
 			return t.handleProjectModalKeys(msg)
@@ -208,6 +226,25 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return t, tea.Quit
+			
+		case "esc":
+			// Close error modal if open
+			if t.showErrorModal {
+				t.showErrorModal = false
+				return t, nil
+			}
+			return t, nil
+			
+		case "r":
+			// Manual retry/reconnect
+			if !t.connected && !t.connecting {
+				return t, t.InitializeK8sClient(t.KubeconfigPath)
+			}
+			// Refresh pods if connected
+			if t.connected && t.ActiveTab == 0 {
+				return t, t.loadPods()
+			}
+			return t, nil
 			
 		case "ctrl+p":
 			// Open project switching modal
@@ -234,6 +271,13 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			
 		case "L":
 			t.showLogs = !t.showLogs
+			return t, nil
+			
+		case "e":
+			// Show error modal if there are errors
+			if t.errorDisplay.HasErrors() {
+				t.showErrorModal = true
+			}
 			return t, nil
 			
 		case "h":
@@ -286,12 +330,7 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return t, nil
 			
-		case "r":
-			// Refresh pod list
-			if t.connected && t.focusedPanel == 0 {
-				return t, t.loadPods()
-			}
-			return t, nil
+		// "r" case is already handled above for retry/refresh
 			
 		case "j":
 			if t.focusedPanel == 0 && len(t.pods) > 0 {
@@ -352,7 +391,15 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.connectionErr = nil
 		t.context = msg.Context
 		t.namespace = msg.Namespace
-		t.logContent = append(t.logContent, fmt.Sprintf("✅ Connected to %s", msg.Context))
+		
+		// Reset retry counters on successful connection
+		if t.retryCount > 0 {
+			t.logContent = append(t.logContent, fmt.Sprintf("✨ Connection restored after %d retries", t.retryCount))
+			t.retryCount = 0
+		} else {
+			t.logContent = append(t.logContent, fmt.Sprintf("✅ Connected to %s", msg.Context))
+		}
+		t.retryInProgress = false
 		
 		// Initialize project manager after successful connection
 		t.initializeProjectManager()
@@ -443,6 +490,16 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.loadingProjects = false
 		t.switchingProject = false
 		t.projectError = msg.Error
+		
+		// Create user-friendly error for project issues
+		projectError := errors.NewUserFriendlyError(
+			"Project Error",
+			msg.Error,
+			errors.ErrorSeverityWarning,
+			errors.ErrorCategoryProject,
+			nil,
+		)
+		t.errorDisplay.AddError(projectError)
 		t.logContent = append(t.logContent, fmt.Sprintf("Project error: %s", msg.Error))
 		// Keep modal open to show error
 		
@@ -450,6 +507,27 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Continue spinner animation if we have active loading operations
 		if t.connecting || t.loadingPods || t.loadingProjects || t.switchingProject {
 			return t, t.startSpinnerAnimation()
+		}
+		
+	case AutoRetryMsg:
+		// Automatic retry for connection errors
+		if !t.connected && !t.connecting && t.retryCount <= t.maxRetries {
+			t.logContent = append(t.logContent, fmt.Sprintf("🔄 Attempting reconnection (attempt %d/%d)...", t.retryCount, t.maxRetries))
+			return t, t.InitializeK8sClient(t.KubeconfigPath)
+		}
+		
+	case RetrySuccessMsg:
+		// Reset retry counter on successful connection
+		t.retryCount = 0
+		t.retryInProgress = false
+		t.logContent = append(t.logContent, "✨ Connection restored successfully")
+		
+	case ManualRetryMsg:
+		// Manual retry triggered by user
+		t.retryInProgress = true
+		if !t.connected {
+			t.logContent = append(t.logContent, "🔄 Manual reconnection attempt...")
+			return t, t.InitializeK8sClient(t.KubeconfigPath)
 		}
 	}
 	
@@ -503,7 +581,28 @@ func (t *SimplifiedTUI) renderMain() string {
 	// Status bar (1 line)
 	sections = append(sections, t.renderStatusBar())
 	
-	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+	baseView := lipgloss.JoinVertical(lipgloss.Left, sections...)
+	
+	// Overlay error modal if showing
+	if t.showErrorModal {
+		t.errorDisplay.SetDimensions(t.width, t.height)
+		errorModal := t.errorDisplay.RenderModal()
+		
+		// Center the modal on screen using lipgloss.Place
+		return lipgloss.Place(t.width, t.height, lipgloss.Center, lipgloss.Center, errorModal)
+	}
+	
+	// Show help modal
+	if t.showHelp {
+		return t.renderHelp()
+	}
+	
+	// Show project modal
+	if t.showProjectModal {
+		return t.renderProjectModal()
+	}
+	
+	return baseView
 }
 
 // renderHeader renders a themed header
@@ -674,10 +773,18 @@ func (t *SimplifiedTUI) renderStatusBar() string {
 	hintsStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("242")) // Dimmer gray
 	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Bold(true) // White bold
 	
-	hints := fmt.Sprintf("%s help %s %s switch %s %s project %s %s details %s %s logs %s %s quit",
+	// Add error indicator to hints if there are errors
+	errorHint := ""
+	if t.errorDisplay.HasErrors() {
+		errorHint = fmt.Sprintf("%s errors %s ", keyStyle.Render("e"), hintsStyle.Render("•"))
+	}
+	
+	hints := fmt.Sprintf("%s%s help %s %s switch %s %s project %s %s retry %s %s details %s %s logs %s %s quit",
+		errorHint,
 		keyStyle.Render("?"), hintsStyle.Render("•"),
 		keyStyle.Render("tab"), hintsStyle.Render("•"),
 		keyStyle.Render("ctrl+p"), hintsStyle.Render("•"),
+		keyStyle.Render("r"), hintsStyle.Render("•"),
 		keyStyle.Render("d"), hintsStyle.Render("•"),
 		keyStyle.Render("L"), hintsStyle.Render("•"),
 		keyStyle.Render("q"))
@@ -771,7 +878,17 @@ func (t *SimplifiedTUI) renderConnectionStatus() string {
 	
 	connectionInfo := connectionStyle.Render(fmt.Sprintf("%s %s", statusIcon, statusText))
 	
-	return fmt.Sprintf("%s • %s", focusStyle.Render(focusIndicator), connectionInfo)
+	// Add error indicator if there are errors
+	errorIndicator := ""
+	if t.errorDisplay.HasErrors() {
+		latestError := t.errorDisplay.GetLatestError()
+		if latestError != nil {
+			errorIcon := latestError.GetIcon()
+			errorIndicator = fmt.Sprintf(" • %s", errorIcon)
+		}
+	}
+	
+	return fmt.Sprintf("%s • %s%s", focusStyle.Render(focusIndicator), connectionInfo, errorIndicator)
 }
 
 // renderClusterInfo returns cluster and project information
@@ -872,7 +989,8 @@ Commands:
   ctrl+p     Switch project/namespace
   d          Toggle details panel
   L          Toggle log panel (shift+l)
-  r          Refresh pod list
+  r          Retry connection / Refresh
+  e          Show error details (when errors exist)
   t          Toggle theme
   q          Quit
   
@@ -881,7 +999,7 @@ Press ? or ESC to close`
 	// Simple centered help box with better styling
 	helpStyle := lipgloss.NewStyle().
 		Width(60).
-		Height(15).
+		Height(18). // Keep increased height for better content fit
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("12")).
 		Background(lipgloss.Color("235")).
@@ -1239,6 +1357,15 @@ type ProjectErrorMsg struct {
 	Error string
 }
 
+// AutoRetryMsg is sent to trigger automatic retry
+type AutoRetryMsg struct{}
+
+// RetrySuccessMsg is sent when a retry succeeds
+type RetrySuccessMsg struct{}
+
+// ManualRetryMsg is sent when user manually triggers retry
+type ManualRetryMsg struct{}
+
 // openProjectModal opens the project switching modal
 func (t *SimplifiedTUI) openProjectModal() tea.Cmd {
 	t.showProjectModal = true
@@ -1583,6 +1710,92 @@ func (t *SimplifiedTUI) getProjectDisplayInfo() string {
 	}
 	
 	return fmt.Sprintf("%s %s", icon, displayName)
+}
+
+// handleErrorModalKeys handles keyboard input when error modal is open
+func (t *SimplifiedTUI) handleErrorModalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q":
+		// Close error modal
+		t.showErrorModal = false
+		return t, nil
+		
+	case "up":
+		// Move selection up in recovery actions
+		t.errorDisplay.MoveSelection(-1)
+		return t, nil
+		
+	case "down":
+		// Move selection down in recovery actions
+		t.errorDisplay.MoveSelection(1)
+		return t, nil
+		
+	case "enter":
+		// Execute selected recovery action
+		action := t.errorDisplay.GetSelectedAction()
+		if action != nil {
+			return t, t.executeRecoveryAction(action)
+		}
+		return t, nil
+		
+	case "c":
+		// Clear all errors
+		t.errorDisplay.ClearErrors()
+		t.showErrorModal = false
+		return t, nil
+	}
+	
+	return t, nil
+}
+
+// executeRecoveryAction executes the selected recovery action
+func (t *SimplifiedTUI) executeRecoveryAction(action *errors.RecoveryAction) tea.Cmd {
+	switch action.Name {
+	case "Retry Connection":
+		// Close modal and trigger reconnection
+		t.showErrorModal = false
+		if !t.connected && !t.connecting {
+			t.logContent = append(t.logContent, "🔄 Manual reconnection initiated...")
+			return t.InitializeK8sClient(t.KubeconfigPath)
+		}
+		
+	case "Refresh Resources":
+		// Close modal and refresh current resources
+		t.showErrorModal = false
+		if t.connected {
+			switch t.ActiveTab {
+			case 0: // Pods tab
+				return t.loadPods()
+			default:
+				return t.loadPods() // Default to pods for now
+			}
+		}
+		
+	case "Refresh Projects":
+		// Close modal and refresh project list
+		t.showErrorModal = false
+		if t.projectManager != nil {
+			return t.loadProjectList()
+		}
+		
+	case "Refresh Application":
+		// Close modal and perform full refresh
+		t.showErrorModal = false
+		t.errorDisplay.ClearErrors()
+		t.retryCount = 0
+		if t.connected {
+			return tea.Batch(
+				t.loadPods(),
+				t.loadProjectList(),
+			)
+		} else {
+			return t.InitializeK8sClient(t.KubeconfigPath)
+		}
+	}
+	
+	// Close modal by default
+	t.showErrorModal = false
+	return nil
 }
 
 // min returns the minimum of two integers
