@@ -259,6 +259,12 @@ func (nc *NavigationController) handleNavigationActions(action KeyAction) tea.Cm
 			return NavigationMsg{Action: action, Panel: components.PanelLog}
 		}
 		
+	case ActionNextTab, ActionPrevTab:
+		// Tab navigation actions - route to TUI
+		return func() tea.Msg {
+			return NavigationMsg{Action: action, Panel: nc.focusManager.currentPanel}
+		}
+		
 	case ActionMoveUp, ActionMoveDown, ActionMoveLeft, ActionMoveRight,
 		 ActionPageUp, ActionPageDown, ActionHalfPageUp, ActionHalfPageDown,
 		 ActionGoToTop, ActionGoToBottom:

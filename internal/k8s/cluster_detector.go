@@ -58,6 +58,10 @@ type ClusterTypeDetector struct {
 
 // NewClusterTypeDetector creates a new cluster type detector
 func NewClusterTypeDetector(config *rest.Config) (*ClusterTypeDetector, error) {
+	if config == nil {
+		return nil, fmt.Errorf("rest config cannot be nil")
+	}
+	
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kubernetes clientset: %w", err)
