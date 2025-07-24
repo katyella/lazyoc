@@ -58,16 +58,41 @@ func TestKubeconfigProvider_FileNotFound(t *testing.T) {
 	}
 }
 
-func TestKubeconfigProvider_RealConfig(t *testing.T) {
-	provider := NewKubeconfigProvider("")
-	kubeconfigPath := provider.GetKubeconfigPath()
+func TestKubeconfigProvider_MockConfig(t *testing.T) {
+	// Create a temporary kubeconfig file for testing
+	tmpDir := t.TempDir()
+	kubeconfigPath := filepath.Join(tmpDir, "config")
 	
-	// Skip test if no kubeconfig available
-	if _, err := os.Stat(kubeconfigPath); os.IsNotExist(err) {
-		t.Skip("No kubeconfig file found, skipping test")
+	// Create a mock kubeconfig file
+	mockKubeconfig := `
+apiVersion: v1
+kind: Config
+current-context: test-context
+contexts:
+- context:
+    cluster: test-cluster
+    namespace: test-namespace
+    user: test-user
+  name: test-context
+clusters:
+- cluster:
+    server: https://test-server:6443
+    insecure-skip-tls-verify: true
+  name: test-cluster
+users:
+- name: test-user
+  user:
+    token: test-token
+`
+	
+	err := os.WriteFile(kubeconfigPath, []byte(mockKubeconfig), 0600)
+	if err != nil {
+		t.Fatalf("Failed to create mock kubeconfig: %v", err)
 	}
 	
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	provider := NewKubeconfigProvider(kubeconfigPath)
+	
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	
 	config, err := provider.Authenticate(ctx)
@@ -79,26 +104,25 @@ func TestKubeconfigProvider_RealConfig(t *testing.T) {
 		t.Error("Expected non-nil config")
 	}
 	
-	if config.Host == "" {
-		t.Error("Expected non-empty host in config")
+	if config.Host != "https://test-server:6443" {
+		t.Errorf("Expected host 'https://test-server:6443', got '%s'", config.Host)
 	}
 	
 	// Test context and namespace retrieval
 	context := provider.GetContext()
-	if context == "" {
-		t.Error("Expected non-empty context")
+	if context != "test-context" {
+		t.Errorf("Expected context 'test-context', got '%s'", context)
 	}
 	
 	namespace := provider.GetNamespace()
-	if namespace == "" {
-		t.Error("Expected non-empty namespace")
+	if namespace != "test-namespace" {
+		t.Errorf("Expected namespace 'test-namespace', got '%s'", namespace)
 	}
-	
-	t.Logf("Context: %s, Namespace: %s", context, namespace)
 }
 
 func TestKubeconfigProvider_IsValid(t *testing.T) {
-	provider := NewKubeconfigProvider("")
+	// Test with nonexistent config
+	provider := NewKubeconfigProvider("/nonexistent/config")
 	
 	ctx := context.Background()
 	
@@ -108,18 +132,46 @@ func TestKubeconfigProvider_IsValid(t *testing.T) {
 		t.Error("Expected IsValid to fail before authentication")
 	}
 	
-	// Skip further test if no kubeconfig available
-	if _, err := os.Stat(provider.GetKubeconfigPath()); os.IsNotExist(err) {
-		t.Skip("No kubeconfig file found, skipping validation test")
+	// Test with mock config
+	tmpDir := t.TempDir()
+	kubeconfigPath := filepath.Join(tmpDir, "config")
+	
+	mockKubeconfig := `
+apiVersion: v1
+kind: Config
+current-context: test-context
+contexts:
+- context:
+    cluster: test-cluster
+    namespace: test-namespace
+    user: test-user
+  name: test-context
+clusters:
+- cluster:
+    server: https://test-server:6443
+    insecure-skip-tls-verify: true
+  name: test-cluster
+users:
+- name: test-user
+  user:
+    token: test-token
+`
+	
+	err = os.WriteFile(kubeconfigPath, []byte(mockKubeconfig), 0600)
+	if err != nil {
+		t.Fatalf("Failed to create mock kubeconfig: %v", err)
 	}
+	
+	provider = NewKubeconfigProvider(kubeconfigPath)
 	
 	// Authenticate first
 	_, err = provider.Authenticate(ctx)
 	if err != nil {
-		t.Skipf("Authentication failed, skipping validation test: %v", err)
+		t.Fatalf("Authentication failed: %v", err)
 	}
 	
-	// Should pass after authentication
+	// Should pass after authentication (even though server is fake)
+	// IsValid only checks if config was loaded successfully
 	err = provider.IsValid(ctx)
 	if err != nil {
 		t.Errorf("Expected IsValid to pass after authentication: %v", err)
@@ -127,23 +179,72 @@ func TestKubeconfigProvider_IsValid(t *testing.T) {
 }
 
 func TestKubeconfigProvider_GetAvailableContexts(t *testing.T) {
-	provider := NewKubeconfigProvider("")
+	// Create a temporary kubeconfig file with multiple contexts
+	tmpDir := t.TempDir()
+	kubeconfigPath := filepath.Join(tmpDir, "config")
 	
-	// Skip test if no kubeconfig available
-	if _, err := os.Stat(provider.GetKubeconfigPath()); os.IsNotExist(err) {
-		t.Skip("No kubeconfig file found, skipping test")
+	mockKubeconfig := `
+apiVersion: v1
+kind: Config
+current-context: test-context
+contexts:
+- context:
+    cluster: test-cluster
+    namespace: test-namespace
+    user: test-user
+  name: test-context
+- context:
+    cluster: prod-cluster  
+    namespace: prod-namespace
+    user: prod-user
+  name: prod-context
+clusters:
+- cluster:
+    server: https://test-server:6443
+    insecure-skip-tls-verify: true
+  name: test-cluster
+- cluster:
+    server: https://prod-server:6443
+    insecure-skip-tls-verify: true
+  name: prod-cluster
+users:
+- name: test-user
+  user:
+    token: test-token
+- name: prod-user
+  user:
+    token: prod-token
+`
+	
+	err := os.WriteFile(kubeconfigPath, []byte(mockKubeconfig), 0600)
+	if err != nil {
+		t.Fatalf("Failed to create mock kubeconfig: %v", err)
 	}
+	
+	provider := NewKubeconfigProvider(kubeconfigPath)
 	
 	contexts, err := provider.GetAvailableContexts()
 	if err != nil {
 		t.Fatalf("Failed to get available contexts: %v", err)
 	}
 	
-	if len(contexts) == 0 {
-		t.Error("Expected at least one context")
+	expectedContexts := []string{"test-context", "prod-context"}
+	if len(contexts) != len(expectedContexts) {
+		t.Errorf("Expected %d contexts, got %d", len(expectedContexts), len(contexts))
 	}
 	
-	t.Logf("Available contexts: %v", contexts)
+	for _, expected := range expectedContexts {
+		found := false
+		for _, actual := range contexts {
+			if actual == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Expected context %s not found in %v", expected, contexts)
+		}
+	}
 }
 
 func TestAuthManager_NoProviders(t *testing.T) {
@@ -166,16 +267,41 @@ func TestAuthManager_NoProviders(t *testing.T) {
 }
 
 func TestAuthManager_WithProvider(t *testing.T) {
-	manager := NewAuthManager()
-	provider := NewKubeconfigProvider("")
-	manager.AddProvider(provider)
+	// Create a temporary kubeconfig file for testing
+	tmpDir := t.TempDir()
+	kubeconfigPath := filepath.Join(tmpDir, "config")
 	
-	// Skip test if no kubeconfig available
-	if _, err := os.Stat(provider.GetKubeconfigPath()); os.IsNotExist(err) {
-		t.Skip("No kubeconfig file found, skipping test")
+	mockKubeconfig := `
+apiVersion: v1
+kind: Config
+current-context: test-context
+contexts:
+- context:
+    cluster: test-cluster
+    namespace: test-namespace
+    user: test-user
+  name: test-context
+clusters:
+- cluster:
+    server: https://test-server:6443
+    insecure-skip-tls-verify: true
+  name: test-cluster
+users:
+- name: test-user
+  user:
+    token: test-token
+`
+	
+	err := os.WriteFile(kubeconfigPath, []byte(mockKubeconfig), 0600)
+	if err != nil {
+		t.Fatalf("Failed to create mock kubeconfig: %v", err)
 	}
 	
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	manager := NewAuthManager()
+	provider := NewKubeconfigProvider(kubeconfigPath)
+	manager.AddProvider(provider)
+	
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	
 	config, err := manager.Authenticate(ctx)
@@ -199,57 +325,3 @@ func TestAuthManager_WithProvider(t *testing.T) {
 	}
 }
 
-func TestCredentialValidator_RealCluster(t *testing.T) {
-	t.Skip("Disabled: This test hangs and connects to real cluster")
-	
-	provider := NewKubeconfigProvider("")
-	
-	// Skip test if no kubeconfig available
-	if _, err := os.Stat(provider.GetKubeconfigPath()); os.IsNotExist(err) {
-		t.Skip("No kubeconfig file found, skipping test")
-	}
-	
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	
-	config, err := provider.Authenticate(ctx)
-	if err != nil {
-		t.Skipf("Authentication failed, skipping validator test: %v", err)
-	}
-	
-	validator, err := NewCredentialValidator(config)
-	if err != nil {
-		t.Fatalf("Failed to create validator: %v", err)
-	}
-	
-	// Test connection validation
-	err = validator.ValidateConnection(ctx)
-	if err != nil {
-		t.Logf("Connection validation failed (may be expected if cluster is unreachable): %v", err)
-		// Don't fail the test - cluster might not be running
-		return
-	}
-	
-	t.Log("Connection validation passed")
-	
-	// Test server info retrieval
-	info, err := validator.GetServerInfo(ctx)
-	if err != nil {
-		t.Errorf("Failed to get server info: %v", err)
-		return
-	}
-	
-	t.Logf("Server info: %s", info.String())
-	
-	if info.GitVersion == "" {
-		t.Error("Expected non-empty git version")
-	}
-	
-	// Test permission validation (might fail depending on cluster permissions)
-	err = validator.ValidatePermissions(ctx)
-	if err != nil {
-		t.Logf("Permission validation failed (may be expected with limited permissions): %v", err)
-	} else {
-		t.Log("Permission validation passed")
-	}
-}
