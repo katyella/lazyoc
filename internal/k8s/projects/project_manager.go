@@ -138,10 +138,15 @@ func (m *OpenShiftProjectManager) Create(ctx context.Context, name string, opts 
 
 	// Add display name if provided
 	if opts.DisplayName != "" {
-		metadata := projectRequest.Object["metadata"].(map[string]interface{})
+		metadata, ok := projectRequest.Object["metadata"].(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("metadata is not a map")
+		}
 		annotations := make(map[string]interface{})
 		if existingAnnotations, ok := metadata["annotations"]; ok {
-			annotations = existingAnnotations.(map[string]interface{})
+			if annotationsMap, ok := existingAnnotations.(map[string]interface{}); ok {
+				annotations = annotationsMap
+			}
 		}
 		annotations["openshift.io/display-name"] = opts.DisplayName
 		metadata["annotations"] = annotations
@@ -149,10 +154,15 @@ func (m *OpenShiftProjectManager) Create(ctx context.Context, name string, opts 
 
 	// Add description if provided
 	if opts.Description != "" {
-		metadata := projectRequest.Object["metadata"].(map[string]interface{})
+		metadata, ok := projectRequest.Object["metadata"].(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("metadata is not a map")
+		}
 		annotations := make(map[string]interface{})
 		if existingAnnotations, ok := metadata["annotations"]; ok {
-			annotations = existingAnnotations.(map[string]interface{})
+			if annotationsMap, ok := existingAnnotations.(map[string]interface{}); ok {
+				annotations = annotationsMap
+			}
 		}
 		annotations["openshift.io/description"] = opts.Description
 		metadata["annotations"] = annotations
@@ -160,7 +170,10 @@ func (m *OpenShiftProjectManager) Create(ctx context.Context, name string, opts 
 
 	// Add labels if provided
 	if len(opts.Labels) > 0 {
-		metadata := projectRequest.Object["metadata"].(map[string]interface{})
+		metadata, ok := projectRequest.Object["metadata"].(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("metadata is not a map")
+		}
 		labels := make(map[string]interface{})
 		for k, v := range opts.Labels {
 			labels[k] = v
@@ -170,10 +183,15 @@ func (m *OpenShiftProjectManager) Create(ctx context.Context, name string, opts 
 
 	// Add additional annotations if provided
 	if len(opts.Annotations) > 0 {
-		metadata := projectRequest.Object["metadata"].(map[string]interface{})
+		metadata, ok := projectRequest.Object["metadata"].(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("metadata is not a map")
+		}
 		annotations := make(map[string]interface{})
 		if existingAnnotations, ok := metadata["annotations"]; ok {
-			annotations = existingAnnotations.(map[string]interface{})
+			if annotationsMap, ok := existingAnnotations.(map[string]interface{}); ok {
+				annotations = annotationsMap
+			}
 		}
 		for k, v := range opts.Annotations {
 			annotations[k] = v

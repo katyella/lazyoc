@@ -104,7 +104,10 @@ func TestTUIModelIntegration(t *testing.T) {
 	
 	// Test a simple update
 	model, _ := tui.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
-	updatedTUI := model.(*TUI)
+	updatedTUI, ok := model.(*TUI)
+	if !ok {
+		t.Fatal("Model is not a *TUI")
+	}
 	
 	if updatedTUI.Width != 80 || updatedTUI.Height != 24 {
 		t.Errorf("Expected dimensions 80x24, got %dx%d", updatedTUI.Width, updatedTUI.Height)

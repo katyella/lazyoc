@@ -13,6 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	
 	"github.com/katyella/lazyoc/internal/k8s/projects"
 	"github.com/katyella/lazyoc/internal/constants"
@@ -21,6 +22,7 @@ import (
 // K8sResourceClient implements ResourceClient using Kubernetes client-go
 type K8sResourceClient struct {
 	clientset        *kubernetes.Clientset
+	restConfig       *rest.Config
 	currentNamespace string
 	defaultLimit     int64
 	projectManager   projects.ProjectManager
@@ -35,10 +37,31 @@ func NewK8sResourceClient(clientset *kubernetes.Clientset, defaultNamespace stri
 	}
 }
 
+// NewK8sResourceClientWithConfig creates a new Kubernetes resource client with REST config for exec operations
+func NewK8sResourceClientWithConfig(clientset *kubernetes.Clientset, config *rest.Config, defaultNamespace string) *K8sResourceClient {
+	return &K8sResourceClient{
+		clientset:        clientset,
+		restConfig:       config,
+		currentNamespace: defaultNamespace,
+		defaultLimit:     constants.DefaultListLimit,
+	}
+}
+
 // NewK8sResourceClientWithProjectManager creates a new client with project manager integration
 func NewK8sResourceClientWithProjectManager(clientset *kubernetes.Clientset, defaultNamespace string, projectManager projects.ProjectManager) *K8sResourceClient {
 	return &K8sResourceClient{
 		clientset:        clientset,
+		currentNamespace: defaultNamespace,
+		defaultLimit:     constants.DefaultListLimit,
+		projectManager:   projectManager,
+	}
+}
+
+// NewK8sResourceClientWithProjectManagerAndConfig creates a new client with both project manager and REST config
+func NewK8sResourceClientWithProjectManagerAndConfig(clientset *kubernetes.Clientset, config *rest.Config, defaultNamespace string, projectManager projects.ProjectManager) *K8sResourceClient {
+	return &K8sResourceClient{
+		clientset:        clientset,
+		restConfig:       config,
 		currentNamespace: defaultNamespace,
 		defaultLimit:     constants.DefaultListLimit,
 		projectManager:   projectManager,

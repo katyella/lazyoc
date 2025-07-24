@@ -9,10 +9,12 @@ import (
 
 	"github.com/katyella/lazyoc/internal/errors"
 	"github.com/katyella/lazyoc/internal/logging"
+	"github.com/katyella/lazyoc/internal/ui/commands"
 	"github.com/katyella/lazyoc/internal/ui/components"
 	"github.com/katyella/lazyoc/internal/ui/messages"
 	"github.com/katyella/lazyoc/internal/ui/models"
 	"github.com/katyella/lazyoc/internal/ui/navigation"
+	"github.com/katyella/lazyoc/internal/ui/search"
 	"github.com/katyella/lazyoc/internal/ui/styles"
 )
 
@@ -42,6 +44,9 @@ type TUI struct {
 	
 	// Theme management
 	styleManager *styles.StyleManager
+	
+	// Search functionality
+	searchFilter *search.ResourceFilter
 }
 
 // NewTUI creates a new TUI instance
@@ -59,6 +64,7 @@ func NewTUI(version string, debug bool) *TUI {
 		helpComponent:  navigation.NewHelpComponent(80, 24), // Default size, will be updated
 		messageHandler: messages.NewMessageHandler(),
 		styleManager:   styles.GetStyleManager(),
+		searchFilter:   search.NewResourceFilter(),
 	}
 	
 	// Set up navigation callbacks
@@ -1182,20 +1188,200 @@ func (t *TUI) handleModeChange(msg navigation.ModeChangeMsg) (tea.Model, tea.Cmd
 
 // handleSearchMessage handles search-related messages
 func (t *TUI) handleSearchMessage(msg navigation.SearchMsg) (tea.Model, tea.Cmd) {
-	if msg.Complete {
+	if msg.Active {
+		// Search mode is active, update the search query
+		err := t.searchFilter.SetQuery(msg.Query)
+		if err != nil {
+			logging.Error(t.Logger, "Invalid search query: %v", err)
+			if t.statusBar != nil {
+				t.statusBar.SetStatus(fmt.Sprintf("Invalid search pattern: %v", err), components.StatusError)
+			}
+			return t, nil
+		}
+		
+		// Update status bar to show search mode
+		if t.statusBar != nil {
+			if msg.Query == "" {
+				t.statusBar.SetStatus("Search: ", components.StatusInfo)
+			} else {
+				t.statusBar.SetStatus(fmt.Sprintf("Search: %s", msg.Query), components.StatusInfo)
+			}
+		}
+	} else if msg.Complete {
+		// Search completed, apply the filter
 		logging.Info(t.Logger, "Search executed: %s", msg.Query)
-		// TODO: Implement search functionality
+		
+		// Apply search filter to current resources
+		t.applySearchFilter()
+		
+		// Update status bar to show search results
+		if t.statusBar != nil && t.searchFilter.IsActive() {
+			t.statusBar.SetStatus(fmt.Sprintf("Search: %s", msg.Query), components.StatusInfo)
+		}
+	} else {
+		// Search cancelled
+		t.searchFilter.Clear()
+		t.applySearchFilter()
+		
+		// Clear search mode in status bar
+		if t.statusBar != nil {
+			t.statusBar.SetStatus("", components.StatusInfo)
+		}
 	}
+	
 	return t, nil
+}
+
+// applySearchFilter applies the search filter to current resources
+func (t *TUI) applySearchFilter() {
+	if t.contentPane == nil || t.App == nil {
+		return
+	}
+	
+	// TODO: Implement search filtering when resource data is available in the regular TUI
+	// For now, search is only implemented in the simplified TUI
 }
 
 // handleCommandMessage handles command-related messages
 func (t *TUI) handleCommandMessage(msg navigation.CommandMsg) (tea.Model, tea.Cmd) {
-	if msg.Complete {
+	if msg.Active {
+		// Command mode is active, show command prompt
+		if t.statusBar != nil {
+			if msg.Command == "" {
+				t.statusBar.SetStatus(":", components.StatusInfo)
+			} else {
+				t.statusBar.SetStatus(fmt.Sprintf(":%s", msg.Command), components.StatusInfo)
+			}
+		}
+	} else if msg.Complete {
+		// Parse and execute the command
 		logging.Info(t.Logger, "Command executed: %s", msg.Command)
-		// TODO: Implement command functionality
+		
+		cmd, err := commands.ParseCommand(msg.Command)
+		if err != nil {
+			logging.Error(t.Logger, "Invalid command: %v", err)
+			if t.statusBar != nil {
+				t.statusBar.SetStatus(fmt.Sprintf("Invalid command: %v", err), components.StatusError)
+			}
+			return t, nil
+		}
+		
+		// Clear command mode in status bar
+		if t.statusBar != nil {
+			t.statusBar.SetStatus("", components.StatusInfo)
+		}
+		
+		return t.executeCommand(cmd)
+	} else {
+		// Command cancelled
+		if t.statusBar != nil {
+			t.statusBar.SetStatus("", components.StatusInfo)
+		}
 	}
+	
 	return t, nil
+}
+
+// executeCommand executes a parsed command
+func (t *TUI) executeCommand(cmd *commands.Command) (tea.Model, tea.Cmd) {
+	switch cmd.Type {
+	case commands.CommandTypeQuit:
+		logging.Info(t.Logger, "Quit command executed")
+		return t, tea.Quit
+		
+	case commands.CommandTypeHelp:
+		if len(cmd.Args) > 0 {
+			// Show help for specific command
+			if t.statusBar != nil {
+				t.statusBar.SetStatus(fmt.Sprintf("Help for: %s", strings.Join(cmd.Args, " ")), components.StatusInfo)
+			}
+		} else {
+			// Show general help
+			t.ToggleHelp()
+		}
+		
+	case commands.CommandTypeRefresh:
+		logging.Info(t.Logger, "Refresh command executed")
+		return t, func() tea.Msg {
+			return messages.RefreshMsg{}
+		}
+		
+	case commands.CommandTypeNamespace:
+		if cmd.Name != "" {
+			logging.Info(t.Logger, "Switching namespace to: %s", cmd.Name)
+			// TODO: Implement namespace switching
+			if t.statusBar != nil {
+				t.statusBar.SetStatus("Namespace switching not yet implemented", components.StatusWarning)
+			}
+		}
+		
+	case commands.CommandTypeContext:
+		if cmd.Name != "" {
+			logging.Info(t.Logger, "Switching context to: %s", cmd.Name)
+			// TODO: Implement context switching
+			if t.statusBar != nil {
+				t.statusBar.SetStatus("Context switching not yet implemented", components.StatusWarning)
+			}
+		}
+		
+	case commands.CommandTypeLogs:
+		logging.Info(t.Logger, "Logs command for pod: %s", cmd.Name)
+		// TODO: Implement log viewing
+		if t.statusBar != nil {
+			t.statusBar.SetStatus("Log viewing not yet implemented", components.StatusWarning)
+		}
+		
+	case commands.CommandTypeDescribe:
+		logging.Info(t.Logger, "Describe command for %s/%s", cmd.Resource, cmd.Name)
+		// TODO: Implement resource description
+		if t.statusBar != nil {
+			t.statusBar.SetStatus("Resource description not yet implemented", components.StatusWarning)
+		}
+		
+	case commands.CommandTypeDelete:
+		logging.Info(t.Logger, "Delete command for %s/%s", cmd.Resource, cmd.Name)
+		if t.statusBar != nil {
+			t.statusBar.SetStatus("Delete operation not yet implemented", components.StatusError)
+		}
+		
+	case commands.CommandTypeExec:
+		logging.Info(t.Logger, "Exec command for pod: %s", cmd.Name)
+		if t.statusBar != nil {
+			t.statusBar.SetStatus("Exec operation not yet implemented", components.StatusError)
+		}
+		
+	case commands.CommandTypeEdit:
+		logging.Info(t.Logger, "Edit command for %s/%s", cmd.Resource, cmd.Name)
+		if t.statusBar != nil {
+			t.statusBar.SetStatus("Edit operation not yet implemented", components.StatusError)
+		}
+		
+	case commands.CommandTypeScale:
+		logging.Info(t.Logger, "Scale command for deployment: %s", cmd.Name)
+		if t.statusBar != nil {
+			t.statusBar.SetStatus("Scale operation not yet implemented", components.StatusError)
+		}
+		
+	default:
+		if t.statusBar != nil {
+			t.statusBar.SetStatus(fmt.Sprintf("Unknown command: %s", cmd.RawInput), components.StatusError)
+		}
+	}
+	
+	return t, nil
+}
+
+// ToggleHelp toggles the help modal visibility
+func (t *TUI) ToggleHelp() {
+	if t.State == models.StateHelp {
+		// Return to main state
+		t.State = models.StateMain
+		logging.Debug(t.Logger, "Help modal closed")
+	} else if t.State == models.StateMain {
+		// Show help
+		t.State = models.StateHelp
+		logging.Debug(t.Logger, "Help modal opened")
+	}
 }
 
 // routeActionToContentPane routes navigation actions to the content pane

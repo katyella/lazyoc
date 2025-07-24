@@ -52,7 +52,7 @@ var PredefinedThemes = map[string]*Theme{
 		AccentForeground: lipgloss.Color(constants.ColorWhite),
 		MutedForeground:  lipgloss.Color(constants.ColorGray),
 		SelectedBg:       lipgloss.Color(constants.ColorGray),
-		FocusBorder:      lipgloss.Color(constants.ColorBlue)
+		FocusBorder:      lipgloss.Color(constants.ColorBlue),
 	},
 	"light": {
 		Name:             "light",
@@ -68,7 +68,7 @@ var PredefinedThemes = map[string]*Theme{
 		AccentForeground: lipgloss.Color(constants.ColorBlack),
 		MutedForeground:  lipgloss.Color(constants.ColorGray),
 		SelectedBg:       lipgloss.Color(constants.ColorLightGray),
-		FocusBorder:      lipgloss.Color(constants.ColorDarkBlue)
+		FocusBorder:      lipgloss.Color(constants.ColorDarkBlue),
 	},
 }
 

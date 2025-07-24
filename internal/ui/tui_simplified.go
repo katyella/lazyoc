@@ -1435,22 +1435,22 @@ func (t *SimplifiedTUI) InitializeK8sClient(kubeconfigPath string) tea.Cmd {
 		if err != nil {
 			logging.Warn(t.Logger, "⚠️ Failed to create project manager factory, falling back to namespace-only mode: %v", err)
 			// Fallback to basic resource client without project manager
-			resourceClient = resources.NewK8sResourceClient(clientset, namespace)
+			resourceClient = resources.NewK8sResourceClientWithConfig(clientset, config, namespace)
 		} else {
 			// Create project manager with auto-detection
 			projectManager, err := projectFactory.CreateAutoDetectManager(context.Background())
 			if err != nil {
 				logging.Warn(t.Logger, "⚠️ Failed to create project manager, falling back to namespace-only mode: %v", err)
 				// Fallback to basic resource client without project manager
-				resourceClient = resources.NewK8sResourceClient(clientset, namespace)
+				resourceClient = resources.NewK8sResourceClientWithConfig(clientset, config, namespace)
 			} else {
 				logging.Info(t.Logger, "✅ Project manager created successfully")
 				// Create resource client with project manager integration
-				resourceClient = resources.NewK8sResourceClientWithProjectManager(clientset, namespace, projectManager)
+				resourceClient = resources.NewK8sResourceClientWithProjectManagerAndConfig(clientset, config, namespace, projectManager)
 			}
 		}
 		
-		// TODO: Re-enable connection monitor once connection issue is resolved
+		// Connection monitor is not currently used - dead code
 		// connMonitor := monitor.NewK8sConnectionMonitor(t.authProvider, resourceClient)
 		var connMonitor monitor.ConnectionMonitor = nil
 		

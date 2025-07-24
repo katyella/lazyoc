@@ -40,7 +40,10 @@ func TestTUIUpdate_WindowSize(t *testing.T) {
 	msg := tea.WindowSizeMsg{Width: 80, Height: 24}
 	model, cmd := tui.Update(msg)
 	
-	updatedTUI := model.(*TUI)
+	updatedTUI, ok := model.(*TUI)
+	if !ok {
+		t.Fatal("Model is not a *TUI")
+	}
 	if updatedTUI.Width != 80 || updatedTUI.Height != 24 {
 		t.Errorf("Expected dimensions 80x24, got %dx%d", updatedTUI.Width, updatedTUI.Height)
 	}
@@ -56,7 +59,10 @@ func TestTUIUpdate_Init(t *testing.T) {
 	msg := messages.InitMsg{}
 	model, _ := tui.Update(msg)
 	
-	updatedTUI := model.(*TUI)
+	updatedTUI, ok := model.(*TUI)
+	if !ok {
+		t.Fatal("Model is not a *TUI")
+	}
 	if updatedTUI.State != models.StateMain {
 		t.Errorf("Expected state to be StateMain after init, got %v", updatedTUI.State)
 	}
@@ -87,7 +93,10 @@ func TestTUIUpdate_KeyInput_Help(t *testing.T) {
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}}
 	model, _ := tui.Update(msg)
 	
-	updatedTUI := model.(*TUI)
+	updatedTUI, ok := model.(*TUI)
+	if !ok {
+		t.Fatal("Model is not a *TUI")
+	}
 	if updatedTUI.State != models.StateHelp {
 		t.Errorf("Expected state to be StateHelp after '?', got %v", updatedTUI.State)
 	}
@@ -102,7 +111,10 @@ func TestTUIUpdate_KeyInput_TabNavigation(t *testing.T) {
 	msg := tea.KeyMsg{Type: tea.KeyTab}
 	model, _ := tui.Update(msg)
 	
-	updatedTUI := model.(*TUI)
+	updatedTUI, ok := model.(*TUI)
+	if !ok {
+		t.Fatal("Model is not a *TUI")
+	}
 	if updatedTUI.ActiveTab != models.TabServices {
 		t.Errorf("Expected tab to be TabServices after tab key, got %v", updatedTUI.ActiveTab)
 	}

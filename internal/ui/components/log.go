@@ -642,16 +642,18 @@ func (lp *LogPane) formatLogEntry(entry LogEntry) string {
 	// Get base formatted string
 	formatted := entry.Format()
 	
-	// DEBUG: Use bright colors to test visibility (disable styles temporarily)
+	// Apply styling based on log level
 	switch entry.Level {
 	case LogLevelError:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#FF0000")).Render(formatted) // Bright red
+		return lp.errorStyle.Render(formatted)
 	case LogLevelWarn:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFF00")).Render(formatted) // Bright yellow
+		return lp.warnStyle.Render(formatted)
 	case LogLevelInfo:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF00")).Render(formatted) // Bright green
+		return lp.infoStyle.Render(formatted)
+	case LogLevelDebug:
+		return lp.debugStyle.Render(formatted)
 	default:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Render(formatted) // White
+		return formatted
 	}
 }
 
