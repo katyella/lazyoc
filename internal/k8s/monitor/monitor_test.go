@@ -56,7 +56,7 @@ func (m *mockResourceClient) TestConnection(ctx context.Context) error {
 
 func (m *mockResourceClient) GetServerInfo(ctx context.Context) (map[string]interface{}, error) {
 	return map[string]interface{}{
-		"version": "v1.31.0",
+		"version":    "v1.31.0",
 		"gitVersion": "v1.31.0",
 	}, nil
 }
@@ -165,11 +165,11 @@ func getTestComponents(t *testing.T) (auth.AuthProvider, resources.ResourceClien
 		namespace: "test-namespace",
 		context:   "test-context",
 	}
-	
+
 	resourceClient := &mockResourceClient{
 		namespace: "test-namespace",
 	}
-	
+
 	return authProvider, resourceClient
 }
 
@@ -216,18 +216,18 @@ func TestConnectionEventType_String(t *testing.T) {
 
 func TestK8sConnectionMonitor_Creation(t *testing.T) {
 	authProvider, resourceClient := getTestComponents(t)
-	
+
 	monitor := NewK8sConnectionMonitor(authProvider, resourceClient)
-	
+
 	if monitor == nil {
 		t.Fatal("Expected non-nil monitor")
 	}
-	
+
 	status := monitor.GetStatus()
 	if status.Status != StatusUnknown {
 		t.Errorf("Expected initial status to be Unknown, got %s", status.Status)
 	}
-	
+
 	if monitor.IsHealthy() {
 		t.Error("Expected monitor to not be healthy initially")
 	}
@@ -235,40 +235,40 @@ func TestK8sConnectionMonitor_Creation(t *testing.T) {
 
 func TestK8sConnectionMonitor_StartStop(t *testing.T) {
 	t.Skip("Disabled: This test deadlocks when connecting to real cluster")
-	
+
 	authProvider, resourceClient := getTestComponents(t)
 	monitor := NewK8sConnectionMonitor(authProvider, resourceClient)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	
+
 	// Start monitoring
 	err := monitor.Start(ctx)
 	if err != nil {
 		t.Fatalf("Failed to start monitor: %v", err)
 	}
-	
+
 	// Give it a moment to attempt connection
 	time.Sleep(2 * time.Second)
-	
+
 	// Check that it started
 	status := monitor.GetStatus()
 	if status.Status == StatusUnknown {
 		t.Error("Expected status to change from Unknown after start")
 	}
-	
+
 	// Get events
 	events := monitor.GetEvents(10)
 	if len(events) == 0 {
 		t.Error("Expected at least one event after start")
 	}
-	
+
 	// Stop monitoring
 	monitor.Stop()
-	
+
 	// Give it a moment to stop
 	time.Sleep(100 * time.Millisecond)
-	
+
 	// Check final status
 	finalStatus := monitor.GetStatus()
 	if finalStatus.Status != StatusDisconnected {
@@ -283,17 +283,17 @@ func TestK8sConnectionMonitor_HealthCheck(t *testing.T) {
 func TestK8sConnectionMonitor_Metrics(t *testing.T) {
 	authProvider, resourceClient := getTestComponents(t)
 	monitor := NewK8sConnectionMonitor(authProvider, resourceClient)
-	
+
 	metrics := monitor.GetMetrics()
 	if metrics == nil {
 		t.Fatal("Expected non-nil metrics")
 	}
-	
+
 	// Initial metrics should be zero
 	if metrics.RequestCount != 0 {
 		t.Errorf("Expected initial request count to be 0, got %d", metrics.RequestCount)
 	}
-	
+
 	if metrics.ErrorCount != 0 {
 		t.Errorf("Expected initial error count to be 0, got %d", metrics.ErrorCount)
 	}
@@ -301,46 +301,46 @@ func TestK8sConnectionMonitor_Metrics(t *testing.T) {
 
 func TestK8sConnectionMonitor_Events(t *testing.T) {
 	t.Skip("Disabled: This test may hang when connecting to real cluster")
-	
+
 	authProvider, resourceClient := getTestComponents(t)
 	monitor := NewK8sConnectionMonitor(authProvider, resourceClient)
-	
+
 	// Initially no events
 	events := monitor.GetEvents(10)
 	if len(events) != 0 {
 		t.Errorf("Expected no initial events, got %d", len(events))
 	}
-	
+
 	// Start monitor to generate events
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	
+
 	err := monitor.Start(ctx)
 	if err != nil {
 		t.Fatalf("Failed to start monitor: %v", err)
 	}
 	defer monitor.Stop()
-	
+
 	// Give it time to generate events
 	time.Sleep(1 * time.Second)
-	
+
 	events = monitor.GetEvents(10)
 	if len(events) == 0 {
 		t.Error("Expected at least one event after starting")
 	}
-	
+
 	// Test event listener
 	var receivedEvent *ConnectionEvent
 	monitor.AddEventListener(func(event ConnectionEvent) {
 		receivedEvent = &event
 	})
-	
+
 	// Force a health check to generate an event
 	monitor.ForceHealthCheck(ctx)
-	
+
 	// Give listener time to be called
 	time.Sleep(100 * time.Millisecond)
-	
+
 	// Note: receivedEvent might be nil if health check doesn't generate an event
 	// This is acceptable as it depends on cluster connectivity
 	t.Logf("Event listener test completed (received event: %v)", receivedEvent != nil)
@@ -353,13 +353,13 @@ func TestK8sConnectionMonitor_Reconnect(t *testing.T) {
 func TestK8sConnectionMonitor_EventLimiting(t *testing.T) {
 	authProvider, resourceClient := getTestComponents(t)
 	monitor := NewK8sConnectionMonitor(authProvider, resourceClient)
-	
+
 	// Test getting more events than exist
 	events := monitor.GetEvents(1000)
 	if len(events) != 0 {
 		t.Errorf("Expected 0 events, got %d", len(events))
 	}
-	
+
 	// Test getting negative number of events
 	events = monitor.GetEvents(-1)
 	if len(events) != 0 {
@@ -369,20 +369,20 @@ func TestK8sConnectionMonitor_EventLimiting(t *testing.T) {
 
 func TestK8sConnectionMonitor_DoubleStart(t *testing.T) {
 	t.Skip("Disabled: This test may hang when connecting to real cluster")
-	
+
 	authProvider, resourceClient := getTestComponents(t)
 	monitor := NewK8sConnectionMonitor(authProvider, resourceClient)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	
+
 	// Start monitor
 	err := monitor.Start(ctx)
 	if err != nil {
 		t.Fatalf("Failed to start monitor: %v", err)
 	}
 	defer monitor.Stop()
-	
+
 	// Try to start again
 	err = monitor.Start(ctx)
 	if err == nil {
@@ -393,10 +393,10 @@ func TestK8sConnectionMonitor_DoubleStart(t *testing.T) {
 func TestK8sConnectionMonitor_StopBeforeStart(t *testing.T) {
 	authProvider, resourceClient := getTestComponents(t)
 	monitor := NewK8sConnectionMonitor(authProvider, resourceClient)
-	
+
 	// Stop without starting (should not panic)
 	monitor.Stop()
-	
+
 	status := monitor.GetStatus()
 	if status.Status != StatusUnknown {
 		t.Errorf("Expected status to remain Unknown, got %s", status.Status)

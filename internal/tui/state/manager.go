@@ -46,13 +46,13 @@ const (
 
 // UIState represents the UI state
 type UIState struct {
-	ActiveTab      int
-	ActiveTabName  string
-	FocusedPanel   string
-	ShowDetails    bool
-	ShowLogs       bool
-	ModalVisible   bool
-	ModalType      string
+	ActiveTab     int
+	ActiveTabName string
+	FocusedPanel  string
+	ShowDetails   bool
+	ShowLogs      bool
+	ModalVisible  bool
+	ModalType     string
 }
 
 // ResourceState represents the resource state
@@ -149,10 +149,10 @@ func (m *Manager) GetConnectionState() ConnectionState {
 func (m *Manager) SetConnectionStatus(status ConnectionStatus) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	oldState := m.connection
 	m.connection.Status = status
-	
+
 	m.notify(StateChange{
 		Type:     ChangeTypeConnection,
 		OldValue: oldState,
@@ -164,7 +164,7 @@ func (m *Manager) SetConnectionStatus(status ConnectionStatus) {
 func (m *Manager) SetKubeconfig(path string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	m.connection.Kubeconfig = path
 	return nil
 }
@@ -173,13 +173,13 @@ func (m *Manager) SetKubeconfig(path string) error {
 func (m *Manager) SetClusterInfo(clusterType, version, context, namespace string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	oldState := m.connection
 	m.connection.ClusterType = clusterType
 	m.connection.ClusterVersion = version
 	m.connection.Context = context
 	m.connection.Namespace = namespace
-	
+
 	m.notify(StateChange{
 		Type:     ChangeTypeConnection,
 		OldValue: oldState,
@@ -200,11 +200,11 @@ func (m *Manager) GetUIState() UIState {
 func (m *Manager) SetActiveTab(index int, name string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	oldState := m.ui
 	m.ui.ActiveTab = index
 	m.ui.ActiveTabName = name
-	
+
 	m.notify(StateChange{
 		Type:     ChangeTypeUI,
 		OldValue: oldState,
@@ -216,10 +216,10 @@ func (m *Manager) SetActiveTab(index int, name string) {
 func (m *Manager) SetFocusedPanel(panel string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	oldState := m.ui
 	m.ui.FocusedPanel = panel
-	
+
 	m.notify(StateChange{
 		Type:     ChangeTypeUI,
 		OldValue: oldState,
@@ -231,11 +231,11 @@ func (m *Manager) SetFocusedPanel(panel string) {
 func (m *Manager) SetPanelVisibility(showDetails, showLogs bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	oldState := m.ui
 	m.ui.ShowDetails = showDetails
 	m.ui.ShowLogs = showLogs
-	
+
 	m.notify(StateChange{
 		Type:     ChangeTypeUI,
 		OldValue: oldState,
@@ -256,10 +256,10 @@ func (m *Manager) GetResourceState() ResourceState {
 func (m *Manager) SetPods(pods []interface{}) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	oldState := m.resources
 	m.resources.Pods = pods
-	
+
 	m.notify(StateChange{
 		Type:     ChangeTypeResources,
 		OldValue: oldState,
@@ -271,10 +271,10 @@ func (m *Manager) SetPods(pods []interface{}) {
 func (m *Manager) SetSelectedIndex(index int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	oldState := m.resources
 	m.resources.SelectedIndex = index
-	
+
 	// Update selected item based on active tab
 	switch m.ui.ActiveTabName {
 	case "Pods":
@@ -285,9 +285,9 @@ func (m *Manager) SetSelectedIndex(index int) {
 		if index >= 0 && index < len(m.resources.Services) {
 			m.resources.SelectedItem = m.resources.Services[index]
 		}
-	// TODO: Add other resource types
+		// TODO: Add other resource types
 	}
-	
+
 	m.notify(StateChange{
 		Type:     ChangeTypeSelection,
 		OldValue: oldState,

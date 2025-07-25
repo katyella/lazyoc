@@ -2,7 +2,7 @@ package messages
 
 import (
 	"fmt"
-	
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -21,10 +21,10 @@ type MessageHandler struct {
 	// Message batching support
 	batchedMessages []tea.Msg
 	batchSize       int
-	
+
 	// Performance tracking
-	messageCount    map[string]int
-	highFreqTypes   map[string]bool
+	messageCount  map[string]int
+	highFreqTypes map[string]bool
 }
 
 // NewMessageHandler creates a new message handler with default settings
@@ -45,7 +45,7 @@ func (h *MessageHandler) GetMessagePriority(msg tea.Msg) MessagePriority {
 		return PriorityCritical
 	case ErrorMsg:
 		return PriorityCritical
-		
+
 	// High priority messages that affect UI state
 	case tea.WindowSizeMsg:
 		return PriorityHigh
@@ -53,7 +53,7 @@ func (h *MessageHandler) GetMessagePriority(msg tea.Msg) MessagePriority {
 		return PriorityHigh
 	case ConnectedMsg, DisconnectedMsg:
 		return PriorityHigh
-		
+
 	// Normal priority messages
 	case tea.KeyMsg:
 		return PriorityNormal
@@ -61,11 +61,11 @@ func (h *MessageHandler) GetMessagePriority(msg tea.Msg) MessagePriority {
 		return PriorityNormal
 	case StatusMsg:
 		return PriorityNormal
-		
+
 	// Low priority messages
 	case RefreshMsg:
 		return PriorityLow
-		
+
 	default:
 		return PriorityNormal
 	}
@@ -75,7 +75,7 @@ func (h *MessageHandler) GetMessagePriority(msg tea.Msg) MessagePriority {
 func (h *MessageHandler) TrackMessage(msg tea.Msg) {
 	msgType := getMessageType(msg)
 	h.messageCount[msgType]++
-	
+
 	// Mark as high frequency if we've seen more than 100 in the session
 	if h.messageCount[msgType] > 100 {
 		h.highFreqTypes[msgType] = true
@@ -93,11 +93,11 @@ func (h *MessageHandler) ShouldBatch(msg tea.Msg) bool {
 	// Never batch critical messages
 	case tea.QuitMsg, ErrorMsg, tea.WindowSizeMsg:
 		return false
-		
+
 	// Batch similar status updates
 	case StatusMsg, LoadingMsg:
 		return h.IsHighFrequency(msg)
-		
+
 	default:
 		return false
 	}
@@ -113,13 +113,13 @@ func (h *MessageHandler) ProcessBatch() []tea.Msg {
 	if len(h.batchedMessages) == 0 {
 		return nil
 	}
-	
+
 	// Deduplicate similar messages (keep only the latest)
 	processed := h.deduplicateMessages(h.batchedMessages)
-	
+
 	// Clear the batch
 	h.batchedMessages = h.batchedMessages[:0]
-	
+
 	return processed
 }
 
@@ -128,7 +128,7 @@ func (h *MessageHandler) deduplicateMessages(messages []tea.Msg) []tea.Msg {
 	// Use a map to track the latest instance of each message type
 	latest := make(map[string]tea.Msg)
 	order := make([]string, 0)
-	
+
 	for _, msg := range messages {
 		key := getMessageKey(msg)
 		if _, exists := latest[key]; !exists {
@@ -136,13 +136,13 @@ func (h *MessageHandler) deduplicateMessages(messages []tea.Msg) []tea.Msg {
 		}
 		latest[key] = msg
 	}
-	
+
 	// Reconstruct in order
 	result := make([]tea.Msg, 0, len(order))
 	for _, key := range order {
 		result = append(result, latest[key])
 	}
-	
+
 	return result
 }
 
@@ -193,7 +193,7 @@ type MessageProcessor func(tea.Msg) (bool, []tea.Cmd)
 // ProcessWithHandlers processes a message through a series of handlers
 func ProcessWithHandlers(msg tea.Msg, handlers ...MessageProcessor) []tea.Cmd {
 	var allCmds []tea.Cmd
-	
+
 	for _, handler := range handlers {
 		handled, cmds := handler(msg)
 		if len(cmds) > 0 {
@@ -204,6 +204,6 @@ func ProcessWithHandlers(msg tea.Msg, handlers ...MessageProcessor) []tea.Cmd {
 			break
 		}
 	}
-	
+
 	return allCmds
 }

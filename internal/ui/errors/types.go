@@ -95,7 +95,7 @@ func (e *UserFriendlyError) GetSuggestedAction() string {
 	if e.SuggestedAction != "" {
 		return e.SuggestedAction
 	}
-	
+
 	// Provide default suggestions based on category
 	switch e.Category {
 	case ErrorCategoryConnection:

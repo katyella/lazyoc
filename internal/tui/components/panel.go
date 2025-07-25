@@ -17,11 +17,11 @@ type PanelComponent struct {
 	content     string
 	borderStyle lipgloss.Style
 	titleStyle  lipgloss.Style
-	
+
 	// Scrolling
 	scrollOffset int
 	contentLines []string
-	
+
 	// Selection
 	selectedIndex int
 	selectable    bool
@@ -31,11 +31,11 @@ type PanelComponent struct {
 func NewPanelComponent(title string) *PanelComponent {
 	return &PanelComponent{
 		title: title,
-		
+
 		borderStyle: lipgloss.NewStyle().
 			BorderStyle(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color(constants.ColorGray)),
-			
+
 		titleStyle: lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color(constants.ColorBlue)),
@@ -91,7 +91,7 @@ func (p *PanelComponent) Update(msg tea.Msg) (tea.Cmd, error) {
 			}
 		}
 	}
-	
+
 	return nil, nil
 }
 
@@ -105,14 +105,14 @@ func (p *PanelComponent) View() string {
 	borderStyle := p.borderStyle.
 		Width(p.width).
 		Height(p.height)
-		
+
 	if p.focused {
 		borderStyle = borderStyle.BorderForeground(lipgloss.Color(constants.ColorBlue))
 	}
 
 	// Prepare content
 	content := p.prepareContent()
-	
+
 	// For now, just render the content with border
 	// Title handling can be added later with a newer lipgloss version
 	return borderStyle.Render(content)
@@ -122,7 +122,7 @@ func (p *PanelComponent) View() string {
 func (p *PanelComponent) SetContent(content string) {
 	p.content = content
 	p.contentLines = strings.Split(content, "\n")
-	
+
 	// Adjust scroll if needed
 	p.adjustScroll()
 }
@@ -131,7 +131,7 @@ func (p *PanelComponent) SetContent(content string) {
 func (p *PanelComponent) SetContentLines(lines []string) {
 	p.contentLines = lines
 	p.content = strings.Join(lines, "\n")
-	
+
 	// Adjust scroll if needed
 	p.adjustScroll()
 }
@@ -177,7 +177,7 @@ func (p *PanelComponent) prepareContent() string {
 	var lines []string
 	for i := startLine; i < endLine; i++ {
 		line := p.contentLines[i]
-		
+
 		// Highlight selected line if selection is enabled
 		if p.selectable && i == p.selectedIndex {
 			selectedStyle := lipgloss.NewStyle().
@@ -185,7 +185,7 @@ func (p *PanelComponent) prepareContent() string {
 				Width(p.width - 4) // Account for borders and padding
 			line = selectedStyle.Render(line)
 		}
-		
+
 		lines = append(lines, line)
 	}
 
@@ -210,14 +210,14 @@ func (p *PanelComponent) scroll(delta int) {
 // moveSelection moves the selection
 func (p *PanelComponent) moveSelection(delta int) {
 	p.selectedIndex += delta
-	
+
 	// Clamp to valid range
 	if p.selectedIndex < 0 {
 		p.selectedIndex = 0
 	} else if p.selectedIndex >= len(p.contentLines) {
 		p.selectedIndex = len(p.contentLines) - 1
 	}
-	
+
 	// Ensure selected item is visible
 	p.ensureSelectedVisible()
 }
@@ -228,7 +228,7 @@ func (p *PanelComponent) adjustScroll() {
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
-	
+
 	if p.scrollOffset < 0 {
 		p.scrollOffset = 0
 	} else if p.scrollOffset > maxScroll {
@@ -239,16 +239,16 @@ func (p *PanelComponent) adjustScroll() {
 // ensureSelectedVisible adjusts scroll to keep selection visible
 func (p *PanelComponent) ensureSelectedVisible() {
 	visibleHeight := p.height - 4
-	
+
 	// Scroll up if selection is above visible area
 	if p.selectedIndex < p.scrollOffset {
 		p.scrollOffset = p.selectedIndex
 	}
-	
+
 	// Scroll down if selection is below visible area
 	if p.selectedIndex >= p.scrollOffset+visibleHeight {
 		p.scrollOffset = p.selectedIndex - visibleHeight + 1
 	}
-	
+
 	p.adjustScroll()
 }

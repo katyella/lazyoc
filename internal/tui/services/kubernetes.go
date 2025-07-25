@@ -34,14 +34,14 @@ func (k *KubernetesService) Connect(kubeconfig, contextName string) error {
 	// Test connection
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	
+
 	if err := k.clientFactory.TestConnection(ctx); err != nil {
 		return fmt.Errorf("failed to connect to cluster: %w", err)
 	}
 
 	// Get clientset
 	clientset := k.clientFactory.GetClientset()
-	
+
 	// Get current namespace
 	ns, err := k.clientFactory.GetCurrentNamespace()
 	if err != nil {
@@ -292,7 +292,7 @@ func (k *KubernetesService) DeleteResource(resourceType, name string) error {
 	}
 
 	ctx := context.Background()
-	
+
 	switch resourceType {
 	case "pod", "pods":
 		return k.resourceClient.DeletePod(ctx, k.namespace, name)
@@ -316,7 +316,7 @@ func (k *KubernetesService) ExecInPod(podName, containerName string, command []s
 	}
 
 	ctx := context.Background()
-	
+
 	// For now, we'll execute without stdin/stdout/stderr redirection
 	// In a real TUI, you'd want to handle these streams properly
 	opts := resources.ExecOptions{
@@ -326,7 +326,7 @@ func (k *KubernetesService) ExecInPod(podName, containerName string, command []s
 		Command:       command,
 		TTY:           false,
 	}
-	
+
 	return k.resourceClient.ExecuteInPod(ctx, opts)
 }
 

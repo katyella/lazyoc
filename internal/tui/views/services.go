@@ -31,9 +31,9 @@ type ServiceItem struct {
 
 // ServiceStyle contains styles for service rendering
 type ServiceStyle struct {
-	headerStyle      lipgloss.Style
-	clusterIPStyle   lipgloss.Style
-	nodePortStyle    lipgloss.Style
+	headerStyle       lipgloss.Style
+	clusterIPStyle    lipgloss.Style
+	nodePortStyle     lipgloss.Style
 	loadBalancerStyle lipgloss.Style
 	externalNameStyle lipgloss.Style
 }
@@ -57,7 +57,7 @@ func NewServicesView() *ServicesView {
 				Foreground(lipgloss.Color(constants.ColorYellow)),
 		},
 	}
-	
+
 	view.panel.EnableSelection()
 	return view
 }
@@ -74,7 +74,7 @@ func (v *ServicesView) Update(msg tea.Msg) (tea.Cmd, error) {
 		v.SetServices(msg.Services)
 		return nil, nil
 	}
-	
+
 	return v.panel.Update(msg)
 }
 
@@ -104,13 +104,13 @@ func (v *ServicesView) updateContent() {
 		v.panel.SetContent("No services found")
 		return
 	}
-	
+
 	// Create header
 	header := fmt.Sprintf("%-30s %-12s %-15s %-15s %-20s %-5s",
 		"NAME", "TYPE", "CLUSTER-IP", "EXTERNAL-IP", "PORTS", "AGE")
-	
+
 	lines := []string{v.style.headerStyle.Render(header)}
-	
+
 	// Add services
 	for _, svc := range v.services {
 		// Choose style based on type
@@ -127,12 +127,12 @@ func (v *ServicesView) updateContent() {
 		default:
 			style = v.style.clusterIPStyle
 		}
-		
+
 		externalIP := svc.ExternalIP
 		if externalIP == "" {
 			externalIP = "<none>"
 		}
-		
+
 		line := fmt.Sprintf("%-30s %-12s %-15s %-15s %-20s %-5s",
 			truncate(svc.Name, 30),
 			truncate(svc.Type, 12),
@@ -141,18 +141,18 @@ func (v *ServicesView) updateContent() {
 			truncate(svc.Ports, 20),
 			svc.Age,
 		)
-		
+
 		lines = append(lines, style.Render(line))
 	}
-	
+
 	v.panel.SetContentLines(lines)
 }
 
 // Component interface implementation
-func (v *ServicesView) Focus() error     { return v.panel.Focus() }
-func (v *ServicesView) Blur() error      { return v.panel.Blur() }
-func (v *ServicesView) IsFocused() bool  { return v.panel.IsFocused() }
-func (v *ServicesView) SetSize(w, h int) { v.panel.SetSize(w, h) }
+func (v *ServicesView) Focus() error        { return v.panel.Focus() }
+func (v *ServicesView) Blur() error         { return v.panel.Blur() }
+func (v *ServicesView) IsFocused() bool     { return v.panel.IsFocused() }
+func (v *ServicesView) SetSize(w, h int)    { v.panel.SetSize(w, h) }
 func (v *ServicesView) GetSize() (int, int) { return v.panel.GetSize() }
 
 // Messages

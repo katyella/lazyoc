@@ -25,6 +25,12 @@ const (
 const (
 	// LogChannelBufferSize is the buffer size for log streaming channels
 	LogChannelBufferSize = 100
+
+	// MaxLogLines is the maximum number of log lines to keep in memory per pod
+	MaxLogLines = 1000
+
+	// MaxAppLogEntries is the maximum number of application log entries to keep
+	MaxAppLogEntries = 500
 )
 
 // Retry configuration

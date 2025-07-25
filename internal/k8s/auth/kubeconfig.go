@@ -27,7 +27,7 @@ func NewKubeconfigProvider(kubeconfigPath string) *KubeconfigProvider {
 	if kubeconfigPath == "" {
 		kubeconfigPath = getDefaultKubeconfigPath()
 	}
-	
+
 	return &KubeconfigProvider{
 		kubeconfigPath: kubeconfigPath,
 	}
@@ -42,7 +42,7 @@ func NewKubeconfigProviderWithContext(kubeconfigPath, context string) *Kubeconfi
 
 // Authenticate loads and validates the kubeconfig
 func (kp *KubeconfigProvider) Authenticate(ctx context.Context) (*rest.Config, error) {
-	
+
 	// Check if kubeconfig file exists
 	if _, err := os.Stat(kp.kubeconfigPath); os.IsNotExist(err) {
 		return nil, NewAuthError(
@@ -51,7 +51,7 @@ func (kp *KubeconfigProvider) Authenticate(ctx context.Context) (*rest.Config, e
 			err,
 		)
 	}
-	
+
 	// Load the raw kubeconfig for context/namespace info
 	rawConfig, err := clientcmd.LoadFromFile(kp.kubeconfigPath)
 	if err != nil {
@@ -61,15 +61,15 @@ func (kp *KubeconfigProvider) Authenticate(ctx context.Context) (*rest.Config, e
 			err,
 		)
 	}
-	
+
 	kp.rawConfig = rawConfig
-	
+
 	// Determine which context to use
 	contextName := kp.context
 	if contextName == "" {
 		contextName = rawConfig.CurrentContext
 	}
-	
+
 	if contextName == "" {
 		return nil, NewAuthError(
 			"no_current_context",
@@ -77,7 +77,7 @@ func (kp *KubeconfigProvider) Authenticate(ctx context.Context) (*rest.Config, e
 			nil,
 		)
 	}
-	
+
 	// Validate the context exists
 	if _, exists := rawConfig.Contexts[contextName]; !exists {
 		return nil, NewAuthError(
@@ -86,9 +86,9 @@ func (kp *KubeconfigProvider) Authenticate(ctx context.Context) (*rest.Config, e
 			nil,
 		)
 	}
-	
+
 	kp.context = contextName
-	
+
 	// Extract namespace from context
 	if context := rawConfig.Contexts[contextName]; context != nil {
 		kp.namespace = context.Namespace
@@ -98,7 +98,7 @@ func (kp *KubeconfigProvider) Authenticate(ctx context.Context) (*rest.Config, e
 	} else {
 		kp.namespace = "default"
 	}
-	
+
 	// Build the rest.Config
 	config, err := clientcmd.BuildConfigFromFlags("", kp.kubeconfigPath)
 	if err != nil {
@@ -108,7 +108,7 @@ func (kp *KubeconfigProvider) Authenticate(ctx context.Context) (*rest.Config, e
 			err,
 		)
 	}
-	
+
 	// Override context if specified
 	if kp.context != rawConfig.CurrentContext {
 		contextConfig, err := clientcmd.NewNonInteractiveClientConfig(
@@ -127,7 +127,7 @@ func (kp *KubeconfigProvider) Authenticate(ctx context.Context) (*rest.Config, e
 		config = contextConfig
 	} else {
 	}
-	
+
 	kp.config = config
 	return config, nil
 }
@@ -141,7 +141,7 @@ func (kp *KubeconfigProvider) IsValid(ctx context.Context) error {
 			nil,
 		)
 	}
-	
+
 	// Check if kubeconfig file still exists
 	if _, err := os.Stat(kp.kubeconfigPath); os.IsNotExist(err) {
 		return NewAuthError(
@@ -150,7 +150,7 @@ func (kp *KubeconfigProvider) IsValid(ctx context.Context) error {
 			err,
 		)
 	}
-	
+
 	// For basic validation, we assume kubeconfig is valid if file exists
 	// More sophisticated validation could check token expiry, etc.
 	return nil
@@ -191,12 +191,12 @@ func (kp *KubeconfigProvider) GetAvailableContexts() ([]string, error) {
 		}
 		kp.rawConfig = rawConfig
 	}
-	
+
 	var contexts []string
 	for name := range kp.rawConfig.Contexts {
 		contexts = append(contexts, name)
 	}
-	
+
 	return contexts, nil
 }
 
@@ -209,7 +209,7 @@ func (kp *KubeconfigProvider) SwitchContext(ctx context.Context, contextName str
 			nil,
 		)
 	}
-	
+
 	if _, exists := kp.rawConfig.Contexts[contextName]; !exists {
 		return NewAuthError(
 			"context_not_found",
@@ -217,7 +217,7 @@ func (kp *KubeconfigProvider) SwitchContext(ctx context.Context, contextName str
 			nil,
 		)
 	}
-	
+
 	kp.context = contextName
 	_, err := kp.Authenticate(ctx)
 	return err
@@ -229,12 +229,12 @@ func getDefaultKubeconfigPath() string {
 	if kubeconfig := os.Getenv("KUBECONFIG"); kubeconfig != "" {
 		return kubeconfig
 	}
-	
+
 	// Default to ~/.kube/config
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	
+
 	return filepath.Join(home, constants.KubeConfigDir, constants.KubeConfigFile)
 }

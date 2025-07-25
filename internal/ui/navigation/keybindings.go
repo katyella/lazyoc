@@ -12,47 +12,47 @@ type KeyAction string
 
 const (
 	// Global actions
-	ActionQuit             KeyAction = "quit"
-	ActionToggleHelp       KeyAction = "toggle_help"
-	ActionToggleDebug      KeyAction = "toggle_debug"
-	ActionRefresh          KeyAction = "refresh"
-	ActionEscape           KeyAction = "escape"
-	
+	ActionQuit        KeyAction = "quit"
+	ActionToggleHelp  KeyAction = "toggle_help"
+	ActionToggleDebug KeyAction = "toggle_debug"
+	ActionRefresh     KeyAction = "refresh"
+	ActionEscape      KeyAction = "escape"
+
 	// Navigation actions
-	ActionMoveUp           KeyAction = "move_up"
-	ActionMoveDown         KeyAction = "move_down"
-	ActionMoveLeft         KeyAction = "move_left"
-	ActionMoveRight        KeyAction = "move_right"
-	ActionPageUp           KeyAction = "page_up"
-	ActionPageDown         KeyAction = "page_down"
-	ActionHalfPageUp       KeyAction = "half_page_up"
-	ActionHalfPageDown     KeyAction = "half_page_down"
-	ActionGoToTop          KeyAction = "goto_top"
-	ActionGoToBottom       KeyAction = "goto_bottom"
-	
+	ActionMoveUp       KeyAction = "move_up"
+	ActionMoveDown     KeyAction = "move_down"
+	ActionMoveLeft     KeyAction = "move_left"
+	ActionMoveRight    KeyAction = "move_right"
+	ActionPageUp       KeyAction = "page_up"
+	ActionPageDown     KeyAction = "page_down"
+	ActionHalfPageUp   KeyAction = "half_page_up"
+	ActionHalfPageDown KeyAction = "half_page_down"
+	ActionGoToTop      KeyAction = "goto_top"
+	ActionGoToBottom   KeyAction = "goto_bottom"
+
 	// Panel navigation
-	ActionNextPanel        KeyAction = "next_panel"
-	ActionPrevPanel        KeyAction = "prev_panel"
-	ActionNextTab          KeyAction = "next_tab"
-	ActionPrevTab          KeyAction = "prev_tab"
-	ActionFocusMain        KeyAction = "focus_main"
-	ActionFocusDetail      KeyAction = "focus_detail"
-	ActionFocusLog         KeyAction = "focus_log"
-	
+	ActionNextPanel   KeyAction = "next_panel"
+	ActionPrevPanel   KeyAction = "prev_panel"
+	ActionNextTab     KeyAction = "next_tab"
+	ActionPrevTab     KeyAction = "prev_tab"
+	ActionFocusMain   KeyAction = "focus_main"
+	ActionFocusDetail KeyAction = "focus_detail"
+	ActionFocusLog    KeyAction = "focus_log"
+
 	// Modal actions
-	ActionEnterSearch      KeyAction = "enter_search"
-	ActionEnterCommand     KeyAction = "enter_command"
-	ActionEnterInsert      KeyAction = "enter_insert"
-	ActionEnterNormal      KeyAction = "enter_normal"
-	
+	ActionEnterSearch  KeyAction = "enter_search"
+	ActionEnterCommand KeyAction = "enter_command"
+	ActionEnterInsert  KeyAction = "enter_insert"
+	ActionEnterNormal  KeyAction = "enter_normal"
+
 	// Content actions
-	ActionSelect           KeyAction = "select"
-	ActionDelete           KeyAction = "delete"
-	ActionEdit             KeyAction = "edit"
-	ActionCopy             KeyAction = "copy"
-	ActionToggleCollapse   KeyAction = "toggle_collapse"
-	ActionToggleVisible    KeyAction = "toggle_visible"
-	
+	ActionSelect         KeyAction = "select"
+	ActionDelete         KeyAction = "delete"
+	ActionEdit           KeyAction = "edit"
+	ActionCopy           KeyAction = "copy"
+	ActionToggleCollapse KeyAction = "toggle_collapse"
+	ActionToggleVisible  KeyAction = "toggle_visible"
+
 	// Log actions
 	ActionClearLogs        KeyAction = "clear_logs"
 	ActionToggleAutoscroll KeyAction = "toggle_autoscroll"
@@ -90,7 +90,7 @@ func NewKeybindingRegistry() *KeybindingRegistry {
 		bindings: make(map[NavigationMode]map[string]KeyBinding),
 		mode:     ModeNormal,
 	}
-	
+
 	kr.initializeDefaultBindings()
 	return kr
 }
@@ -102,7 +102,7 @@ func (kr *KeybindingRegistry) initializeDefaultBindings() {
 	kr.bindings[ModeSearch] = make(map[string]KeyBinding)
 	kr.bindings[ModeCommand] = make(map[string]KeyBinding)
 	kr.bindings[ModeInsert] = make(map[string]KeyBinding)
-	
+
 	// Normal mode bindings (vim-like)
 	normalBindings := []KeyBinding{
 		// Global actions
@@ -113,19 +113,19 @@ func (kr *KeybindingRegistry) initializeDefaultBindings() {
 		{"r", ActionRefresh, "Refresh", ModeNormal},
 		{"f5", ActionRefresh, "Refresh", ModeNormal},
 		{"esc", ActionEscape, "Escape/Cancel", ModeNormal},
-		
+
 		// Vim-like movement
 		{"h", ActionMoveLeft, "Move left", ModeNormal},
 		{"j", ActionMoveDown, "Move down", ModeNormal},
 		{"k", ActionMoveUp, "Move up", ModeNormal},
 		{"l", ActionMoveRight, "Move right", ModeNormal},
-		
+
 		// Alternative movement keys
 		{"left", ActionMoveLeft, "Move left", ModeNormal},
 		{"down", ActionMoveDown, "Move down", ModeNormal},
 		{"up", ActionMoveUp, "Move up", ModeNormal},
 		{"right", ActionMoveRight, "Move right", ModeNormal},
-		
+
 		// Page navigation
 		{"ctrl+f", ActionPageDown, "Page down", ModeNormal},
 		{"ctrl+b", ActionPageUp, "Page up", ModeNormal},
@@ -133,29 +133,29 @@ func (kr *KeybindingRegistry) initializeDefaultBindings() {
 		{"ctrl+u", ActionHalfPageUp, "Half page up", ModeNormal},
 		{"pagedown", ActionPageDown, "Page down", ModeNormal},
 		{"pageup", ActionPageUp, "Page up", ModeNormal},
-		
+
 		// Jump navigation (vim-style)
 		{"gg", ActionGoToTop, "Go to top", ModeNormal},
 		{"G", ActionGoToBottom, "Go to bottom", ModeNormal},
 		{"home", ActionGoToTop, "Go to top", ModeNormal},
 		{"end", ActionGoToBottom, "Go to bottom", ModeNormal},
-		
+
 		// Panel navigation
 		{"tab", ActionNextPanel, "Next panel", ModeNormal},
 		{"shift+tab", ActionPrevPanel, "Previous panel", ModeNormal},
 		{"H", ActionPrevTab, "Previous tab", ModeNormal},
 		{"L", ActionNextTab, "Next tab", ModeNormal},
-		
+
 		// Direct panel focus
 		{"1", ActionFocusMain, "Focus main panel", ModeNormal},
 		{"2", ActionFocusDetail, "Focus detail panel", ModeNormal},
 		{"3", ActionFocusLog, "Focus log panel", ModeNormal},
-		
+
 		// Modal transitions
 		{"/", ActionEnterSearch, "Enter search mode", ModeNormal},
 		{":", ActionEnterCommand, "Enter command mode", ModeNormal},
 		{"i", ActionEnterInsert, "Enter insert mode", ModeNormal},
-		
+
 		// Content actions
 		{"enter", ActionSelect, "Select item", ModeNormal},
 		{"space", ActionSelect, "Select item", ModeNormal},
@@ -164,46 +164,46 @@ func (kr *KeybindingRegistry) initializeDefaultBindings() {
 		{"y", ActionCopy, "Copy item", ModeNormal},
 		{"c", ActionToggleCollapse, "Toggle collapse", ModeNormal},
 		{"v", ActionToggleVisible, "Toggle visibility", ModeNormal},
-		
+
 		// Log-specific actions
 		{"C", ActionClearLogs, "Clear logs", ModeNormal},
 		{"a", ActionToggleAutoscroll, "Toggle autoscroll", ModeNormal},
 		{"p", ActionTogglePause, "Toggle pause", ModeNormal},
 	}
-	
+
 	// Add normal mode bindings
 	for _, binding := range normalBindings {
 		kr.bindings[ModeNormal][binding.Key] = binding
 	}
-	
+
 	// Search mode bindings
 	searchBindings := []KeyBinding{
 		{"esc", ActionEnterNormal, "Exit search mode", ModeSearch},
 		{"ctrl+c", ActionEnterNormal, "Exit search mode", ModeSearch},
 		{"enter", ActionSelect, "Execute search", ModeSearch},
 	}
-	
+
 	for _, binding := range searchBindings {
 		kr.bindings[ModeSearch][binding.Key] = binding
 	}
-	
+
 	// Command mode bindings
 	commandBindings := []KeyBinding{
 		{"esc", ActionEnterNormal, "Exit command mode", ModeCommand},
 		{"ctrl+c", ActionEnterNormal, "Exit command mode", ModeCommand},
 		{"enter", ActionSelect, "Execute command", ModeCommand},
 	}
-	
+
 	for _, binding := range commandBindings {
 		kr.bindings[ModeCommand][binding.Key] = binding
 	}
-	
+
 	// Insert mode bindings
 	insertBindings := []KeyBinding{
 		{"esc", ActionEnterNormal, "Exit insert mode", ModeInsert},
 		{"ctrl+c", ActionEnterNormal, "Exit insert mode", ModeInsert},
 	}
-	
+
 	for _, binding := range insertBindings {
 		kr.bindings[ModeInsert][binding.Key] = binding
 	}
@@ -260,7 +260,7 @@ func (kr *KeybindingRegistry) AddBinding(key string, action KeyAction, descripti
 	if kr.bindings[mode] == nil {
 		kr.bindings[mode] = make(map[string]KeyBinding)
 	}
-	
+
 	kr.bindings[mode][key] = KeyBinding{
 		Key:         key,
 		Action:      action,
@@ -279,7 +279,7 @@ func (kr *KeybindingRegistry) RemoveBinding(key string, mode NavigationMode) {
 // ProcessKeyMsg processes a BubbleTea KeyMsg and returns the corresponding action
 func (kr *KeybindingRegistry) ProcessKeyMsg(msg tea.KeyMsg) (KeyAction, bool) {
 	keyStr := msg.String()
-	
+
 	// Handle special cases for complex key combinations
 	switch {
 	case keyStr == "g":
@@ -294,9 +294,9 @@ func (kr *KeybindingRegistry) ProcessKeyMsg(msg tea.KeyMsg) (KeyAction, bool) {
 // GetHelpText returns formatted help text for the current mode
 func (kr *KeybindingRegistry) GetHelpText() string {
 	var sb strings.Builder
-	
+
 	sb.WriteString(fmt.Sprintf("=== %s MODE ===\n\n", strings.ToUpper(string(kr.mode))))
-	
+
 	// Group bindings by category
 	categories := map[string][]KeyBinding{
 		"Global":     {},
@@ -305,16 +305,16 @@ func (kr *KeybindingRegistry) GetHelpText() string {
 		"Content":    {},
 		"Modal":      {},
 	}
-	
+
 	for _, binding := range kr.GetAllBindings() {
 		switch binding.Action {
 		case ActionQuit, ActionToggleHelp, ActionToggleDebug, ActionRefresh, ActionEscape:
 			categories["Global"] = append(categories["Global"], binding)
-		case ActionMoveUp, ActionMoveDown, ActionMoveLeft, ActionMoveRight, 
-			 ActionPageUp, ActionPageDown, ActionGoToTop, ActionGoToBottom:
+		case ActionMoveUp, ActionMoveDown, ActionMoveLeft, ActionMoveRight,
+			ActionPageUp, ActionPageDown, ActionGoToTop, ActionGoToBottom:
 			categories["Navigation"] = append(categories["Navigation"], binding)
 		case ActionNextPanel, ActionPrevPanel, ActionNextTab, ActionPrevTab,
-			 ActionFocusMain, ActionFocusDetail, ActionFocusLog:
+			ActionFocusMain, ActionFocusDetail, ActionFocusLog:
 			categories["Panel"] = append(categories["Panel"], binding)
 		case ActionSelect, ActionDelete, ActionEdit, ActionCopy, ActionToggleCollapse:
 			categories["Content"] = append(categories["Content"], binding)
@@ -322,7 +322,7 @@ func (kr *KeybindingRegistry) GetHelpText() string {
 			categories["Modal"] = append(categories["Modal"], binding)
 		}
 	}
-	
+
 	// Format each category
 	for category, bindings := range categories {
 		if len(bindings) > 0 {
@@ -333,7 +333,7 @@ func (kr *KeybindingRegistry) GetHelpText() string {
 			sb.WriteString("\n")
 		}
 	}
-	
+
 	return sb.String()
 }
 

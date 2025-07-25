@@ -458,12 +458,12 @@ func (v *LogsView) colorizeAppLog(logLine string) string {
 // colorizePodLog applies color to pod log lines based on log level patterns
 func (v *LogsView) colorizePodLog(logLine string) string {
 	// Define brighter, more readable color styles
-	timestampStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("246"))       // Brighter gray
+	timestampStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("246"))        // Brighter gray
 	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true) // Bright red + bold
-	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))            // Orange/yellow
-	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46"))             // Bright green
-	debugStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("81"))            // Bright blue
-	noticeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("51"))           // Cyan for notice
+	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))             // Orange/yellow
+	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46"))              // Bright green
+	debugStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("81"))             // Bright blue
+	noticeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("51"))            // Cyan for notice
 
 	// Improved log level patterns - more comprehensive
 	errorPattern := regexp.MustCompile(`(?i)\b(error|fatal|err|panic|exception|fail|critical)\b`)

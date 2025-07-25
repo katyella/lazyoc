@@ -29,12 +29,12 @@ const (
 
 // Command represents a parsed command
 type Command struct {
-	Type      CommandType
-	Resource  string
-	Name      string
-	Args      []string
-	Flags     map[string]string
-	RawInput  string
+	Type     CommandType
+	Resource string
+	Name     string
+	Args     []string
+	Flags    map[string]string
+	RawInput string
 }
 
 // ParseCommand parses a command string into a Command structure
@@ -218,10 +218,10 @@ func GetAllCommands() string {
 
 	var help strings.Builder
 	help.WriteString("Available Commands:\n\n")
-	
+
 	for _, cmd := range commands {
 		help.WriteString("  " + GetCommandHelp(cmd) + "\n")
 	}
-	
+
 	return help.String()
 }

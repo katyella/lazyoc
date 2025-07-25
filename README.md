@@ -4,7 +4,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/katyella/lazyoc)](https://goreportcard.com/report/github.com/katyella/lazyoc)
 [![codecov](https://codecov.io/gh/katyella/lazyoc/branch/main/graph/badge.svg)](https://codecov.io/gh/katyella/lazyoc)
 [![Release](https://img.shields.io/github/release/katyella/lazyoc.svg)](https://github.com/katyella/lazyoc/releases/latest)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 A lazy terminal UI for OpenShift and Kubernetes clusters. LazyOC provides an intuitive, vim-like interface for managing cluster resources without the complexity of memorizing kubectl/oc commands.
 
@@ -178,24 +178,22 @@ LazyOC is designed to be lightweight and efficient:
 ## 🛠 Development
 
 ### Prerequisites
-- Go 1.21 or higher
-- Make
+- Go 1.24.5 or higher
 - golangci-lint (for development)
 
 ### Building from Source
 ```bash
 git clone https://github.com/katyella/lazyoc
 cd lazyoc
-make build
+go build -o ./bin/lazyoc ./cmd/lazyoc
 ```
 
 ### Development Commands
 ```bash
-make dev          # Run in development mode
-make test         # Run tests
-make lint         # Run linter
-make build        # Build binary
-make install      # Install to GOPATH/bin
+go run ./cmd/lazyoc              # Run in development mode
+go test ./...                    # Run tests
+golangci-lint run               # Run linter
+go build -o ./bin/lazyoc ./cmd/lazyoc  # Build binary
 ```
 
 ### Project Structure
@@ -225,7 +223,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 

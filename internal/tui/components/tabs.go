@@ -13,9 +13,9 @@ type TabsComponent struct {
 	BaseComponent
 
 	// Tab state
-	tabs         []string
-	activeTab    int
-	disabled     bool
+	tabs          []string
+	activeTab     int
+	disabled      bool
 	disableReason string
 
 	// Styles
@@ -65,22 +65,22 @@ func (t *TabsComponent) Update(msg tea.Msg) (tea.Cmd, error) {
 			t.PrevTab()
 		}
 		return TabChangedCmd(t.activeTab, t.tabs[t.activeTab]), nil
-	
+
 	case TabSelectMsg:
 		if msg.Index >= 0 && msg.Index < len(t.tabs) {
 			t.activeTab = msg.Index
 			return TabChangedCmd(t.activeTab, t.tabs[t.activeTab]), nil
 		}
-	
+
 	case DisableTabsMsg:
 		t.disabled = true
 		t.disableReason = msg.Reason
-	
+
 	case EnableTabsMsg:
 		t.disabled = false
 		t.disableReason = ""
 	}
-	
+
 	return nil, nil
 }
 
@@ -116,7 +116,7 @@ func (t *TabsComponent) View() string {
 	}
 
 	tabLine := lipgloss.JoinHorizontal(lipgloss.Top, renderedTabs...)
-	
+
 	// Add padding
 	tabLineWidth := lipgloss.Width(stripANSI(tabLine))
 	if tabLineWidth < t.width {

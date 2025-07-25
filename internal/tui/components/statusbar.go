@@ -23,7 +23,7 @@ type StatusBarComponent struct {
 
 	// Key hints
 	keyHints []KeyHint
-	
+
 	// Styles
 	normalStyle       lipgloss.Style
 	keyStyle          lipgloss.Style
@@ -84,7 +84,7 @@ func (s *StatusBarComponent) Update(msg tea.Msg) (tea.Cmd, error) {
 		s.leftContent = msg.Left
 		s.centerContent = msg.Center
 		s.rightContent = msg.Right
-	
+
 	case NotificationMsg:
 		s.notification = msg.Message
 		s.errorMessage = ""
@@ -92,18 +92,18 @@ func (s *StatusBarComponent) Update(msg tea.Msg) (tea.Cmd, error) {
 		return tea.Tick(msg.Duration, func(time.Time) tea.Msg {
 			return ClearNotificationMsg{}
 		}), nil
-	
+
 	case ErrorMsg:
 		s.errorMessage = msg.Message
 		s.notification = ""
-	
+
 	case ClearNotificationMsg:
 		s.notification = ""
-	
+
 	case UpdateKeyHintsMsg:
 		s.keyHints = msg.Hints
 	}
-	
+
 	return nil, nil
 }
 
@@ -118,7 +118,7 @@ func (s *StatusBarComponent) View() string {
 
 	// Build status line
 	var statusLine string
-	
+
 	// Priority: error > notification > normal status
 	if s.errorMessage != "" {
 		statusLine = s.renderErrorLine()
@@ -159,7 +159,7 @@ func (s *StatusBarComponent) renderNormalStatus() string {
 
 	// Calculate spacing for center content
 	availableWidth := s.width - leftWidth - rightWidth - hintsWidth
-	
+
 	if availableWidth > 0 {
 		// Enough space for all content
 		padding := strings.Repeat(" ", availableWidth)
@@ -191,15 +191,15 @@ func (s *StatusBarComponent) renderCompactStatus() string {
 		{Key: "tab", Description: "switch"},
 		{Key: "q", Description: "quit"},
 	}
-	
+
 	var hints []string
 	for _, hint := range compactHints {
-		hints = append(hints, fmt.Sprintf("%s %s", 
+		hints = append(hints, fmt.Sprintf("%s %s",
 			s.keyStyle.Render(hint.Key),
 			s.descStyle.Render(hint.Description),
 		))
 	}
-	
+
 	return " " + strings.Join(hints, " • ")
 }
 
@@ -212,7 +212,7 @@ func (s *StatusBarComponent) renderMinimalHints() string {
 func (s *StatusBarComponent) renderNotificationLine() string {
 	icon := "✓"
 	message := fmt.Sprintf(" %s %s", icon, s.notification)
-	
+
 	// Center the notification
 	return lipgloss.Place(
 		s.width, 1,
@@ -225,7 +225,7 @@ func (s *StatusBarComponent) renderNotificationLine() string {
 func (s *StatusBarComponent) renderErrorLine() string {
 	icon := "✗"
 	message := fmt.Sprintf(" %s %s", icon, s.errorMessage)
-	
+
 	// Center the error
 	return lipgloss.Place(
 		s.width, 1,

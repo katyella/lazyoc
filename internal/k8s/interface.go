@@ -12,11 +12,11 @@ type Client interface {
 	// Initialization
 	Initialize() error
 	TestConnection(ctx context.Context) error
-	
+
 	// Client access
 	GetClientset() *kubernetes.Clientset
 	GetConfig() *rest.Config
-	
+
 	// Context and namespace information
 	GetCurrentContext() (string, error)
 	GetCurrentNamespace() (string, error)

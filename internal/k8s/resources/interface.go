@@ -42,7 +42,7 @@ type ResourceClient interface {
 	// Pod operations
 	GetPodLogs(ctx context.Context, namespace, podName, containerName string, opts LogOptions) (string, error)
 	StreamPodLogs(ctx context.Context, namespace, podName, containerName string, opts LogOptions) (<-chan string, error)
-	
+
 	// Connection management
 	TestConnection(ctx context.Context) error
 	GetServerInfo(ctx context.Context) (map[string]interface{}, error)

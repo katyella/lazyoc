@@ -1,8 +1,8 @@
 package errors
 
 import (
-	"strings"
 	"fmt"
+	"strings"
 )
 
 // MapKubernetesError maps common Kubernetes errors to user-friendly errors
@@ -10,10 +10,10 @@ func MapKubernetesError(err error) *UserFriendlyError {
 	if err == nil {
 		return nil
 	}
-	
+
 	errStr := err.Error()
 	errLower := strings.ToLower(errStr)
-	
+
 	// Connection and network errors
 	if strings.Contains(errLower, "connection refused") {
 		return NewUserFriendlyError(
@@ -24,7 +24,7 @@ func MapKubernetesError(err error) *UserFriendlyError {
 			err,
 		).WithSuggestedAction("Check if the cluster is running and accessible from your network")
 	}
-	
+
 	if strings.Contains(errLower, "timeout") || strings.Contains(errLower, "deadline exceeded") {
 		return NewUserFriendlyError(
 			"Connection Timeout",
@@ -34,7 +34,7 @@ func MapKubernetesError(err error) *UserFriendlyError {
 			err,
 		).WithSuggestedAction("Check your network connection and try again")
 	}
-	
+
 	if strings.Contains(errLower, "no such host") || strings.Contains(errLower, "name resolution") {
 		return NewUserFriendlyError(
 			"DNS Resolution Failed",
@@ -44,7 +44,7 @@ func MapKubernetesError(err error) *UserFriendlyError {
 			err,
 		).WithSuggestedAction("Verify the cluster URL in your kubeconfig file")
 	}
-	
+
 	// Authentication errors
 	if strings.Contains(errLower, "unauthorized") || strings.Contains(errLower, "authentication") {
 		return NewUserFriendlyError(
@@ -55,7 +55,7 @@ func MapKubernetesError(err error) *UserFriendlyError {
 			err,
 		).WithSuggestedAction("Run 'oc login' to refresh your authentication")
 	}
-	
+
 	if strings.Contains(errLower, "token") && (strings.Contains(errLower, "expired") || strings.Contains(errLower, "invalid")) {
 		return NewUserFriendlyError(
 			"Token Expired",
@@ -65,7 +65,7 @@ func MapKubernetesError(err error) *UserFriendlyError {
 			err,
 		).WithSuggestedAction("Run 'oc login' to get a new authentication token")
 	}
-	
+
 	// Permission errors
 	if strings.Contains(errLower, "forbidden") || strings.Contains(errLower, "access denied") {
 		return NewUserFriendlyError(
@@ -76,7 +76,7 @@ func MapKubernetesError(err error) *UserFriendlyError {
 			err,
 		).WithSuggestedAction("Contact your cluster administrator to request the necessary permissions")
 	}
-	
+
 	// Resource not found errors
 	if strings.Contains(errLower, "not found") || strings.Contains(errLower, "404") {
 		if strings.Contains(errLower, "namespace") || strings.Contains(errLower, "project") {
@@ -88,7 +88,7 @@ func MapKubernetesError(err error) *UserFriendlyError {
 				err,
 			).WithSuggestedAction("Check if the project exists and you have access permissions")
 		}
-		
+
 		return NewUserFriendlyError(
 			"Resource Not Found",
 			"The requested resource could not be found.",
@@ -97,7 +97,7 @@ func MapKubernetesError(err error) *UserFriendlyError {
 			err,
 		).WithSuggestedAction("Verify the resource name and try again")
 	}
-	
+
 	// Configuration errors
 	if strings.Contains(errLower, "kubeconfig") || strings.Contains(errLower, "config") {
 		return NewUserFriendlyError(
@@ -108,7 +108,7 @@ func MapKubernetesError(err error) *UserFriendlyError {
 			err,
 		).WithSuggestedAction("Check your kubeconfig file or run 'oc login' to reconfigure")
 	}
-	
+
 	// Certificate errors
 	if strings.Contains(errLower, "certificate") || strings.Contains(errLower, "x509") || strings.Contains(errLower, "tls") {
 		return NewUserFriendlyError(
@@ -119,7 +119,7 @@ func MapKubernetesError(err error) *UserFriendlyError {
 			err,
 		).WithSuggestedAction("Check if the cluster certificate is valid or contact your administrator")
 	}
-	
+
 	// API version errors
 	if strings.Contains(errLower, "api version") || strings.Contains(errLower, "no matches for kind") {
 		return NewUserFriendlyError(
@@ -130,7 +130,7 @@ func MapKubernetesError(err error) *UserFriendlyError {
 			err,
 		).WithSuggestedAction("This may be due to cluster version differences - some features may not be available")
 	}
-	
+
 	// OpenShift specific errors
 	if strings.Contains(errLower, "openshift") {
 		if strings.Contains(errLower, "project") {
@@ -143,7 +143,7 @@ func MapKubernetesError(err error) *UserFriendlyError {
 			).WithSuggestedAction("Verify the project exists and you have the required permissions")
 		}
 	}
-	
+
 	// Generic fallback
 	return NewUserFriendlyError(
 		"Unexpected Error",

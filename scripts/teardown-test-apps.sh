@@ -31,7 +31,7 @@ echo ""
 # Show what will be deleted
 echo "🔍 Applications to be deleted:"
 echo "=============================="
-APPS=("nginx-test" "hello-world" "redis-test" "httpd-test")
+APPS=("nginx-test" "hello-world" "redis-test" "httpd-test" "log-generator")
 
 for app in "${APPS[@]}"; do
     if oc get deployment "$app" &> /dev/null; then

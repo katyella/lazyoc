@@ -42,9 +42,9 @@ func IsRetryable(err error) bool {
 		switch statusErr.ErrStatus.Code {
 		case 429: // Too Many Requests
 			return true
-		case constants.HTTPStatusInternalServerError, 
-			constants.HTTPStatusBadGateway, 
-			constants.HTTPStatusServiceUnavailable, 
+		case constants.HTTPStatusInternalServerError,
+			constants.HTTPStatusBadGateway,
+			constants.HTTPStatusServiceUnavailable,
 			constants.HTTPStatusGatewayTimeout: // Server errors
 			return true
 		case 408: // Request Timeout

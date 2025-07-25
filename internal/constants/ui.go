@@ -31,9 +31,6 @@ var PanelNames = []string{"Main", "Details", "Logs"}
 
 // Log view constants
 const (
-	// MaxLogLines is the maximum number of log lines to keep in memory
-	MaxLogLines = 1000
-
 	// DefaultLogViewMode is the default log view mode
 	DefaultLogViewMode = "app"
 

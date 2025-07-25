@@ -14,9 +14,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	
-	"github.com/katyella/lazyoc/internal/k8s/projects"
+
 	"github.com/katyella/lazyoc/internal/constants"
+	"github.com/katyella/lazyoc/internal/k8s/projects"
 )
 
 // K8sResourceClient implements ResourceClient using Kubernetes client-go
@@ -97,11 +97,11 @@ func (c *K8sResourceClient) ListPods(ctx context.Context, opts ListOptions) (*Re
 	}
 
 	return &ResourceList[PodInfo]{
-		Items:      pods,
-		Total:      len(pods),
-		Namespace:  namespace,
-		Continue:   podList.Continue,
-		Remaining:  func() int64 {
+		Items:     pods,
+		Total:     len(pods),
+		Namespace: namespace,
+		Continue:  podList.Continue,
+		Remaining: func() int64 {
 			if podList.RemainingItemCount != nil {
 				return *podList.RemainingItemCount
 			}
@@ -154,11 +154,11 @@ func (c *K8sResourceClient) ListServices(ctx context.Context, opts ListOptions) 
 	}
 
 	return &ResourceList[ServiceInfo]{
-		Items:      services,
-		Total:      len(services),
-		Namespace:  namespace,
-		Continue:   serviceList.Continue,
-		Remaining:  func() int64 {
+		Items:     services,
+		Total:     len(services),
+		Namespace: namespace,
+		Continue:  serviceList.Continue,
+		Remaining: func() int64 {
 			if serviceList.RemainingItemCount != nil {
 				return *serviceList.RemainingItemCount
 			}
@@ -211,11 +211,11 @@ func (c *K8sResourceClient) ListDeployments(ctx context.Context, opts ListOption
 	}
 
 	return &ResourceList[DeploymentInfo]{
-		Items:      deployments,
-		Total:      len(deployments),
-		Namespace:  namespace,
-		Continue:   deploymentList.Continue,
-		Remaining:  func() int64 {
+		Items:     deployments,
+		Total:     len(deployments),
+		Namespace: namespace,
+		Continue:  deploymentList.Continue,
+		Remaining: func() int64 {
 			if deploymentList.RemainingItemCount != nil {
 				return *deploymentList.RemainingItemCount
 			}
@@ -268,11 +268,11 @@ func (c *K8sResourceClient) ListConfigMaps(ctx context.Context, opts ListOptions
 	}
 
 	return &ResourceList[ConfigMapInfo]{
-		Items:      configMaps,
-		Total:      len(configMaps),
-		Namespace:  namespace,
-		Continue:   configMapList.Continue,
-		Remaining:  func() int64 {
+		Items:     configMaps,
+		Total:     len(configMaps),
+		Namespace: namespace,
+		Continue:  configMapList.Continue,
+		Remaining: func() int64 {
 			if configMapList.RemainingItemCount != nil {
 				return *configMapList.RemainingItemCount
 			}
@@ -325,11 +325,11 @@ func (c *K8sResourceClient) ListSecrets(ctx context.Context, opts ListOptions) (
 	}
 
 	return &ResourceList[SecretInfo]{
-		Items:      secrets,
-		Total:      len(secrets),
-		Namespace:  namespace,
-		Continue:   secretList.Continue,
-		Remaining:  func() int64 {
+		Items:     secrets,
+		Total:     len(secrets),
+		Namespace: namespace,
+		Continue:  secretList.Continue,
+		Remaining: func() int64 {
 			if secretList.RemainingItemCount != nil {
 				return *secretList.RemainingItemCount
 			}
@@ -425,13 +425,13 @@ func (c *K8sResourceClient) GetServerInfo(ctx context.Context) (map[string]inter
 	}
 
 	return map[string]interface{}{
-		"version":      version.GitVersion,
-		"major":        version.Major,
-		"minor":        version.Minor,
-		"platform":     version.Platform,
-		"buildDate":    version.BuildDate,
-		"goVersion":    version.GoVersion,
-		"compiler":     version.Compiler,
+		"version":   version.GitVersion,
+		"major":     version.Major,
+		"minor":     version.Minor,
+		"platform":  version.Platform,
+		"buildDate": version.BuildDate,
+		"goVersion": version.GoVersion,
+		"compiler":  version.Compiler,
 	}, nil
 }
 
@@ -445,12 +445,12 @@ func (c *K8sResourceClient) ListProjects(ctx context.Context) (*ResourceList[Pro
 		if err != nil {
 			return nil, fmt.Errorf("failed to list projects (no project manager): %w", err)
 		}
-		
+
 		projects := make([]ProjectInfo, len(namespaceList.Items))
 		for i, ns := range namespaceList.Items {
 			projects[i] = c.convertNamespaceToProject(&ns)
 		}
-		
+
 		return &ResourceList[ProjectInfo]{
 			Items:     projects,
 			Total:     len(projects),
@@ -524,7 +524,7 @@ func (c *K8sResourceClient) SwitchToProject(ctx context.Context, project string)
 		if err != nil {
 			return fmt.Errorf("failed to switch to project %s: %w", project, err)
 		}
-		
+
 		c.currentNamespace = result.To
 		return nil
 	}
@@ -754,11 +754,11 @@ func (c *K8sResourceClient) convertNamespace(ns *corev1.Namespace) NamespaceInfo
 // formatAge formats a time duration as a human-readable age string
 func formatAge(createdAt time.Time) string {
 	age := time.Since(createdAt)
-	
+
 	days := int(age.Hours()) / 24
 	hours := int(age.Hours()) % 24
 	minutes := int(age.Minutes()) % 60
-	
+
 	if days > 0 {
 		return fmt.Sprintf("%dd", days)
 	} else if hours > 0 {
@@ -839,7 +839,7 @@ func (c *K8sResourceClient) GetPodLogs(ctx context.Context, namespace, podName, 
 	logOptions := &corev1.PodLogOptions{
 		Container: containerName,
 	}
-	
+
 	// Apply options
 	if opts.TailLines != nil {
 		logOptions.TailLines = opts.TailLines
@@ -856,23 +856,23 @@ func (c *K8sResourceClient) GetPodLogs(ctx context.Context, namespace, podName, 
 	if opts.Timestamps {
 		logOptions.Timestamps = opts.Timestamps
 	}
-	
+
 	// Create logs request
 	req := c.clientset.CoreV1().Pods(namespace).GetLogs(podName, logOptions)
-	
+
 	// Execute request
 	stream, err := req.Stream(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to get pod logs: %w", err)
 	}
 	defer stream.Close()
-	
+
 	// Read all logs
 	logs, err := io.ReadAll(stream)
 	if err != nil {
 		return "", fmt.Errorf("failed to read pod logs: %w", err)
 	}
-	
+
 	return string(logs), nil
 }
 
@@ -882,7 +882,7 @@ func (c *K8sResourceClient) StreamPodLogs(ctx context.Context, namespace, podNam
 		Container: containerName,
 		Follow:    true, // Enable follow for streaming
 	}
-	
+
 	// Apply options
 	if opts.TailLines != nil {
 		logOptions.TailLines = opts.TailLines
@@ -896,24 +896,24 @@ func (c *K8sResourceClient) StreamPodLogs(ctx context.Context, namespace, podNam
 	if opts.Timestamps {
 		logOptions.Timestamps = opts.Timestamps
 	}
-	
+
 	// Create logs request
 	req := c.clientset.CoreV1().Pods(namespace).GetLogs(podName, logOptions)
-	
+
 	// Execute streaming request
 	stream, err := req.Stream(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stream pod logs: %w", err)
 	}
-	
+
 	// Create channel for log lines
 	logChan := make(chan string, constants.LogChannelBufferSize)
-	
+
 	// Start goroutine to read stream
 	go func() {
 		defer close(logChan)
 		defer stream.Close()
-		
+
 		scanner := bufio.NewScanner(stream)
 		for scanner.Scan() {
 			select {
@@ -923,7 +923,7 @@ func (c *K8sResourceClient) StreamPodLogs(ctx context.Context, namespace, podNam
 				// Line sent successfully
 			}
 		}
-		
+
 		if err := scanner.Err(); err != nil {
 			// Send error as a log line
 			select {
@@ -932,6 +932,6 @@ func (c *K8sResourceClient) StreamPodLogs(ctx context.Context, namespace, podNam
 			}
 		}
 	}()
-	
+
 	return logChan, nil
 }

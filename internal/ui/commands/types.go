@@ -8,7 +8,7 @@ import (
 type ExecutableCommand interface {
 	// GetType returns the command type for identification
 	GetType() ExecutableCommandType
-	
+
 	// GetDescription returns a human-readable description of the command
 	GetDescription() string
 }

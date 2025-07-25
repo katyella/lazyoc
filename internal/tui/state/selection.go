@@ -7,13 +7,13 @@ import (
 // SelectionManager manages resource selection state
 type SelectionManager struct {
 	mu sync.RWMutex
-	
+
 	// Selection state per resource type
 	selections map[string]*ResourceSelection
-	
+
 	// Global selected resource
 	current *SelectedResource
-	
+
 	// Observers
 	observers []SelectionObserver
 }
@@ -67,7 +67,7 @@ func (s *SelectionManager) AddObserver(observer SelectionObserver) {
 func (s *SelectionManager) RemoveObserver(observer SelectionObserver) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	for i, obs := range s.observers {
 		if obs == observer {
 			s.observers = append(s.observers[:i], s.observers[i+1:]...)
@@ -80,7 +80,7 @@ func (s *SelectionManager) RemoveObserver(observer SelectionObserver) {
 func (s *SelectionManager) SetItems(resourceType string, items []SelectableItem) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	selection, exists := s.selections[resourceType]
 	if !exists {
 		selection = &ResourceSelection{
@@ -99,7 +99,7 @@ func (s *SelectionManager) SetItems(resourceType string, items []SelectableItem)
 			}
 		}
 	}
-	
+
 	// Update selected ID
 	if selection.SelectedIndex < len(items) {
 		selection.SelectedID = items[selection.SelectedIndex].ID
@@ -112,21 +112,21 @@ func (s *SelectionManager) SetItems(resourceType string, items []SelectableItem)
 func (s *SelectionManager) SelectByIndex(resourceType string, index int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	selection, exists := s.selections[resourceType]
 	if !exists || len(selection.Items) == 0 {
 		return nil
 	}
-	
+
 	if index < 0 || index >= len(selection.Items) {
 		return nil
 	}
-	
+
 	oldCurrent := s.current
 	selection.SelectedIndex = index
 	item := selection.Items[index]
 	selection.SelectedID = item.ID
-	
+
 	// Update current selection
 	s.current = &SelectedResource{
 		Type:      resourceType,
@@ -135,10 +135,10 @@ func (s *SelectionManager) SelectByIndex(resourceType string, index int) error {
 		ID:        item.ID,
 		Details:   item.Metadata,
 	}
-	
+
 	// Notify observers
 	s.notifyObservers(oldCurrent, s.current)
-	
+
 	return nil
 }
 
@@ -146,19 +146,19 @@ func (s *SelectionManager) SelectByIndex(resourceType string, index int) error {
 func (s *SelectionManager) SelectByID(resourceType string, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	selection, exists := s.selections[resourceType]
 	if !exists || len(selection.Items) == 0 {
 		return nil
 	}
-	
+
 	// Find item by ID
 	for i, item := range selection.Items {
 		if item.ID == id {
 			oldCurrent := s.current
 			selection.SelectedIndex = i
 			selection.SelectedID = id
-			
+
 			s.current = &SelectedResource{
 				Type:      resourceType,
 				Name:      item.Name,
@@ -166,12 +166,12 @@ func (s *SelectionManager) SelectByID(resourceType string, id string) error {
 				ID:        item.ID,
 				Details:   item.Metadata,
 			}
-			
+
 			s.notifyObservers(oldCurrent, s.current)
 			return nil
 		}
 	}
-	
+
 	return nil
 }
 
@@ -179,7 +179,7 @@ func (s *SelectionManager) SelectByID(resourceType string, id string) error {
 func (s *SelectionManager) GetSelectedIndex(resourceType string) int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	if selection, exists := s.selections[resourceType]; exists {
 		return selection.SelectedIndex
 	}
@@ -190,12 +190,12 @@ func (s *SelectionManager) GetSelectedIndex(resourceType string) int {
 func (s *SelectionManager) GetSelectedItem(resourceType string) *SelectableItem {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	selection, exists := s.selections[resourceType]
 	if !exists || selection.SelectedIndex >= len(selection.Items) {
 		return nil
 	}
-	
+
 	return &selection.Items[selection.SelectedIndex]
 }
 
@@ -210,9 +210,9 @@ func (s *SelectionManager) GetCurrent() *SelectedResource {
 func (s *SelectionManager) Clear(resourceType string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	delete(s.selections, resourceType)
-	
+
 	if s.current != nil && s.current.Type == resourceType {
 		oldCurrent := s.current
 		s.current = nil
@@ -224,11 +224,11 @@ func (s *SelectionManager) Clear(resourceType string) {
 func (s *SelectionManager) ClearAll() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	oldCurrent := s.current
 	s.selections = make(map[string]*ResourceSelection)
 	s.current = nil
-	
+
 	if oldCurrent != nil {
 		s.notifyObservers(oldCurrent, nil)
 	}
@@ -245,27 +245,27 @@ func (s *SelectionManager) notifyObservers(old, new *SelectedResource) {
 func (s *SelectionManager) MoveSelection(resourceType string, delta int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	selection, exists := s.selections[resourceType]
 	if !exists || len(selection.Items) == 0 {
 		return nil
 	}
-	
+
 	newIndex := selection.SelectedIndex + delta
-	
+
 	// Clamp to valid range
 	if newIndex < 0 {
 		newIndex = 0
 	} else if newIndex >= len(selection.Items) {
 		newIndex = len(selection.Items) - 1
 	}
-	
+
 	if newIndex != selection.SelectedIndex {
 		s.mu.Unlock()
 		err := s.SelectByIndex(resourceType, newIndex)
 		s.mu.Lock()
 		return err
 	}
-	
+
 	return nil
 }

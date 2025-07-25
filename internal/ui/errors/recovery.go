@@ -2,8 +2,8 @@ package errors
 
 import (
 	"context"
-	"time"
 	"math"
+	"time"
 
 	"github.com/katyella/lazyoc/internal/constants"
 )
@@ -52,10 +52,10 @@ func RetryOperation(ctx context.Context, config *RetryConfig, operation func() e
 	if config.Strategy == nil {
 		config.Strategy = DefaultRetryStrategy()
 	}
-	
+
 	var lastErr error
 	delay := config.Strategy.InitialDelay
-	
+
 	for attempt := 1; attempt <= config.Strategy.MaxAttempts; attempt++ {
 		// Execute the operation
 		err := operation()
@@ -66,9 +66,9 @@ func RetryOperation(ctx context.Context, config *RetryConfig, operation func() e
 			}
 			return nil
 		}
-		
+
 		lastErr = err
-		
+
 		// Check if error is retryable
 		if !config.Strategy.Retryable(err) {
 			// Not retryable, fail immediately
@@ -77,17 +77,17 @@ func RetryOperation(ctx context.Context, config *RetryConfig, operation func() e
 			}
 			return err
 		}
-		
+
 		// Don't retry on last attempt
 		if attempt == config.Strategy.MaxAttempts {
 			break
 		}
-		
+
 		// Notify about retry
 		if config.OnRetry != nil {
 			config.OnRetry(attempt, err)
 		}
-		
+
 		// Wait before retry (with context cancellation support)
 		select {
 		case <-ctx.Done():
@@ -95,19 +95,19 @@ func RetryOperation(ctx context.Context, config *RetryConfig, operation func() e
 		case <-time.After(delay):
 			// Continue to next attempt
 		}
-		
+
 		// Calculate next delay with exponential backoff
 		delay = time.Duration(float64(delay) * config.Strategy.BackoffFactor)
 		if delay > config.Strategy.MaxDelay {
 			delay = config.Strategy.MaxDelay
 		}
 	}
-	
+
 	// All attempts failed
 	if config.OnFinalError != nil {
 		config.OnFinalError(lastErr, config.Strategy.MaxAttempts)
 	}
-	
+
 	return lastErr
 }
 
@@ -116,12 +116,12 @@ func IsRetryableError(err error) bool {
 	if err == nil {
 		return false
 	}
-	
+
 	// Check if it's a UserFriendlyError
 	if ufe, ok := err.(*UserFriendlyError); ok {
 		return ufe.Retryable
 	}
-	
+
 	// Map the error and check retryability
 	mapped := MapKubernetesError(err)
 	return mapped.Retryable
@@ -132,12 +132,12 @@ func IsConnectionError(err error) bool {
 	if err == nil {
 		return false
 	}
-	
+
 	// Check if it's a UserFriendlyError
 	if ufe, ok := err.(*UserFriendlyError); ok {
 		return ufe.Category == ErrorCategoryConnection || ufe.Category == ErrorCategoryNetwork
 	}
-	
+
 	// Map the error and check category
 	mapped := MapKubernetesError(err)
 	return mapped.Category == ErrorCategoryConnection || mapped.Category == ErrorCategoryNetwork
@@ -165,9 +165,9 @@ func GetRecoveryActions(err error) []RecoveryAction {
 	if err == nil {
 		return nil
 	}
-	
+
 	var actions []RecoveryAction
-	
+
 	// Map to user-friendly error if needed
 	var ufe *UserFriendlyError
 	if mapped, ok := err.(*UserFriendlyError); ok {
@@ -175,7 +175,7 @@ func GetRecoveryActions(err error) []RecoveryAction {
 	} else {
 		ufe = MapKubernetesError(err)
 	}
-	
+
 	// Add category-specific recovery actions
 	switch ufe.Category {
 	case ErrorCategoryConnection, ErrorCategoryNetwork:
@@ -189,14 +189,14 @@ func GetRecoveryActions(err error) []RecoveryAction {
 			Description: "Verify network connectivity to the cluster",
 			Automatic:   false,
 		})
-		
+
 	case ErrorCategoryAuthentication:
 		actions = append(actions, RecoveryAction{
 			Name:        "Re-authenticate",
 			Description: "Run 'oc login' to refresh authentication",
 			Automatic:   false,
 		})
-		
+
 	case ErrorCategoryProject:
 		actions = append(actions, RecoveryAction{
 			Name:        "Refresh Projects",
@@ -208,7 +208,7 @@ func GetRecoveryActions(err error) []RecoveryAction {
 			Description: "Try switching to a different project",
 			Automatic:   false,
 		})
-		
+
 	case ErrorCategoryResource:
 		actions = append(actions, RecoveryAction{
 			Name:        "Refresh Resources",
@@ -216,13 +216,13 @@ func GetRecoveryActions(err error) []RecoveryAction {
 			Automatic:   true,
 		})
 	}
-	
+
 	// Always add a generic refresh action
 	actions = append(actions, RecoveryAction{
 		Name:        "Refresh Application",
 		Description: "Refresh all data and reconnect",
 		Automatic:   false,
 	})
-	
+
 	return actions
 }

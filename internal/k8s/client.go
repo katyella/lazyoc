@@ -29,24 +29,24 @@ func NewClientFactory() *ClientFactory {
 func (cf *ClientFactory) Initialize() error {
 	// Try to get kubeconfig path
 	kubeconfigPath := cf.getKubeconfigPath()
-	
+
 	// Load the kubeconfig
 	config, err := cf.loadKubeconfig(kubeconfigPath)
 	if err != nil {
 		return fmt.Errorf("failed to load kubeconfig: %w", err)
 	}
-	
+
 	cf.config = config
 	cf.kubeconfig = kubeconfigPath
-	
+
 	// Create clientset
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		return fmt.Errorf("failed to create kubernetes clientset: %w", err)
 	}
-	
+
 	cf.clientset = clientset
-	
+
 	return nil
 }
 
@@ -75,13 +75,13 @@ func (cf *ClientFactory) TestConnection(ctx context.Context) error {
 	if cf.clientset == nil {
 		return fmt.Errorf(constants.ErrClientNotInitialized)
 	}
-	
+
 	// Try to get server version as a connectivity test
 	_, err := cf.clientset.Discovery().ServerVersion()
 	if err != nil {
 		return fmt.Errorf("failed to connect to kubernetes cluster: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -90,12 +90,12 @@ func (cf *ClientFactory) GetCurrentContext() (string, error) {
 	if cf.kubeconfig == "" {
 		return "", fmt.Errorf(constants.ErrKubeconfigNotLoaded)
 	}
-	
+
 	config, err := clientcmd.LoadFromFile(cf.kubeconfig)
 	if err != nil {
 		return "", fmt.Errorf("failed to load kubeconfig: %w", err)
 	}
-	
+
 	return config.CurrentContext, nil
 }
 
@@ -104,21 +104,21 @@ func (cf *ClientFactory) GetCurrentNamespace() (string, error) {
 	if cf.kubeconfig == "" {
 		return "", fmt.Errorf(constants.ErrKubeconfigNotLoaded)
 	}
-	
+
 	config, err := clientcmd.LoadFromFile(cf.kubeconfig)
 	if err != nil {
 		return "", fmt.Errorf("failed to load kubeconfig: %w", err)
 	}
-	
+
 	context := config.Contexts[config.CurrentContext]
 	if context == nil {
 		return constants.DefaultNamespace, nil
 	}
-	
+
 	if context.Namespace == "" {
 		return constants.DefaultNamespace, nil
 	}
-	
+
 	return context.Namespace, nil
 }
 
@@ -128,13 +128,13 @@ func (cf *ClientFactory) getKubeconfigPath() string {
 	if kubeconfig := os.Getenv("KUBECONFIG"); kubeconfig != "" {
 		return kubeconfig
 	}
-	
+
 	// Default to ~/.kube/config
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	
+
 	return filepath.Join(home, constants.KubeConfigDir, constants.KubeConfigFile)
 }
 
@@ -144,21 +144,21 @@ func (cf *ClientFactory) loadKubeconfig(kubeconfigPath string) (*rest.Config, er
 	if config, err := rest.InClusterConfig(); err == nil {
 		return config, nil
 	}
-	
+
 	// Fall back to kubeconfig file
 	if kubeconfigPath == "" {
 		return nil, fmt.Errorf(constants.ErrNoKubeconfigPath)
 	}
-	
+
 	// Check if file exists
 	if _, err := os.Stat(kubeconfigPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("kubeconfig file not found at %s", kubeconfigPath)
+		return nil, fmt.Errorf("kubeconfig file not found at %s: %w", kubeconfigPath, err)
 	}
-	
+
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build config from kubeconfig: %w", err)
 	}
-	
+
 	return config, nil
 }

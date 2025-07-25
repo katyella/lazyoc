@@ -17,8 +17,13 @@ import (
 type ClusterType int
 
 const (
+	// ClusterTypeUnknown indicates the cluster type could not be determined
 	ClusterTypeUnknown ClusterType = iota
+	
+	// ClusterTypeKubernetes indicates a standard Kubernetes cluster
 	ClusterTypeKubernetes
+	
+	// ClusterTypeOpenShift indicates an OpenShift cluster with additional APIs
 	ClusterTypeOpenShift
 )
 
@@ -35,25 +40,25 @@ func (ct ClusterType) String() string {
 
 // ClusterInfo contains information about the detected cluster
 type ClusterInfo struct {
-	Type           ClusterType
-	Version        string
-	ServerVersion  string
-	DetectionTime  time.Time
-	APIGroups      []string
-	OpenShiftAPIs  []string
+	Type          ClusterType
+	Version       string
+	ServerVersion string
+	DetectionTime time.Time
+	APIGroups     []string
+	OpenShiftAPIs []string
 }
 
 // ClusterTypeDetector provides methods to detect cluster type
 type ClusterTypeDetector struct {
-	config     *rest.Config
-	clientset  kubernetes.Interface
-	discovery  discovery.DiscoveryInterface
-	
+	config    *rest.Config
+	clientset kubernetes.Interface
+	discovery discovery.DiscoveryInterface
+
 	// Caching
-	mu          sync.RWMutex
-	cached      bool
-	cachedInfo  *ClusterInfo
-	cacheTime   time.Duration
+	mu         sync.RWMutex
+	cached     bool
+	cachedInfo *ClusterInfo
+	cacheTime  time.Duration
 }
 
 // NewClusterTypeDetector creates a new cluster type detector
@@ -61,12 +66,12 @@ func NewClusterTypeDetector(config *rest.Config) (*ClusterTypeDetector, error) {
 	if config == nil {
 		return nil, fmt.Errorf("rest config cannot be nil")
 	}
-	
+
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kubernetes clientset: %w", err)
 	}
-	
+
 	return &ClusterTypeDetector{
 		config:    config,
 		clientset: clientset,
@@ -120,7 +125,7 @@ func (d *ClusterTypeDetector) DetectClusterType(ctx context.Context) (*ClusterIn
 	// Check for OpenShift-specific API groups
 	openShiftAPIs := []string{
 		"route.openshift.io",
-		"build.openshift.io", 
+		"build.openshift.io",
 		"image.openshift.io",
 		"project.openshift.io",
 		"apps.openshift.io",
@@ -229,7 +234,7 @@ func (d *ClusterTypeDetector) HasAPIGroup(ctx context.Context, apiGroup string) 
 	if err != nil {
 		return false, err
 	}
-	
+
 	for _, group := range info.APIGroups {
 		if group == apiGroup {
 			return true, nil

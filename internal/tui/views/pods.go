@@ -56,7 +56,7 @@ func NewPodsView() *PodsView {
 				Foreground(lipgloss.Color(constants.ColorGray)),
 		},
 	}
-	
+
 	view.panel.EnableSelection()
 	return view
 }
@@ -73,7 +73,7 @@ func (v *PodsView) Update(msg tea.Msg) (tea.Cmd, error) {
 		v.SetPods(msg.Pods)
 		return nil, nil
 	}
-	
+
 	return v.panel.Update(msg)
 }
 
@@ -103,13 +103,13 @@ func (v *PodsView) updateContent() {
 		v.panel.SetContent("No pods found")
 		return
 	}
-	
+
 	// Create header
 	header := fmt.Sprintf("%-40s %-12s %-7s %-8s %-5s %-20s",
 		"NAME", "STATUS", "READY", "RESTARTS", "AGE", "NODE")
-	
+
 	lines := []string{v.style.headerStyle.Render(header)}
-	
+
 	// Add pods
 	for _, pod := range v.pods {
 		// Choose style based on status
@@ -124,7 +124,7 @@ func (v *PodsView) updateContent() {
 		default:
 			style = v.style.unknownStyle
 		}
-		
+
 		line := fmt.Sprintf("%-40s %-12s %-7s %-8d %-5s %-20s",
 			truncate(pod.Name, 40),
 			truncate(pod.Status, 12),
@@ -133,18 +133,18 @@ func (v *PodsView) updateContent() {
 			pod.Age,
 			truncate(pod.Node, 20),
 		)
-		
+
 		lines = append(lines, style.Render(line))
 	}
-	
+
 	v.panel.SetContentLines(lines)
 }
 
 // Component interface implementation
-func (v *PodsView) Focus() error     { return v.panel.Focus() }
-func (v *PodsView) Blur() error      { return v.panel.Blur() }
-func (v *PodsView) IsFocused() bool  { return v.panel.IsFocused() }
-func (v *PodsView) SetSize(w, h int) { v.panel.SetSize(w, h) }
+func (v *PodsView) Focus() error        { return v.panel.Focus() }
+func (v *PodsView) Blur() error         { return v.panel.Blur() }
+func (v *PodsView) IsFocused() bool     { return v.panel.IsFocused() }
+func (v *PodsView) SetSize(w, h int)    { v.panel.SetSize(w, h) }
 func (v *PodsView) GetSize() (int, int) { return v.panel.GetSize() }
 
 // Messages

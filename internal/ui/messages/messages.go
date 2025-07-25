@@ -72,3 +72,9 @@ type DisconnectedMsg struct{}
 
 // SpinnerTick represents a spinner animation tick
 type SpinnerTick struct{}
+
+// LoadPodLogsMsg represents a request to load pod logs
+type LoadPodLogsMsg struct {
+	PodName   string
+	Namespace string
+}

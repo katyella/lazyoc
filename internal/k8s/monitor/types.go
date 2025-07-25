@@ -9,11 +9,22 @@ import (
 type ConnectionStatus int
 
 const (
+	// StatusUnknown indicates the connection status is unknown or uninitialized
 	StatusUnknown ConnectionStatus = iota
+	
+	// StatusConnected indicates an active, healthy connection to the cluster
 	StatusConnected
+	
+	// StatusDisconnected indicates no connection to the cluster
 	StatusDisconnected
+	
+	// StatusConnecting indicates a connection attempt is in progress
 	StatusConnecting
+	
+	// StatusReconnecting indicates an attempt to restore a lost connection
 	StatusReconnecting
+	
+	// StatusError indicates a connection error has occurred
 	StatusError
 )
 
@@ -36,7 +47,7 @@ func (s ConnectionStatus) String() string {
 
 // ConnectionInfo contains information about the current connection
 type ConnectionInfo struct {
-	Status        ConnectionStatus  `json:"status"`
+	Status        ConnectionStatus `json:"status"`
 	ClusterName   string           `json:"clusterName"`
 	ServerVersion string           `json:"serverVersion"`
 	Context       string           `json:"context"`
@@ -55,15 +66,15 @@ type Metrics struct {
 	AverageLatency   time.Duration `json:"averageLatency"`
 	LastRequestTime  time.Time     `json:"lastRequestTime"`
 	TotalConnections int64         `json:"totalConnections"`
-	Uptime          time.Duration `json:"uptime"`
+	Uptime           time.Duration `json:"uptime"`
 }
 
 // HealthCheck represents a health check result
 type HealthCheck struct {
-	Timestamp time.Time     `json:"timestamp"`
-	Duration  time.Duration `json:"duration"`
-	Success   bool          `json:"success"`
-	Error     string        `json:"error,omitempty"`
+	Timestamp time.Time              `json:"timestamp"`
+	Duration  time.Duration          `json:"duration"`
+	Success   bool                   `json:"success"`
+	Error     string                 `json:"error,omitempty"`
 	Details   map[string]interface{} `json:"details,omitempty"`
 }
 
@@ -97,10 +108,10 @@ func (e ConnectionEventType) String() string {
 
 // ConnectionEvent represents a connection-related event
 type ConnectionEvent struct {
-	Type      ConnectionEventType `json:"type"`
-	Timestamp time.Time          `json:"timestamp"`
-	Message   string             `json:"message"`
-	Error     string             `json:"error,omitempty"`
+	Type      ConnectionEventType    `json:"type"`
+	Timestamp time.Time              `json:"timestamp"`
+	Message   string                 `json:"message"`
+	Error     string                 `json:"error,omitempty"`
 	Details   map[string]interface{} `json:"details,omitempty"`
 }
 
@@ -108,28 +119,28 @@ type ConnectionEvent struct {
 type ConnectionMonitor interface {
 	// Start begins monitoring the connection
 	Start(ctx context.Context) error
-	
+
 	// Stop stops the monitoring
 	Stop()
-	
+
 	// GetStatus returns the current connection status
 	GetStatus() *ConnectionInfo
-	
+
 	// GetMetrics returns current metrics
 	GetMetrics() *Metrics
-	
+
 	// GetEvents returns recent connection events
 	GetEvents(limit int) []ConnectionEvent
-	
+
 	// ForceHealthCheck triggers an immediate health check
 	ForceHealthCheck(ctx context.Context) *HealthCheck
-	
+
 	// Reconnect attempts to reconnect
 	Reconnect(ctx context.Context) error
-	
+
 	// AddEventListener adds a listener for connection events
 	AddEventListener(listener func(ConnectionEvent))
-	
+
 	// IsHealthy returns true if the connection is healthy
 	IsHealthy() bool
 }
@@ -138,7 +149,7 @@ type ConnectionMonitor interface {
 type MonitorConfig struct {
 	HealthCheckInterval time.Duration `json:"healthCheckInterval"`
 	RequestTimeout      time.Duration `json:"requestTimeout"`
-	MaxEvents          int           `json:"maxEvents"`
-	RetryAttempts      int           `json:"retryAttempts"`
-	RetryDelay         time.Duration `json:"retryDelay"`
+	MaxEvents           int           `json:"maxEvents"`
+	RetryAttempts       int           `json:"retryAttempts"`
+	RetryDelay          time.Duration `json:"retryDelay"`
 }

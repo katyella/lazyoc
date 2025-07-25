@@ -8,9 +8,9 @@ import (
 
 	"github.com/katyella/lazyoc/internal/k8s"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
@@ -28,8 +28,8 @@ type OpenShiftProjectManager struct {
 	clusterType    k8s.ClusterType
 
 	// OpenShift API resources
-	projectResource         schema.GroupVersionResource
-	projectRequestResource  schema.GroupVersionResource
+	projectResource        schema.GroupVersionResource
+	projectRequestResource schema.GroupVersionResource
 }
 
 // NewOpenShiftProjectManager creates a new project manager for OpenShift
@@ -40,7 +40,7 @@ func NewOpenShiftProjectManager(clientset kubernetes.Interface, dynamicClient dy
 		config:         config,
 		kubeconfigPath: kubeconfigPath,
 		clusterType:    k8s.ClusterTypeOpenShift,
-		
+
 		// OpenShift API resources
 		projectResource: schema.GroupVersionResource{
 			Group:    "project.openshift.io",
@@ -78,7 +78,7 @@ func (m *OpenShiftProjectManager) List(ctx context.Context, opts ListOptions) ([
 		if err != nil {
 			continue // Skip invalid projects
 		}
-		
+
 		// Optionally include quotas and limits
 		if opts.IncludeQuotas {
 			quotas, _ := m.getResourceQuotas(ctx, project.Name)
@@ -88,7 +88,7 @@ func (m *OpenShiftProjectManager) List(ctx context.Context, opts ListOptions) ([
 			limits, _ := m.getLimitRanges(ctx, project.Name)
 			project.LimitRanges = limits
 		}
-		
+
 		projects = append(projects, *project)
 	}
 
@@ -112,11 +112,11 @@ func (m *OpenShiftProjectManager) Get(ctx context.Context, name string) (*Projec
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert project: %w", err)
 	}
-	
+
 	// Always include quotas and limits for detailed view
 	quotas, _ := m.getResourceQuotas(ctx, name)
 	projectInfo.ResourceQuotas = quotas
-	
+
 	limits, _ := m.getLimitRanges(ctx, name)
 	projectInfo.LimitRanges = limits
 
@@ -411,7 +411,7 @@ func (m *OpenShiftProjectManager) convertUnstructuredToProject(obj *unstructured
 		// Annotations
 		if annotations, found, _ := unstructured.NestedStringMap(metadata, "annotations"); found {
 			project.Annotations = annotations
-			
+
 			// Extract OpenShift-specific fields from annotations
 			if displayName, ok := annotations["openshift.io/display-name"]; ok {
 				project.DisplayName = displayName

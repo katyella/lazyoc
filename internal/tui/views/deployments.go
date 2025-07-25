@@ -18,21 +18,21 @@ type DeploymentsView struct {
 
 // DeploymentItem represents a deployment in the list
 type DeploymentItem struct {
-	Name        string
-	Namespace   string
-	Ready       string
-	UpToDate    int
-	Available   int
-	Age         string
-	Containers  []string
-	Images      []string
+	Name       string
+	Namespace  string
+	Ready      string
+	UpToDate   int
+	Available  int
+	Age        string
+	Containers []string
+	Images     []string
 }
 
 // DeploymentStyle contains styles for deployment rendering
 type DeploymentStyle struct {
-	headerStyle   lipgloss.Style
-	healthyStyle  lipgloss.Style
-	scalingStyle  lipgloss.Style
+	headerStyle    lipgloss.Style
+	healthyStyle   lipgloss.Style
+	scalingStyle   lipgloss.Style
 	unhealthyStyle lipgloss.Style
 }
 
@@ -53,7 +53,7 @@ func NewDeploymentsView() *DeploymentsView {
 				Foreground(lipgloss.Color(constants.ColorRed)),
 		},
 	}
-	
+
 	view.panel.EnableSelection()
 	return view
 }
@@ -70,7 +70,7 @@ func (v *DeploymentsView) Update(msg tea.Msg) (tea.Cmd, error) {
 		v.SetDeployments(msg.Deployments)
 		return nil, nil
 	}
-	
+
 	return v.panel.Update(msg)
 }
 
@@ -100,13 +100,13 @@ func (v *DeploymentsView) updateContent() {
 		v.panel.SetContent("No deployments found")
 		return
 	}
-	
+
 	// Create header
 	header := fmt.Sprintf("%-40s %-7s %-9s %-10s %-5s",
 		"NAME", "READY", "UP-TO-DATE", "AVAILABLE", "AGE")
-	
+
 	lines := []string{v.style.headerStyle.Render(header)}
-	
+
 	// Add deployments
 	for _, dep := range v.deployments {
 		// Choose style based on ready state
@@ -115,11 +115,11 @@ func (v *DeploymentsView) updateContent() {
 		if ready == "" {
 			ready = "0/0"
 		}
-		
+
 		// Parse ready state (e.g., "2/2" means 2 ready out of 2 desired)
 		var readyCount, desiredCount int
 		fmt.Sscanf(ready, "%d/%d", &readyCount, &desiredCount)
-		
+
 		if readyCount == desiredCount && desiredCount > 0 {
 			style = v.style.healthyStyle
 		} else if readyCount > 0 {
@@ -127,7 +127,7 @@ func (v *DeploymentsView) updateContent() {
 		} else {
 			style = v.style.unhealthyStyle
 		}
-		
+
 		line := fmt.Sprintf("%-40s %-7s %-9d %-10d %-5s",
 			truncate(dep.Name, 40),
 			dep.Ready,
@@ -135,18 +135,18 @@ func (v *DeploymentsView) updateContent() {
 			dep.Available,
 			dep.Age,
 		)
-		
+
 		lines = append(lines, style.Render(line))
 	}
-	
+
 	v.panel.SetContentLines(lines)
 }
 
 // Component interface implementation
-func (v *DeploymentsView) Focus() error     { return v.panel.Focus() }
-func (v *DeploymentsView) Blur() error      { return v.panel.Blur() }
-func (v *DeploymentsView) IsFocused() bool  { return v.panel.IsFocused() }
-func (v *DeploymentsView) SetSize(w, h int) { v.panel.SetSize(w, h) }
+func (v *DeploymentsView) Focus() error        { return v.panel.Focus() }
+func (v *DeploymentsView) Blur() error         { return v.panel.Blur() }
+func (v *DeploymentsView) IsFocused() bool     { return v.panel.IsFocused() }
+func (v *DeploymentsView) SetSize(w, h int)    { v.panel.SetSize(w, h) }
 func (v *DeploymentsView) GetSize() (int, int) { return v.panel.GetSize() }
 
 // Messages

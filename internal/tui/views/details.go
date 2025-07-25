@@ -66,7 +66,7 @@ func (v *DetailsView) Update(msg tea.Msg) (tea.Cmd, error) {
 		v.Clear()
 		return nil, nil
 	}
-	
+
 	return v.panel.Update(msg)
 }
 
@@ -97,27 +97,27 @@ func (v *DetailsView) updateContent() {
 		v.panel.SetContent("Select a resource to view details")
 		return
 	}
-	
+
 	var lines []string
-	
+
 	// Header
 	header := fmt.Sprintf("%s: %s", v.resourceType, v.resourceName)
 	lines = append(lines, v.style.sectionStyle.Render(header))
 	lines = append(lines, "")
-	
+
 	// Process content sections
 	if metadata, ok := v.content["metadata"].(map[string]interface{}); ok {
 		lines = append(lines, v.renderSection("Metadata", metadata)...)
 	}
-	
+
 	if spec, ok := v.content["spec"].(map[string]interface{}); ok {
 		lines = append(lines, v.renderSection("Spec", spec)...)
 	}
-	
+
 	if status, ok := v.content["status"].(map[string]interface{}); ok {
 		lines = append(lines, v.renderSection("Status", status)...)
 	}
-	
+
 	// Any other top-level sections
 	for key, value := range v.content {
 		if key != "metadata" && key != "spec" && key != "status" {
@@ -126,20 +126,20 @@ func (v *DetailsView) updateContent() {
 			}
 		}
 	}
-	
+
 	v.panel.SetContentLines(lines)
 }
 
 // renderSection renders a section of details
 func (v *DetailsView) renderSection(title string, data map[string]interface{}) []string {
 	var lines []string
-	
+
 	lines = append(lines, v.style.sectionStyle.Render(title))
-	
+
 	for key, value := range data {
 		lines = append(lines, v.renderKeyValue(key, value)...)
 	}
-	
+
 	lines = append(lines, "") // Empty line after section
 	return lines
 }
@@ -147,16 +147,16 @@ func (v *DetailsView) renderSection(title string, data map[string]interface{}) [
 // renderKeyValue renders a key-value pair
 func (v *DetailsView) renderKeyValue(key string, value interface{}) []string {
 	var lines []string
-	
+
 	keyStr := v.style.keyStyle.Render(fmt.Sprintf("  %s:", key))
-	
+
 	switch val := value.(type) {
 	case string:
 		if val == "" {
 			val = "<none>"
 		}
 		lines = append(lines, fmt.Sprintf("%s %s", keyStr, v.style.valueStyle.Render(val)))
-		
+
 	case []interface{}:
 		if len(val) == 0 {
 			lines = append(lines, fmt.Sprintf("%s %s", keyStr, v.style.valueStyle.Render("<none>")))
@@ -166,25 +166,25 @@ func (v *DetailsView) renderKeyValue(key string, value interface{}) []string {
 				lines = append(lines, v.style.listStyle.Render(fmt.Sprintf("- %v", item)))
 			}
 		}
-		
+
 	case map[string]interface{}:
 		lines = append(lines, keyStr)
 		for k, mapVal := range val {
 			lines = append(lines, v.style.listStyle.Render(fmt.Sprintf("%s: %v", k, mapVal)))
 		}
-		
+
 	default:
 		lines = append(lines, fmt.Sprintf("%s %s", keyStr, v.style.valueStyle.Render(fmt.Sprintf("%v", value))))
 	}
-	
+
 	return lines
 }
 
 // Component interface implementation
-func (v *DetailsView) Focus() error     { return v.panel.Focus() }
-func (v *DetailsView) Blur() error      { return v.panel.Blur() }
-func (v *DetailsView) IsFocused() bool  { return v.panel.IsFocused() }
-func (v *DetailsView) SetSize(w, h int) { v.panel.SetSize(w, h) }
+func (v *DetailsView) Focus() error        { return v.panel.Focus() }
+func (v *DetailsView) Blur() error         { return v.panel.Blur() }
+func (v *DetailsView) IsFocused() bool     { return v.panel.IsFocused() }
+func (v *DetailsView) SetSize(w, h int)    { v.panel.SetSize(w, h) }
 func (v *DetailsView) GetSize() (int, int) { return v.panel.GetSize() }
 
 // Messages

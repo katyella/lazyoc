@@ -7,9 +7,9 @@ import (
 
 	"github.com/katyella/lazyoc/internal/k8s"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -51,7 +51,7 @@ func (m *KubernetesNamespaceManager) List(ctx context.Context, opts ListOptions)
 	var projects []ProjectInfo
 	for _, ns := range namespaces.Items {
 		project := m.convertNamespaceToProject(&ns)
-		
+
 		// Optionally include quotas and limits
 		if opts.IncludeQuotas {
 			quotas, _ := m.getResourceQuotas(ctx, ns.Name)
@@ -61,7 +61,7 @@ func (m *KubernetesNamespaceManager) List(ctx context.Context, opts ListOptions)
 			limits, _ := m.getLimitRanges(ctx, ns.Name)
 			project.LimitRanges = limits
 		}
-		
+
 		projects = append(projects, project)
 	}
 
@@ -81,11 +81,11 @@ func (m *KubernetesNamespaceManager) Get(ctx context.Context, name string) (*Pro
 	}
 
 	project := m.convertNamespaceToProject(namespace)
-	
+
 	// Always include quotas and limits for detailed view
 	quotas, _ := m.getResourceQuotas(ctx, name)
 	project.ResourceQuotas = quotas
-	
+
 	limits, _ := m.getLimitRanges(ctx, name)
 	project.LimitRanges = limits
 

@@ -21,33 +21,33 @@ const (
 // Error detection keywords for error mapping
 const (
 	// Timeout related keywords
-	ErrKeywordTimeout         = "timeout"
-	ErrKeywordDeadline        = "deadline exceeded"
-	
+	ErrKeywordTimeout  = "timeout"
+	ErrKeywordDeadline = "deadline exceeded"
+
 	// Authentication related keywords
-	ErrKeywordUnauthorized    = "unauthorized"
-	ErrKeywordAuthentication  = "authentication"
+	ErrKeywordUnauthorized   = "unauthorized"
+	ErrKeywordAuthentication = "authentication"
 	ErrKeywordToken          = "token"
 	ErrKeywordExpired        = "expired"
 	ErrKeywordInvalid        = "invalid"
-	
+
 	// Permission related keywords
-	ErrKeywordForbidden      = "forbidden"
-	ErrKeywordAccessDenied   = "access denied"
-	
+	ErrKeywordForbidden    = "forbidden"
+	ErrKeywordAccessDenied = "access denied"
+
 	// Resource related keywords
-	ErrKeywordNamespace      = "namespace"
-	ErrKeywordProject        = "project"
-	
+	ErrKeywordNamespace = "namespace"
+	ErrKeywordProject   = "project"
+
 	// Configuration related keywords
-	ErrKeywordKubeconfig     = "kubeconfig"
-	ErrKeywordConfig         = "config"
-	
+	ErrKeywordKubeconfig = "kubeconfig"
+	ErrKeywordConfig     = "config"
+
 	// Certificate related keywords
-	ErrKeywordCertificate    = "certificate"
-	ErrKeywordX509          = "x509"
-	ErrKeywordTLS           = "tls"
-	
+	ErrKeywordCertificate = "certificate"
+	ErrKeywordX509        = "x509"
+	ErrKeywordTLS         = "tls"
+
 	// Platform specific keywords
-	ErrKeywordOpenShift      = "openshift"
+	ErrKeywordOpenShift = "openshift"
 )

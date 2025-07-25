@@ -77,11 +77,11 @@ changelog:
 # Homebrew formula
 brews:
   - name: lazyoc
-    homepage: "https://github.com/mattwojtowicz/lazyoc"
+    homepage: "https://github.com/katyella/lazyoc"
     description: "A lazy terminal UI for OpenShift/Kubernetes clusters"
-    license: "MIT"
+    license: "Apache-2.0"
     repository:
-      owner: mattwojtowicz
+      owner: katyella
       name: homebrew-tap
     directory: Formula
     commit_author:
@@ -96,16 +96,16 @@ brews:
 # Windows Scoop
 scoops:
   - name: lazyoc
-    homepage: "https://github.com/mattwojtowicz/lazyoc"
+    homepage: "https://github.com/katyella/lazyoc"
     description: "A lazy terminal UI for OpenShift/Kubernetes clusters"
-    license: "MIT"
+    license: "Apache-2.0"
     repository:
-      owner: mattwojtowicz
+      owner: katyella
       name: scoop-bucket
 
 release:
   github:
-    owner: mattwojtowicz
+    owner: katyella
     name: lazyoc
   draft: false
   mode: append
@@ -124,16 +124,16 @@ release:
     #### Linux/macOS (Manual)
     ```bash
     # Download and extract the appropriate binary from the assets below
-    curl -L https://github.com/mattwojtowicz/lazyoc/releases/download/{{ .Tag }}/lazyoc_{{ .Version }}_Linux_x86_64.tar.gz | tar xz
+    curl -L https://github.com/katyella/lazyoc/releases/download/{{ .Tag }}/lazyoc_{{ .Version }}_Linux_x86_64.tar.gz | tar xz
     sudo mv lazyoc /usr/local/bin/
     ```
     
     #### Windows (Scoop)
     ```powershell
-    scoop bucket add mattwojtowicz https://github.com/mattwojtowicz/scoop-bucket
+    scoop bucket add katyella https://github.com/katyella/scoop-bucket
     scoop install lazyoc
     ```
   footer: |
-    **Full Changelog**: https://github.com/mattwojtowicz/lazyoc/compare/{{ .PreviousTag }}...{{ .Tag }}
+    **Full Changelog**: https://github.com/katyella/lazyoc/compare/{{ .PreviousTag }}...{{ .Tag }}
     
     Thanks to all contributors! 🙏

@@ -1,0 +1,354 @@
+package ui
+
+import (
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/katyella/lazyoc/internal/k8s/projects"
+	"github.com/katyella/lazyoc/internal/k8s/resources"
+	"github.com/katyella/lazyoc/internal/ui/commands"
+	"github.com/katyella/lazyoc/internal/ui/events"
+	"github.com/katyella/lazyoc/internal/ui/models"
+	"github.com/katyella/lazyoc/internal/ui/views"
+)
+
+// UICoordinator coordinates between views, state, and services
+type UICoordinator struct {
+	// Core application model
+	app *models.App
+
+	// View management
+	viewManager *views.ViewManager
+
+	// Event handling
+	keyboardHandler *events.KeyboardHandler
+	mouseHandler    *events.MouseHandler
+
+	// Command execution
+	commandExecutor *commands.CommandExecutor
+	commandFactory  *commands.CommandFactory
+
+	// External services
+	resourceClient resources.ResourceClient
+	projectManager projects.ProjectManager
+
+	// State
+	connected    bool
+	connecting   bool
+	namespace    string
+	context      string
+	pods         []resources.PodInfo
+	selectedPod  int
+	focusedPanel int
+	showDetails  bool
+	showLogs     bool
+	showHelp     bool
+	showError    bool
+	showProject  bool
+}
+
+// NewUICoordinator creates a new UI coordinator
+func NewUICoordinator(app *models.App) *UICoordinator {
+	coordinator := &UICoordinator{
+		app:             app,
+		viewManager:     views.NewViewManager(),
+		keyboardHandler: events.NewKeyboardHandler(),
+		mouseHandler:    events.NewMouseHandler(true),
+		commandFactory:  commands.NewCommandFactory(),
+		pods:            []resources.PodInfo{},
+		selectedPod:     0,
+		focusedPanel:    0,
+		showDetails:     true,
+		showLogs:        true,
+		showHelp:        false,
+		showError:       false,
+		showProject:     false,
+	}
+
+	// Initialize view manager with default views
+	coordinator.viewManager.Initialize()
+
+	return coordinator
+}
+
+// SetServices configures the external services
+func (c *UICoordinator) SetServices(resourceClient resources.ResourceClient, projectManager projects.ProjectManager, kubeconfigPath string) {
+	c.resourceClient = resourceClient
+	c.projectManager = projectManager
+	c.commandExecutor = commands.NewCommandExecutor(resourceClient, projectManager, kubeconfigPath)
+}
+
+// Update handles tea messages and coordinates between components
+func (c *UICoordinator) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+
+	// Handle message through appropriate channels
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		c.app.Width = msg.Width
+		c.app.Height = msg.Height
+		return c, nil
+
+	case tea.KeyMsg:
+		// Create key event context
+		keyEvent := events.KeyEvent{
+			Key:          msg,
+			FocusedPanel: c.focusedPanel,
+			ShowHelp:     c.showHelp,
+			ShowError:    c.showError,
+			ShowProject:  c.showProject,
+			Connected:    c.connected,
+			ActiveTab:    c.app.ActiveTab,
+		}
+
+		// Handle through keyboard handler
+		keyCmds := c.keyboardHandler.HandleKeyEvent(keyEvent)
+		cmds = append(cmds, keyCmds...)
+
+		// Also pass to active view if it can handle it
+		viewCtx := c.createViewContext()
+		viewCmd := c.viewManager.Update(msg, viewCtx)
+		if viewCmd != nil {
+			cmds = append(cmds, viewCmd)
+		}
+
+	case tea.MouseMsg:
+		// Create mouse event context
+		mouseEvent := events.MouseEvent{
+			Mouse:        msg,
+			Width:        c.app.Width,
+			Height:       c.app.Height,
+			ShowDetails:  c.showDetails,
+			ShowLogs:     c.showLogs,
+			ActiveTab:    c.app.ActiveTab,
+			FocusedPanel: c.focusedPanel,
+		}
+
+		// Handle through mouse handler
+		mouseCmds := c.mouseHandler.HandleMouseEvent(mouseEvent)
+		cmds = append(cmds, mouseCmds...)
+
+	// Handle view-specific messages
+	case views.PodLogsLoaded, views.PodLogsError:
+		viewCtx := c.createViewContext()
+		viewCmd := c.viewManager.Update(msg, viewCtx)
+		if viewCmd != nil {
+			cmds = append(cmds, viewCmd)
+		}
+
+	// Handle event messages from keyboard/mouse handlers
+	case events.NavigateDownMsg:
+		cmds = append(cmds, c.handleNavigateDown(msg))
+
+	case events.NavigateUpMsg:
+		cmds = append(cmds, c.handleNavigateUp(msg))
+
+	case events.FocusPanelMsg:
+		c.focusedPanel = msg.Panel
+
+	case events.NextPanelMsg:
+		c.focusedPanel = (c.focusedPanel + 1) % 3
+
+	case events.PrevPanelMsg:
+		c.focusedPanel = (c.focusedPanel + 2) % 3
+
+	case events.ToggleDetailsMsg:
+		c.showDetails = !c.showDetails
+
+	case events.ToggleLogsMsg:
+		c.showLogs = !c.showLogs
+
+	case events.ToggleThemeMsg:
+		// Toggle theme in app model
+		if c.app.Theme == "dark" {
+			c.app.Theme = "light"
+		} else {
+			c.app.Theme = "dark"
+		}
+
+	case events.RetryConnectionMsg:
+		// Execute connection retry command
+		if c.commandExecutor != nil {
+			cmd := c.commandFactory.CreateTestConnectionCommand()
+			cmds = append(cmds, c.commandExecutor.ExecuteCommand(cmd))
+		}
+
+	case events.OpenProjectModalMsg:
+		c.showProject = true
+		if c.commandExecutor != nil {
+			cmd := c.commandFactory.CreateLoadProjectsCommand()
+			cmds = append(cmds, c.commandExecutor.ExecuteCommand(cmd))
+		}
+
+	case events.CloseModalMsg:
+		c.showHelp = false
+		c.showError = false
+		c.showProject = false
+
+	// Handle command execution results
+	default:
+		// Pass unknown messages to views
+		viewCtx := c.createViewContext()
+		viewCmd := c.viewManager.Update(msg, viewCtx)
+		if viewCmd != nil {
+			cmds = append(cmds, viewCmd)
+		}
+	}
+
+	return c, tea.Batch(cmds...)
+}
+
+// View coordinates rendering between views
+func (c *UICoordinator) View() string {
+	// Create view context
+	viewCtx := c.createViewContext()
+
+	// Get content from active view
+	return c.viewManager.Render(viewCtx)
+}
+
+// createViewContext creates a view context with current state
+func (c *UICoordinator) createViewContext() views.ViewContext {
+	return views.ViewContext{
+		App:          c.app,
+		Width:        c.app.Width,
+		Height:       c.app.Height,
+		FocusedPanel: c.focusedPanel,
+		Connected:    c.connected,
+		Namespace:    c.namespace,
+		Pods:         c.pods,
+		SelectedPod:  c.selectedPod,
+	}
+}
+
+// handleNavigateDown handles down navigation in lists
+func (c *UICoordinator) handleNavigateDown(msg events.NavigateDownMsg) tea.Cmd {
+	if c.focusedPanel == 0 && len(c.pods) > 0 {
+		// Navigate down in pod list
+		c.selectedPod = (c.selectedPod + 1) % len(c.pods)
+
+		// Load logs for newly selected pod
+		if c.commandExecutor != nil && c.selectedPod < len(c.pods) {
+			selectedPod := c.pods[c.selectedPod]
+			cmd := c.commandFactory.CreateLoadPodLogsCommand(
+				selectedPod.Namespace,
+				selectedPod.Name,
+				"", // Use first container
+				selectedPod.ContainerInfo,
+			)
+			return c.commandExecutor.ExecuteCommand(cmd)
+		}
+	}
+	return nil
+}
+
+// handleNavigateUp handles up navigation in lists
+func (c *UICoordinator) handleNavigateUp(msg events.NavigateUpMsg) tea.Cmd {
+	if c.focusedPanel == 0 && len(c.pods) > 0 {
+		// Navigate up in pod list
+		c.selectedPod = c.selectedPod - 1
+		if c.selectedPod < 0 {
+			c.selectedPod = len(c.pods) - 1
+		}
+
+		// Load logs for newly selected pod
+		if c.commandExecutor != nil && c.selectedPod < len(c.pods) {
+			selectedPod := c.pods[c.selectedPod]
+			cmd := c.commandFactory.CreateLoadPodLogsCommand(
+				selectedPod.Namespace,
+				selectedPod.Name,
+				"", // Use first container
+				selectedPod.ContainerInfo,
+			)
+			return c.commandExecutor.ExecuteCommand(cmd)
+		}
+	}
+	return nil
+}
+
+// LoadPods loads pods for the current namespace
+func (c *UICoordinator) LoadPods() tea.Cmd {
+	if c.commandExecutor != nil {
+		cmd := c.commandFactory.CreateLoadPodsCommand(c.namespace)
+		return c.commandExecutor.ExecuteCommand(cmd)
+	}
+	return nil
+}
+
+// LoadResources loads resources based on the active tab
+func (c *UICoordinator) LoadResources() tea.Cmd {
+	if c.commandExecutor == nil {
+		return nil
+	}
+
+	var cmd commands.ExecutableCommand
+	switch c.app.ActiveTab {
+	case 0: // Pods
+		cmd = c.commandFactory.CreateLoadPodsCommand(c.namespace)
+	case 1: // Services
+		cmd = c.commandFactory.CreateLoadServicesCommand(c.namespace)
+	case 2: // Deployments
+		cmd = c.commandFactory.CreateLoadDeploymentsCommand(c.namespace)
+	case 3: // ConfigMaps
+		cmd = c.commandFactory.CreateLoadConfigMapsCommand(c.namespace)
+	case 4: // Secrets
+		cmd = c.commandFactory.CreateLoadSecretsCommand(c.namespace)
+	default:
+		return nil
+	}
+
+	return c.commandExecutor.ExecuteCommand(cmd)
+}
+
+// SetConnected updates the connection state
+func (c *UICoordinator) SetConnected(connected bool, namespace, context string) {
+	c.connected = connected
+	c.connecting = false
+	c.namespace = namespace
+	c.context = context
+}
+
+// SetConnecting updates the connecting state
+func (c *UICoordinator) SetConnecting(connecting bool) {
+	c.connecting = connecting
+}
+
+// GetViewManager returns the view manager for external access
+func (c *UICoordinator) GetViewManager() *views.ViewManager {
+	return c.viewManager
+}
+
+// GetCommandExecutor returns the command executor for external access
+func (c *UICoordinator) GetCommandExecutor() *commands.CommandExecutor {
+	return c.commandExecutor
+}
+
+// UpdatePods updates the pods list and selected pod state
+func (c *UICoordinator) UpdatePods(pods []resources.PodInfo) {
+	// Store previously selected pod name to preserve selection
+	var previouslySelectedPodName string
+	if len(c.pods) > 0 && c.selectedPod < len(c.pods) {
+		previouslySelectedPodName = c.pods[c.selectedPod].Name
+	}
+
+	c.pods = pods
+
+	// Try to preserve the selected pod after refresh
+	newSelectedPod := 0
+	if previouslySelectedPodName != "" {
+		for i, pod := range pods {
+			if pod.Name == previouslySelectedPodName {
+				newSelectedPod = i
+				break
+			}
+		}
+	}
+	c.selectedPod = newSelectedPod
+}
+
+// GetCurrentPod returns the currently selected pod
+func (c *UICoordinator) GetCurrentPod() *resources.PodInfo {
+	if c.selectedPod >= len(c.pods) || c.selectedPod < 0 {
+		return nil
+	}
+	return &c.pods[c.selectedPod]
+}

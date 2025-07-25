@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/katyella/lazyoc/internal/k8s"
 	"github.com/katyella/lazyoc/internal/constants"
+	"github.com/katyella/lazyoc/internal/k8s"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"

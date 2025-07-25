@@ -48,7 +48,7 @@ func TestListOptions_Defaults(t *testing.T) {
 
 // All other tests are disabled as they require real cluster connections:
 // - TestK8sResourceClient_ListNamespaces
-// - TestK8sResourceClient_ListPods  
+// - TestK8sResourceClient_ListPods
 // - TestK8sResourceClient_ListServices
 // - TestK8sResourceClient_NamespaceOperations
 // - TestK8sResourceClient_TestConnection

@@ -19,22 +19,63 @@ type ResourceInfo struct {
 // PodInfo represents simplified Pod information
 type PodInfo struct {
 	ResourceInfo
-	Phase         string            `json:"phase"`
-	Ready         string            `json:"ready"` // "1/1", "0/1", etc.
-	Restarts      int32             `json:"restarts"`
-	Age           string            `json:"age"`
-	Node          string            `json:"node"`
-	IP            string            `json:"ip"`
-	ContainerInfo []ContainerInfo   `json:"containers"`
+	Phase         string          `json:"phase"`
+	Ready         string          `json:"ready"` // "1/1", "0/1", etc.
+	Restarts      int32           `json:"restarts"`
+	Age           string          `json:"age"`
+	Node          string          `json:"node"`
+	IP            string          `json:"ip"`
+	ContainerInfo []ContainerInfo `json:"containers"`
 }
 
 // ContainerInfo represents container information within a pod
 type ContainerInfo struct {
-	Name    string `json:"name"`
-	Image   string `json:"image"`
-	Ready   bool   `json:"ready"`
-	State   string `json:"state"` // Running, Waiting, Terminated
-	Reason  string `json:"reason,omitempty"`
+	Name         string          `json:"name"`
+	Image        string          `json:"image"`
+	Ready        bool            `json:"ready"`
+	State        string          `json:"state"` // Running, Waiting, Terminated
+	Reason       string          `json:"reason,omitempty"`
+	RestartCount int32           `json:"restartCount"`
+	Ports        []ContainerPort `json:"ports,omitempty"`
+	Env          []EnvVar        `json:"env,omitempty"`
+}
+
+// ContainerPort represents a port in a container
+type ContainerPort struct {
+	Name          string `json:"name,omitempty"`
+	ContainerPort int32  `json:"containerPort"`
+	Protocol      string `json:"protocol,omitempty"`
+}
+
+// EnvVar represents an environment variable in a container
+type EnvVar struct {
+	Name      string        `json:"name"`
+	Value     string        `json:"value,omitempty"`
+	ValueFrom *EnvVarSource `json:"valueFrom,omitempty"`
+}
+
+// EnvVarSource represents the source of an environment variable value
+type EnvVarSource struct {
+	ConfigMapKeyRef  *KeySelector           `json:"configMapKeyRef,omitempty"`
+	SecretKeyRef     *KeySelector           `json:"secretKeyRef,omitempty"`
+	FieldRef         *FieldSelector         `json:"fieldRef,omitempty"`
+	ResourceFieldRef *ResourceFieldSelector `json:"resourceFieldRef,omitempty"`
+}
+
+// KeySelector selects a key from a ConfigMap or Secret
+type KeySelector struct {
+	Name string `json:"name"`
+	Key  string `json:"key"`
+}
+
+// FieldSelector selects a field from the pod spec
+type FieldSelector struct {
+	FieldPath string `json:"fieldPath"`
+}
+
+// ResourceFieldSelector selects a resource field
+type ResourceFieldSelector struct {
+	Resource string `json:"resource"`
 }
 
 // ServiceInfo represents simplified Service information
@@ -63,8 +104,8 @@ type DeploymentInfo struct {
 // NamespaceInfo represents simplified Namespace information
 type NamespaceInfo struct {
 	ResourceInfo
-	Phase  string `json:"phase"`
-	Age    string `json:"age"`
+	Phase string `json:"phase"`
+	Age   string `json:"age"`
 }
 
 // ConfigMapInfo represents simplified ConfigMap information
@@ -77,28 +118,28 @@ type ConfigMapInfo struct {
 // SecretInfo represents simplified Secret information
 type SecretInfo struct {
 	ResourceInfo
-	Type     string `json:"type"`
+	Type      string `json:"type"`
 	DataCount int    `json:"dataCount"`
 	Age       string `json:"age"`
 }
 
 // ResourceList contains a list of resources with metadata
 type ResourceList[T any] struct {
-	Items      []T    `json:"items"`
-	Total      int    `json:"total"`
-	Namespace  string `json:"namespace"`
-	Continue   string `json:"continue,omitempty"` // For pagination
-	Remaining  int64  `json:"remaining,omitempty"` // Estimated remaining items
+	Items     []T    `json:"items"`
+	Total     int    `json:"total"`
+	Namespace string `json:"namespace"`
+	Continue  string `json:"continue,omitempty"`  // For pagination
+	Remaining int64  `json:"remaining,omitempty"` // Estimated remaining items
 }
 
 // ListOptions contains options for listing resources
 type ListOptions struct {
-	Namespace     string            `json:"namespace"`
-	LabelSelector string            `json:"labelSelector,omitempty"`
-	FieldSelector string            `json:"fieldSelector,omitempty"`
-	Limit         int64             `json:"limit,omitempty"`
-	Continue      string            `json:"continue,omitempty"`
-	Watch         bool              `json:"watch,omitempty"`
+	Namespace     string `json:"namespace"`
+	LabelSelector string `json:"labelSelector,omitempty"`
+	FieldSelector string `json:"fieldSelector,omitempty"`
+	Limit         int64  `json:"limit,omitempty"`
+	Continue      string `json:"continue,omitempty"`
+	Watch         bool   `json:"watch,omitempty"`
 }
 
 // NamespaceContext represents current namespace context
@@ -111,13 +152,13 @@ type NamespaceContext struct {
 // ProjectInfo represents simplified Project/Namespace information
 type ProjectInfo struct {
 	ResourceInfo
-	DisplayName string            `json:"displayName,omitempty"` // OpenShift display name
-	Description string            `json:"description,omitempty"` // OpenShift description
-	Phase       string            `json:"phase"`
-	Age         string            `json:"age"`
-	Requester   string            `json:"requester,omitempty"`   // OpenShift requester
-	IsOpenShift bool              `json:"isOpenShift"`           // Whether this is an OpenShift project or K8s namespace
-	Quota       *ProjectQuota     `json:"quota,omitempty"`       // Resource quotas if any
+	DisplayName string        `json:"displayName,omitempty"` // OpenShift display name
+	Description string        `json:"description,omitempty"` // OpenShift description
+	Phase       string        `json:"phase"`
+	Age         string        `json:"age"`
+	Requester   string        `json:"requester,omitempty"` // OpenShift requester
+	IsOpenShift bool          `json:"isOpenShift"`         // Whether this is an OpenShift project or K8s namespace
+	Quota       *ProjectQuota `json:"quota,omitempty"`     // Resource quotas if any
 }
 
 // ProjectQuota represents resource quota information
@@ -128,11 +169,11 @@ type ProjectQuota struct {
 
 // ProjectContext represents current project context
 type ProjectContext struct {
-	Current      string        `json:"current"`
-	Available    []ProjectInfo `json:"available"`
-	Context      string        `json:"context"`
-	IsOpenShift  bool          `json:"isOpenShift"`
-	ClusterInfo  string        `json:"clusterInfo,omitempty"`
+	Current     string        `json:"current"`
+	Available   []ProjectInfo `json:"available"`
+	Context     string        `json:"context"`
+	IsOpenShift bool          `json:"isOpenShift"`
+	ClusterInfo string        `json:"clusterInfo,omitempty"`
 }
 
 // LogOptions represents options for pod log retrieval

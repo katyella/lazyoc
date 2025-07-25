@@ -8,20 +8,20 @@ import (
 type LayoutManager struct {
 	Width  int
 	Height int
-	
+
 	// Layout configuration
 	HeaderHeight    int
 	TabsHeight      int
 	StatusBarHeight int
 	MinPanelWidth   int
 	MinPanelHeight  int
-	
+
 	// Panel visibility and sizing
 	DetailPaneVisible bool
 	LogPaneVisible    bool
 	DetailPaneWidth   int
 	LogPaneHeight     int
-	
+
 	// Focus management
 	FocusedPanel PanelType
 }
@@ -77,7 +77,7 @@ func DefaultLayoutConfig() LayoutConfig {
 // NewLayoutManager creates a new layout manager with default configuration
 func NewLayoutManager(width, height int) *LayoutManager {
 	config := DefaultLayoutConfig()
-	
+
 	return &LayoutManager{
 		Width:           width,
 		Height:          height,
@@ -86,12 +86,12 @@ func NewLayoutManager(width, height int) *LayoutManager {
 		StatusBarHeight: config.StatusBarHeight,
 		MinPanelWidth:   config.MinPanelWidth,
 		MinPanelHeight:  config.MinPanelHeight,
-		
+
 		DetailPaneVisible: true,
 		LogPaneVisible:    true,
 		DetailPaneWidth:   int(float64(width) * config.DetailPaneRatio),
 		LogPaneHeight:     int(float64(height) * config.LogPaneRatio),
-		
+
 		FocusedPanel: PanelMain,
 	}
 }
@@ -100,10 +100,10 @@ func NewLayoutManager(width, height int) *LayoutManager {
 func (lm *LayoutManager) UpdateDimensions(width, height int) {
 	lm.Width = width
 	lm.Height = height
-	
+
 	// Apply responsive adjustments for small screens first
 	lm.applyResponsiveAdjustments()
-	
+
 	// Recalculate panel sizes based on ratios
 	config := DefaultLayoutConfig()
 	if lm.DetailPaneVisible {
@@ -112,7 +112,7 @@ func (lm *LayoutManager) UpdateDimensions(width, height int) {
 	if lm.LogPaneVisible {
 		lm.LogPaneHeight = int(float64(height) * config.LogPaneRatio)
 	}
-	
+
 	// Ensure minimum sizes
 	if lm.DetailPaneWidth < lm.MinPanelWidth {
 		lm.DetailPaneWidth = lm.MinPanelWidth
@@ -125,18 +125,18 @@ func (lm *LayoutManager) UpdateDimensions(width, height int) {
 // applyResponsiveAdjustments adjusts layout for small terminal sizes
 func (lm *LayoutManager) applyResponsiveAdjustments() {
 	config := DefaultLayoutConfig()
-	
+
 	// For very small terminals, reduce component heights
 	if lm.Height < 20 {
 		lm.HeaderHeight = 1
 		lm.TabsHeight = 1
 		lm.StatusBarHeight = 1
-		
+
 		// Hide detail pane on very small screens
 		if lm.Width < 80 {
 			lm.DetailPaneVisible = false
 		}
-		
+
 		// Reduce or hide log pane on very small screens
 		if lm.Height < 15 {
 			lm.LogPaneVisible = false
@@ -159,7 +159,7 @@ func (lm *LayoutManager) GetPanelDimensions(panel PanelType) PanelDimensions {
 			Width:  lm.Width,
 			Height: lm.HeaderHeight,
 		}
-		
+
 	case PanelTabs:
 		return PanelDimensions{
 			X:      0,
@@ -167,72 +167,72 @@ func (lm *LayoutManager) GetPanelDimensions(panel PanelType) PanelDimensions {
 			Width:  lm.Width,
 			Height: lm.TabsHeight,
 		}
-		
+
 	case PanelMain:
 		x := 0
 		y := lm.HeaderHeight + lm.TabsHeight
 		width := lm.Width
 		height := lm.Height - lm.HeaderHeight - lm.TabsHeight - lm.StatusBarHeight
-		
+
 		// Adjust for detail pane if visible
 		if lm.DetailPaneVisible {
 			width -= lm.DetailPaneWidth
 		}
-		
+
 		// Adjust for log pane if visible
 		if lm.LogPaneVisible {
 			height -= lm.LogPaneHeight
 		}
-		
+
 		return PanelDimensions{
 			X:      x,
 			Y:      y,
 			Width:  width,
 			Height: height,
 		}
-		
+
 	case PanelDetail:
 		if !lm.DetailPaneVisible {
 			return PanelDimensions{}
 		}
-		
+
 		x := lm.Width - lm.DetailPaneWidth
 		y := lm.HeaderHeight + lm.TabsHeight
 		height := lm.Height - lm.HeaderHeight - lm.TabsHeight - lm.StatusBarHeight
-		
+
 		// Adjust for log pane if visible
 		if lm.LogPaneVisible {
 			height -= lm.LogPaneHeight
 		}
-		
+
 		return PanelDimensions{
 			X:      x,
 			Y:      y,
 			Width:  lm.DetailPaneWidth,
 			Height: height,
 		}
-		
+
 	case PanelLog:
 		if !lm.LogPaneVisible {
 			return PanelDimensions{}
 		}
-		
+
 		x := 0
 		y := lm.Height - lm.StatusBarHeight - lm.LogPaneHeight
 		width := lm.Width
-		
+
 		// Adjust for detail pane if visible
 		if lm.DetailPaneVisible {
 			width -= lm.DetailPaneWidth
 		}
-		
+
 		return PanelDimensions{
 			X:      x,
 			Y:      y,
 			Width:  width,
 			Height: lm.LogPaneHeight,
 		}
-		
+
 	case PanelStatusBar:
 		return PanelDimensions{
 			X:      0,
@@ -240,7 +240,7 @@ func (lm *LayoutManager) GetPanelDimensions(panel PanelType) PanelDimensions {
 			Width:  lm.Width,
 			Height: lm.StatusBarHeight,
 		}
-		
+
 	default:
 		return PanelDimensions{}
 	}
@@ -291,12 +291,12 @@ func (lm *LayoutManager) GetBorderColor(panel PanelType) lipgloss.Color {
 // StylePanel applies consistent styling to a panel
 func (lm *LayoutManager) StylePanel(content string, panel PanelType) string {
 	dims := lm.GetPanelDimensions(panel)
-	
+
 	style := lipgloss.NewStyle().
 		Width(dims.Width).
 		Height(dims.Height).
 		Border(lm.GetBorderStyle(panel)).
 		BorderForeground(lm.GetBorderColor(panel))
-	
+
 	return style.Render(content)
 }

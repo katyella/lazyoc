@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/katyella/lazyoc/internal/constants"
 	"github.com/katyella/lazyoc/internal/k8s/auth"
 	"github.com/katyella/lazyoc/internal/k8s/resources"
-	"github.com/katyella/lazyoc/internal/constants"
 )
 
 // K8sConnectionMonitor implements ConnectionMonitor for Kubernetes
@@ -16,18 +16,18 @@ type K8sConnectionMonitor struct {
 	authProvider   auth.AuthProvider
 	resourceClient resources.ResourceClient
 	config         MonitorConfig
-	
+
 	// State
-	mu          sync.RWMutex
-	status      ConnectionInfo
-	metrics     Metrics
-	events      []ConnectionEvent
-	listeners   []func(ConnectionEvent)
-	
+	mu        sync.RWMutex
+	status    ConnectionInfo
+	metrics   Metrics
+	events    []ConnectionEvent
+	listeners []func(ConnectionEvent)
+
 	// Control
-	ctx        context.Context
-	cancel     context.CancelFunc
-	started    bool
+	ctx          context.Context
+	cancel       context.CancelFunc
+	started      bool
 	healthTicker *time.Ticker
 	startTime    time.Time
 }
@@ -37,11 +37,11 @@ func NewK8sConnectionMonitor(authProvider auth.AuthProvider, resourceClient reso
 	config := MonitorConfig{
 		HealthCheckInterval: constants.DefaultHealthCheckInterval,
 		RequestTimeout:      constants.DefaultRequestTimeout,
-		MaxEvents:          constants.DefaultMaxEvents,
-		RetryAttempts:      constants.DefaultRetryAttempts,
-		RetryDelay:         constants.DefaultRetryDelay,
+		MaxEvents:           constants.DefaultMaxEvents,
+		RetryAttempts:       constants.DefaultRetryAttempts,
+		RetryDelay:          constants.DefaultRetryDelay,
 	}
-	
+
 	return &K8sConnectionMonitor{
 		authProvider:   authProvider,
 		resourceClient: resourceClient,
@@ -58,28 +58,28 @@ func NewK8sConnectionMonitor(authProvider auth.AuthProvider, resourceClient reso
 func (m *K8sConnectionMonitor) Start(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	if m.started {
 		return fmt.Errorf("monitor already started")
 	}
-	
+
 	m.ctx, m.cancel = context.WithCancel(ctx)
 	m.started = true
 	m.startTime = time.Now()
-	
+
 	// Initial connection attempt
 	go m.initialConnect()
-	
+
 	// Start health check ticker
 	m.healthTicker = time.NewTicker(m.config.HealthCheckInterval)
 	go m.healthCheckLoop()
-	
+
 	m.addEvent(ConnectionEvent{
 		Type:      EventConnected,
 		Timestamp: time.Now(),
 		Message:   "Connection monitor started",
 	})
-	
+
 	return nil
 }
 
@@ -87,20 +87,20 @@ func (m *K8sConnectionMonitor) Start(ctx context.Context) error {
 func (m *K8sConnectionMonitor) Stop() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	if !m.started {
 		return
 	}
-	
+
 	m.started = false
 	if m.cancel != nil {
 		m.cancel()
 	}
-	
+
 	if m.healthTicker != nil {
 		m.healthTicker.Stop()
 	}
-	
+
 	m.status.Status = StatusDisconnected
 	m.addEvent(ConnectionEvent{
 		Type:      EventDisconnected,
@@ -113,12 +113,12 @@ func (m *K8sConnectionMonitor) Stop() {
 func (m *K8sConnectionMonitor) GetStatus() *ConnectionInfo {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	// Update uptime
 	if m.status.Status == StatusConnected {
 		m.status.LastChecked = time.Now()
 	}
-	
+
 	statusCopy := m.status
 	return &statusCopy
 }
@@ -127,12 +127,12 @@ func (m *K8sConnectionMonitor) GetStatus() *ConnectionInfo {
 func (m *K8sConnectionMonitor) GetMetrics() *Metrics {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	metricsCopy := m.metrics
 	if m.started {
 		metricsCopy.Uptime = time.Since(m.startTime)
 	}
-	
+
 	return &metricsCopy
 }
 
@@ -140,20 +140,20 @@ func (m *K8sConnectionMonitor) GetMetrics() *Metrics {
 func (m *K8sConnectionMonitor) GetEvents(limit int) []ConnectionEvent {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	if limit <= 0 || limit > len(m.events) {
 		limit = len(m.events)
 	}
-	
+
 	// Return the most recent events
 	start := len(m.events) - limit
 	if start < 0 {
 		start = 0
 	}
-	
+
 	events := make([]ConnectionEvent, limit)
 	copy(events, m.events[start:])
-	
+
 	return events
 }
 
@@ -167,13 +167,13 @@ func (m *K8sConnectionMonitor) Reconnect(ctx context.Context) error {
 	m.mu.Lock()
 	m.status.Status = StatusReconnecting
 	m.mu.Unlock()
-	
+
 	m.addEvent(ConnectionEvent{
 		Type:      EventReconnecting,
 		Timestamp: time.Now(),
 		Message:   "Manual reconnection triggered",
 	})
-	
+
 	return m.attemptConnection(ctx)
 }
 
@@ -181,7 +181,7 @@ func (m *K8sConnectionMonitor) Reconnect(ctx context.Context) error {
 func (m *K8sConnectionMonitor) AddEventListener(listener func(ConnectionEvent)) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	m.listeners = append(m.listeners, listener)
 }
 
@@ -189,7 +189,7 @@ func (m *K8sConnectionMonitor) AddEventListener(listener func(ConnectionEvent)) 
 func (m *K8sConnectionMonitor) IsHealthy() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	return m.status.Status == StatusConnected
 }
 
@@ -198,11 +198,11 @@ func (m *K8sConnectionMonitor) IsHealthy() bool {
 func (m *K8sConnectionMonitor) initialConnect() {
 	ctx, cancel := context.WithTimeout(m.ctx, m.config.RequestTimeout)
 	defer cancel()
-	
+
 	m.mu.Lock()
 	m.status.Status = StatusConnecting
 	m.mu.Unlock()
-	
+
 	err := m.attemptConnection(ctx)
 	if err != nil {
 		m.addEvent(ConnectionEvent{
@@ -223,7 +223,7 @@ func (m *K8sConnectionMonitor) healthCheckLoop() {
 			ctx, cancel := context.WithTimeout(m.ctx, m.config.RequestTimeout)
 			check := m.performHealthCheck(ctx)
 			cancel()
-			
+
 			if !check.Success {
 				m.addEvent(ConnectionEvent{
 					Type:      EventError,
@@ -231,7 +231,7 @@ func (m *K8sConnectionMonitor) healthCheckLoop() {
 					Message:   "Health check failed",
 					Error:     check.Error,
 				})
-				
+
 				// Attempt reconnection
 				go m.attemptReconnection()
 			}
@@ -241,7 +241,7 @@ func (m *K8sConnectionMonitor) healthCheckLoop() {
 
 func (m *K8sConnectionMonitor) attemptConnection(ctx context.Context) error {
 	start := time.Now()
-	
+
 	// Test authentication
 	err := m.authProvider.IsValid(ctx)
 	if err != nil {
@@ -251,7 +251,7 @@ func (m *K8sConnectionMonitor) attemptConnection(ctx context.Context) error {
 		m.mu.Unlock()
 		return fmt.Errorf("authentication failed: %w", err)
 	}
-	
+
 	// Test connection
 	err = m.resourceClient.TestConnection(ctx)
 	if err != nil {
@@ -261,7 +261,7 @@ func (m *K8sConnectionMonitor) attemptConnection(ctx context.Context) error {
 		m.mu.Unlock()
 		return fmt.Errorf("connection test failed: %w", err)
 	}
-	
+
 	// Get server info
 	serverInfo, err := m.resourceClient.GetServerInfo(ctx)
 	if err != nil {
@@ -271,7 +271,7 @@ func (m *K8sConnectionMonitor) attemptConnection(ctx context.Context) error {
 		m.mu.Unlock()
 		return fmt.Errorf("failed to get server info: %w", err)
 	}
-	
+
 	// Update status
 	m.mu.Lock()
 	m.status.Status = StatusConnected
@@ -280,28 +280,28 @@ func (m *K8sConnectionMonitor) attemptConnection(ctx context.Context) error {
 	m.status.Context = m.authProvider.GetContext()
 	m.status.Namespace = m.authProvider.GetNamespace()
 	m.status.Error = ""
-	
+
 	if version, ok := serverInfo["version"].(string); ok {
 		m.status.ServerVersion = version
 	}
-	
+
 	// Simple OpenShift detection (would need more sophisticated logic)
 	m.status.IsOpenShift = false
-	
+
 	// Update metrics
 	m.metrics.TotalConnections++
 	m.metrics.LastRequestTime = time.Now()
 	latency := time.Since(start)
-	
+
 	// Simple moving average for latency
 	if m.metrics.AverageLatency == 0 {
 		m.metrics.AverageLatency = latency
 	} else {
 		m.metrics.AverageLatency = (m.metrics.AverageLatency + latency) / 2
 	}
-	
+
 	m.mu.Unlock()
-	
+
 	m.addEvent(ConnectionEvent{
 		Type:      EventConnected,
 		Timestamp: time.Now(),
@@ -312,25 +312,25 @@ func (m *K8sConnectionMonitor) attemptConnection(ctx context.Context) error {
 			"latency": latency.String(),
 		},
 	})
-	
+
 	return nil
 }
 
 func (m *K8sConnectionMonitor) performHealthCheck(ctx context.Context) *HealthCheck {
 	start := time.Now()
-	
+
 	err := m.resourceClient.TestConnection(ctx)
 	duration := time.Since(start)
-	
+
 	check := &HealthCheck{
 		Timestamp: start,
 		Duration:  duration,
 		Success:   err == nil,
 	}
-	
+
 	if err != nil {
 		check.Error = err.Error()
-		
+
 		m.mu.Lock()
 		m.status.Status = StatusError
 		m.status.Error = err.Error()
@@ -343,7 +343,7 @@ func (m *K8sConnectionMonitor) performHealthCheck(ctx context.Context) *HealthCh
 		m.status.Error = ""
 		m.metrics.RequestCount++
 		m.metrics.LastRequestTime = time.Now()
-		
+
 		// Update average latency
 		if m.metrics.AverageLatency == 0 {
 			m.metrics.AverageLatency = duration
@@ -351,12 +351,12 @@ func (m *K8sConnectionMonitor) performHealthCheck(ctx context.Context) *HealthCh
 			m.metrics.AverageLatency = (m.metrics.AverageLatency + duration) / 2
 		}
 		m.mu.Unlock()
-		
+
 		check.Details = map[string]interface{}{
 			"latency": duration.String(),
 		}
 	}
-	
+
 	return check
 }
 
@@ -364,22 +364,22 @@ func (m *K8sConnectionMonitor) attemptReconnection() {
 	m.mu.Lock()
 	m.status.Status = StatusReconnecting
 	m.mu.Unlock()
-	
+
 	for attempt := 1; attempt <= m.config.RetryAttempts; attempt++ {
 		select {
 		case <-m.ctx.Done():
 			return
 		default:
 		}
-		
+
 		ctx, cancel := context.WithTimeout(m.ctx, m.config.RequestTimeout)
 		err := m.attemptConnection(ctx)
 		cancel()
-		
+
 		if err == nil {
 			return // Successfully reconnected
 		}
-		
+
 		if attempt < m.config.RetryAttempts {
 			select {
 			case <-m.ctx.Done():
@@ -389,12 +389,12 @@ func (m *K8sConnectionMonitor) attemptReconnection() {
 			}
 		}
 	}
-	
+
 	// All attempts failed
 	m.mu.Lock()
 	m.status.Status = StatusError
 	m.mu.Unlock()
-	
+
 	m.addEvent(ConnectionEvent{
 		Type:      EventError,
 		Timestamp: time.Now(),
@@ -405,15 +405,15 @@ func (m *K8sConnectionMonitor) attemptReconnection() {
 func (m *K8sConnectionMonitor) addEvent(event ConnectionEvent) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	// Add event to list
 	m.events = append(m.events, event)
-	
+
 	// Trim events if we exceed max
 	if len(m.events) > m.config.MaxEvents {
 		m.events = m.events[len(m.events)-m.config.MaxEvents:]
 	}
-	
+
 	// Notify listeners
 	for _, listener := range m.listeners {
 		go listener(event)

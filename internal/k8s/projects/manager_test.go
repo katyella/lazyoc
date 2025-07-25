@@ -8,8 +8,8 @@ import (
 
 	"github.com/katyella/lazyoc/internal/k8s"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
@@ -238,7 +238,7 @@ func TestKubernetesNamespaceManager_Exists(t *testing.T) {
 
 func TestKubernetesNamespaceManager_GetProjectType(t *testing.T) {
 	manager := NewKubernetesNamespaceManager(nil, nil, "")
-	
+
 	projectType := manager.GetProjectType()
 	if projectType != ProjectTypeKubernetesNamespace {
 		t.Errorf("Expected ProjectTypeKubernetesNamespace, got %s", projectType)
@@ -247,7 +247,7 @@ func TestKubernetesNamespaceManager_GetProjectType(t *testing.T) {
 
 func TestKubernetesNamespaceManager_GetClusterType(t *testing.T) {
 	manager := NewKubernetesNamespaceManager(nil, nil, "")
-	
+
 	clusterType := manager.GetClusterType()
 	if clusterType != k8s.ClusterTypeKubernetes {
 		t.Errorf("Expected ClusterTypeKubernetes, got %s", clusterType)
@@ -277,7 +277,7 @@ func TestKubernetesNamespaceManager_ListWithFilters(t *testing.T) {
 	manager := NewKubernetesNamespaceManager(fakeClientset, nil, "")
 
 	ctx := context.Background()
-	
+
 	// Test with label selector
 	projects, err := manager.List(ctx, ListOptions{
 		LabelSelector: "env=production",
@@ -356,7 +356,7 @@ func TestKubernetesNamespaceManager_ErrorHandling(t *testing.T) {
 	manager := NewKubernetesNamespaceManager(fakeClientset, nil, "")
 
 	ctx := context.Background()
-	
+
 	// Test Get with error
 	_, err := manager.Get(ctx, "test")
 	if err == nil {

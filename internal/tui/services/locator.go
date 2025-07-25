@@ -36,11 +36,11 @@ func NewServiceLocator() *ServiceLocator {
 func (s *ServiceLocator) Register(name string, service interface{}) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	if _, exists := s.services[name]; exists {
 		return fmt.Errorf("service %s already registered", name)
 	}
-	
+
 	s.services[name] = service
 	return nil
 }
@@ -49,7 +49,7 @@ func (s *ServiceLocator) Register(name string, service interface{}) error {
 func (s *ServiceLocator) Unregister(name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	delete(s.services, name)
 }
 
@@ -57,12 +57,12 @@ func (s *ServiceLocator) Unregister(name string) {
 func (s *ServiceLocator) Get(name string) (interface{}, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	service, exists := s.services[name]
 	if !exists {
 		return nil, fmt.Errorf("service %s not found", name)
 	}
-	
+
 	return service, nil
 }
 
@@ -72,12 +72,12 @@ func (s *ServiceLocator) GetKubernetesService() (*KubernetesService, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	k8s, ok := service.(*KubernetesService)
 	if !ok {
 		return nil, fmt.Errorf("service 'kubernetes' is not of type *KubernetesService")
 	}
-	
+
 	return k8s, nil
 }
 
@@ -87,12 +87,12 @@ func (s *ServiceLocator) GetLogsService() (*LogsService, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	logs, ok := service.(*LogsService)
 	if !ok {
 		return nil, fmt.Errorf("service 'logs' is not of type *LogsService")
 	}
-	
+
 	return logs, nil
 }
 
@@ -102,12 +102,12 @@ func (s *ServiceLocator) GetWatchService() (*WatchService, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	watch, ok := service.(*WatchService)
 	if !ok {
 		return nil, fmt.Errorf("service 'watch' is not of type *WatchService")
 	}
-	
+
 	return watch, nil
 }
 
@@ -118,19 +118,19 @@ func (s *ServiceLocator) InitializeServices() error {
 	if err := s.Register("kubernetes", k8s); err != nil {
 		return err
 	}
-	
+
 	// Create logs service
 	logs := NewLogsService(k8s)
 	if err := s.Register("logs", logs); err != nil {
 		return err
 	}
-	
+
 	// Create watch service
 	watch := NewWatchService(k8s)
 	if err := s.Register("watch", watch); err != nil {
 		return err
 	}
-	
+
 	return nil
 }
 
@@ -138,22 +138,22 @@ func (s *ServiceLocator) InitializeServices() error {
 func (s *ServiceLocator) Shutdown() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	// Stop watch service
 	if watch, err := s.GetWatchService(); err == nil {
 		watch.StopAllWatchers()
 	}
-	
+
 	// Stop logs service
 	if logs, err := s.GetLogsService(); err == nil {
 		logs.StopAllStreams()
 	}
-	
+
 	// Disconnect from Kubernetes
 	if k8s, err := s.GetKubernetesService(); err == nil {
 		k8s.Disconnect()
 	}
-	
+
 	// Clear all services
 	s.services = make(map[string]interface{})
 }
@@ -173,29 +173,29 @@ func (s *ServiceLocator) ConfigureServices(config *ServiceConfig) error {
 	if err != nil {
 		return err
 	}
-	
+
 	if err := k8s.Connect(config.KubeconfigPath, config.Context); err != nil {
 		return fmt.Errorf("failed to connect to cluster: %w", err)
 	}
-	
+
 	if config.Namespace != "" {
 		if err := k8s.SetNamespace(config.Namespace); err != nil {
 			return fmt.Errorf("failed to set namespace: %w", err)
 		}
 	}
-	
+
 	// Configure watch service
 	if config.WatchConfig != nil {
 		watch, err := s.GetWatchService()
 		if err != nil {
 			return err
 		}
-		
+
 		if err := watch.ConfigureWatch(config.WatchConfig); err != nil {
 			return fmt.Errorf("failed to configure watch: %w", err)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -208,7 +208,7 @@ func ConnectToCluster(kubeconfig, context string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	return k8s.Connect(kubeconfig, context)
 }
 
@@ -219,13 +219,13 @@ func StartWatchingResources(resourceTypes []string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	for _, resourceType := range resourceTypes {
 		if err := watch.StartWatching(resourceType); err != nil {
 			return fmt.Errorf("failed to watch %s: %w", resourceType, err)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -236,6 +236,6 @@ func StartLogStreaming(podName, containerName string, lines int64) error {
 	if err != nil {
 		return err
 	}
-	
+
 	return logs.StartStreaming(podName, containerName, lines)
 }

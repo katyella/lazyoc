@@ -146,9 +146,9 @@ func (h *MouseHandler) handleRightClick(event MouseEvent) tea.Cmd {
 		// Show context menu for main panel
 		return func() tea.Msg {
 			return ShowContextMenuMsg{
-				X:        x,
-				Y:        y,
-				Context:  "main",
+				X:         x,
+				Y:         y,
+				Context:   "main",
 				ActiveTab: event.ActiveTab,
 			}
 		}

@@ -8,13 +8,13 @@ import (
 // FilterManager manages resource filtering and search state
 type FilterManager struct {
 	mu sync.RWMutex
-	
+
 	// Filters per resource type
 	filters map[string]*ResourceFilter
-	
+
 	// Global search
 	globalSearch string
-	
+
 	// Observers
 	observers []FilterObserver
 }
@@ -53,7 +53,7 @@ func (f *FilterManager) AddObserver(observer FilterObserver) {
 func (f *FilterManager) RemoveObserver(observer FilterObserver) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	
+
 	for i, obs := range f.observers {
 		if obs == observer {
 			f.observers = append(f.observers[:i], f.observers[i+1:]...)
@@ -66,10 +66,10 @@ func (f *FilterManager) RemoveObserver(observer FilterObserver) {
 func (f *FilterManager) SetSearch(resourceType string, searchTerm string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	
+
 	filter := f.getOrCreateFilter(resourceType)
 	filter.SearchTerm = searchTerm
-	
+
 	f.notifyObservers(resourceType, filter)
 }
 
@@ -77,9 +77,9 @@ func (f *FilterManager) SetSearch(resourceType string, searchTerm string) {
 func (f *FilterManager) SetGlobalSearch(searchTerm string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	
+
 	f.globalSearch = searchTerm
-	
+
 	// Update all resource filters
 	for resourceType, filter := range f.filters {
 		filter.SearchTerm = searchTerm
@@ -91,10 +91,10 @@ func (f *FilterManager) SetGlobalSearch(searchTerm string) {
 func (f *FilterManager) SetLabels(resourceType string, labels map[string]string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	
+
 	filter := f.getOrCreateFilter(resourceType)
 	filter.Labels = labels
-	
+
 	f.notifyObservers(resourceType, filter)
 }
 
@@ -102,13 +102,13 @@ func (f *FilterManager) SetLabels(resourceType string, labels map[string]string)
 func (f *FilterManager) AddLabel(resourceType string, key, value string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	
+
 	filter := f.getOrCreateFilter(resourceType)
 	if filter.Labels == nil {
 		filter.Labels = make(map[string]string)
 	}
 	filter.Labels[key] = value
-	
+
 	f.notifyObservers(resourceType, filter)
 }
 
@@ -116,7 +116,7 @@ func (f *FilterManager) AddLabel(resourceType string, key, value string) {
 func (f *FilterManager) RemoveLabel(resourceType string, key string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	
+
 	filter := f.getOrCreateFilter(resourceType)
 	if filter.Labels != nil {
 		delete(filter.Labels, key)
@@ -128,10 +128,10 @@ func (f *FilterManager) RemoveLabel(resourceType string, key string) {
 func (f *FilterManager) SetNamespaces(resourceType string, namespaces []string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	
+
 	filter := f.getOrCreateFilter(resourceType)
 	filter.Namespaces = namespaces
-	
+
 	f.notifyObservers(resourceType, filter)
 }
 
@@ -139,10 +139,10 @@ func (f *FilterManager) SetNamespaces(resourceType string, namespaces []string) 
 func (f *FilterManager) SetStatuses(resourceType string, statuses []string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	
+
 	filter := f.getOrCreateFilter(resourceType)
 	filter.Statuses = statuses
-	
+
 	f.notifyObservers(resourceType, filter)
 }
 
@@ -150,7 +150,7 @@ func (f *FilterManager) SetStatuses(resourceType string, statuses []string) {
 func (f *FilterManager) GetFilter(resourceType string) *ResourceFilter {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
-	
+
 	return f.filters[resourceType]
 }
 
@@ -158,7 +158,7 @@ func (f *FilterManager) GetFilter(resourceType string) *ResourceFilter {
 func (f *FilterManager) ClearFilter(resourceType string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	
+
 	if _, exists := f.filters[resourceType]; exists {
 		delete(f.filters, resourceType)
 		f.notifyObservers(resourceType, nil)
@@ -169,11 +169,11 @@ func (f *FilterManager) ClearFilter(resourceType string) {
 func (f *FilterManager) ClearAllFilters() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	
+
 	for resourceType := range f.filters {
 		f.notifyObservers(resourceType, nil)
 	}
-	
+
 	f.filters = make(map[string]*ResourceFilter)
 	f.globalSearch = ""
 }
@@ -182,19 +182,19 @@ func (f *FilterManager) ClearAllFilters() {
 func (f *FilterManager) ApplyFilter(resourceType string, item map[string]interface{}) bool {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
-	
+
 	filter, exists := f.filters[resourceType]
 	if !exists || filter == nil {
 		return true
 	}
-	
+
 	// Check search term
 	if filter.SearchTerm != "" {
 		if !f.matchesSearch(item, filter.SearchTerm) {
 			return false
 		}
 	}
-	
+
 	// Check namespace filter
 	if len(filter.Namespaces) > 0 {
 		namespace := f.getItemNamespace(item)
@@ -202,7 +202,7 @@ func (f *FilterManager) ApplyFilter(resourceType string, item map[string]interfa
 			return false
 		}
 	}
-	
+
 	// Check status filter
 	if len(filter.Statuses) > 0 {
 		status := f.getItemStatus(item)
@@ -210,7 +210,7 @@ func (f *FilterManager) ApplyFilter(resourceType string, item map[string]interfa
 			return false
 		}
 	}
-	
+
 	// Check label filters
 	if len(filter.Labels) > 0 {
 		itemLabels := f.getItemLabels(item)
@@ -220,7 +220,7 @@ func (f *FilterManager) ApplyFilter(resourceType string, item map[string]interfa
 			}
 		}
 	}
-	
+
 	return true
 }
 
@@ -251,21 +251,21 @@ func (f *FilterManager) notifyObservers(resourceType string, filter *ResourceFil
 
 func (f *FilterManager) matchesSearch(item map[string]interface{}, searchTerm string) bool {
 	search := strings.ToLower(searchTerm)
-	
+
 	// Check name
 	if name, ok := item["name"].(string); ok {
 		if strings.Contains(strings.ToLower(name), search) {
 			return true
 		}
 	}
-	
+
 	// Check namespace
 	if namespace, ok := item["namespace"].(string); ok {
 		if strings.Contains(strings.ToLower(namespace), search) {
 			return true
 		}
 	}
-	
+
 	// Check labels
 	if labels, ok := item["labels"].(map[string]interface{}); ok {
 		for key, value := range labels {
@@ -279,7 +279,7 @@ func (f *FilterManager) matchesSearch(item map[string]interface{}, searchTerm st
 			}
 		}
 	}
-	
+
 	return false
 }
 
@@ -303,7 +303,7 @@ func (f *FilterManager) getItemStatus(item map[string]interface{}) string {
 
 func (f *FilterManager) getItemLabels(item map[string]interface{}) map[string]string {
 	labels := make(map[string]string)
-	
+
 	if metadata, ok := item["metadata"].(map[string]interface{}); ok {
 		if itemLabels, ok := metadata["labels"].(map[string]interface{}); ok {
 			for key, value := range itemLabels {
@@ -313,7 +313,7 @@ func (f *FilterManager) getItemLabels(item map[string]interface{}) map[string]st
 			}
 		}
 	}
-	
+
 	return labels
 }
 

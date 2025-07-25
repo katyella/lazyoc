@@ -13,7 +13,7 @@ func TestClusterType_String(t *testing.T) {
 		{ClusterTypeKubernetes, "Kubernetes"},
 		{ClusterTypeOpenShift, "OpenShift"},
 	}
-	
+
 	for _, test := range tests {
 		if result := test.clusterType.String(); result != test.expected {
 			t.Errorf("ClusterType.String() = %s, expected %s", result, test.expected)
@@ -41,7 +41,7 @@ func TestClusterTypeDetector_CacheManagement(t *testing.T) {
 			Type: ClusterTypeKubernetes,
 		},
 	}
-	
+
 	// Test ClearCache
 	detector.ClearCache()
 	if detector.cached {
@@ -50,7 +50,7 @@ func TestClusterTypeDetector_CacheManagement(t *testing.T) {
 	if detector.cachedInfo != nil {
 		t.Error("Expected cachedInfo to be nil after ClearCache")
 	}
-	
+
 	// Test SetCacheTime
 	detector.SetCacheTime(5 * 60) // 5 minutes
 	if detector.cacheTime != 5*60 {

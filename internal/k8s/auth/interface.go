@@ -10,16 +10,16 @@ import (
 type AuthProvider interface {
 	// Authenticate attempts to authenticate and returns a rest.Config
 	Authenticate(ctx context.Context) (*rest.Config, error)
-	
+
 	// IsValid checks if the current authentication is still valid
 	IsValid(ctx context.Context) error
-	
+
 	// Refresh attempts to refresh the authentication credentials if possible
 	Refresh(ctx context.Context) error
-	
+
 	// GetContext returns the current context name if applicable
 	GetContext() string
-	
+
 	// GetNamespace returns the default namespace for this authentication
 	GetNamespace() string
 }
@@ -51,7 +51,7 @@ func (am *AuthManager) Authenticate(ctx context.Context) (*rest.Config, error) {
 			return config, nil
 		}
 	}
-	
+
 	return nil, &AuthError{
 		Type:    "authentication_failed",
 		Message: "all authentication methods failed",
@@ -71,7 +71,7 @@ func (am *AuthManager) IsValid(ctx context.Context) error {
 			Message: "no active authentication provider",
 		}
 	}
-	
+
 	return am.active.IsValid(ctx)
 }
 
@@ -83,6 +83,6 @@ func (am *AuthManager) Refresh(ctx context.Context) error {
 			Message: "no active authentication provider",
 		}
 	}
-	
+
 	return am.active.Refresh(ctx)
 }

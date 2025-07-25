@@ -11,24 +11,24 @@ func TestTUIStartsAndStops(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
-	
+
 	opts := ProgramOptions{
 		Version:      "0.1.0-test",
 		Debug:        true,
 		AltScreen:    false, // Disable alt screen for testing
 		MouseSupport: false,
 	}
-	
+
 	// Create the program
 	program := NewProgram(opts)
 	if program == nil {
 		t.Fatal("Failed to create program")
 	}
-	
+
 	// Test that we can create a context and cancel it
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	
+
 	// Start the program in a goroutine
 	done := make(chan error, 1)
 	go func() {
@@ -36,7 +36,7 @@ func TestTUIStartsAndStops(t *testing.T) {
 		// In a real integration test, we'd need to send quit signals
 		done <- nil
 	}()
-	
+
 	select {
 	case err := <-done:
 		if err != nil {
@@ -82,7 +82,7 @@ func TestProgramCreationWithDifferentOptions(t *testing.T) {
 			},
 		},
 	}
-	
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			program := NewProgram(tc.opts)

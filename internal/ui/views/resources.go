@@ -12,25 +12,25 @@ import (
 
 // ResourcesView handles generic resource views for services, deployments, etc.
 type ResourcesView struct {
-	resourceType   string
-	selectedItem   int
-	loadingItems   bool
-	services       []resources.ServiceInfo
-	deployments    []resources.DeploymentInfo
-	configMaps     []resources.ConfigMapInfo
-	secrets        []resources.SecretInfo
+	resourceType string
+	selectedItem int
+	loadingItems bool
+	services     []resources.ServiceInfo
+	deployments  []resources.DeploymentInfo
+	configMaps   []resources.ConfigMapInfo
+	secrets      []resources.SecretInfo
 }
 
 // NewResourcesView creates a new resources view
 func NewResourcesView() *ResourcesView {
 	return &ResourcesView{
-		resourceType:   "services",
-		selectedItem:   0,
-		loadingItems:   false,
-		services:       []resources.ServiceInfo{},
-		deployments:    []resources.DeploymentInfo{},
-		configMaps:     []resources.ConfigMapInfo{},
-		secrets:        []resources.SecretInfo{},
+		resourceType: "services",
+		selectedItem: 0,
+		loadingItems: false,
+		services:     []resources.ServiceInfo{},
+		deployments:  []resources.DeploymentInfo{},
+		configMaps:   []resources.ConfigMapInfo{},
+		secrets:      []resources.SecretInfo{},
 	}
 }
 

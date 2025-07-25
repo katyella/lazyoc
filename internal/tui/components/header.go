@@ -21,10 +21,10 @@ type HeaderComponent struct {
 	namespace       string
 
 	// Styles
-	titleStyle      lipgloss.Style
-	infoStyle       lipgloss.Style
-	separatorStyle  lipgloss.Style
-	connectedStyle  lipgloss.Style
+	titleStyle        lipgloss.Style
+	infoStyle         lipgloss.Style
+	separatorStyle    lipgloss.Style
+	connectedStyle    lipgloss.Style
 	disconnectedStyle lipgloss.Style
 }
 
@@ -50,20 +50,20 @@ func NewHeaderComponent(title, version string) *HeaderComponent {
 	return &HeaderComponent{
 		title:   title,
 		version: version,
-		
+
 		titleStyle: lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color(constants.ColorBlue)),
-		
+
 		infoStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color(constants.ColorGray)),
-		
+
 		separatorStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color(constants.ColorDarkGray)),
-		
+
 		connectedStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color(constants.ColorGreen)),
-		
+
 		disconnectedStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color(constants.ColorYellow)),
 	}
@@ -127,16 +127,16 @@ func (h *HeaderComponent) renderConnectionStatus() string {
 	switch h.connectionState {
 	case ConnectionStateDisconnected:
 		return h.disconnectedStyle.Render(constants.StatusDisconnected)
-	
+
 	case ConnectionStateConnecting:
 		return h.disconnectedStyle.Render(constants.StatusConnecting)
-	
+
 	case ConnectionStateConnected:
 		clusterType := h.clusterInfo.Type
 		if clusterType == "" {
 			clusterType = "Kubernetes"
 		}
-		
+
 		status := fmt.Sprintf("● %s", clusterType)
 		if h.clusterInfo.Version != "" {
 			status += fmt.Sprintf(" %s", h.clusterInfo.Version)
@@ -147,12 +147,12 @@ func (h *HeaderComponent) renderConnectionStatus() string {
 		if h.clusterInfo.Context != "" {
 			status += fmt.Sprintf(" [%s]", h.clusterInfo.Context)
 		}
-		
+
 		return h.connectedStyle.Render(status)
-	
+
 	case ConnectionStateError:
 		return h.disconnectedStyle.Render("✗ Connection Error")
-	
+
 	default:
 		return ""
 	}
@@ -178,8 +178,8 @@ func stripANSI(str string) string {
 	// This is a placeholder that removes common color codes
 	result := str
 	for _, code := range []string{
-		"\033[0m", "\033[1m", "\033[2m", "\033[30m", "\033[31m", 
-		"\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m", 
+		"\033[0m", "\033[1m", "\033[2m", "\033[30m", "\033[31m",
+		"\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m",
 		"\033[37m", "\033[90m", "\033[91m", "\033[92m", "\033[93m",
 		"\033[94m", "\033[95m", "\033[96m", "\033[97m",
 	} {

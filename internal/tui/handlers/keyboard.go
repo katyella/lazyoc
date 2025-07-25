@@ -40,20 +40,20 @@ func (k *KeyHandler) Handle(msg tea.KeyMsg) tea.Cmd {
 func DefaultKeyBindings() map[string]string {
 	return map[string]string{
 		// Navigation
-		"up":    "Move up",
-		"k":     "Move up",
-		"down":  "Move down", 
-		"j":     "Move down",
-		"left":  "Move left",
-		"h":     "Move left",
-		"right": "Move right",
-		"pgup":  "Page up",
+		"up":     "Move up",
+		"k":      "Move up",
+		"down":   "Move down",
+		"j":      "Move down",
+		"left":   "Move left",
+		"h":      "Move left",
+		"right":  "Move right",
+		"pgup":   "Page up",
 		"pgdown": "Page down",
-		"home":  "Go to top",
-		"g":     "Go to top",
-		"end":   "Go to bottom",
-		"G":     "Go to bottom",
-		
+		"home":   "Go to top",
+		"g":      "Go to top",
+		"end":    "Go to bottom",
+		"G":      "Go to bottom",
+
 		// Tabs
 		"tab":       "Next tab",
 		"shift+tab": "Previous tab",
@@ -62,24 +62,24 @@ func DefaultKeyBindings() map[string]string {
 		"3":         "Go to tab 3",
 		"4":         "Go to tab 4",
 		"5":         "Go to tab 5",
-		
+
 		// Actions
-		"enter":  "Select/Open",
-		"space":  "Select/Toggle",
-		"d":      "Delete",
-		"e":      "Edit",
-		"v":      "View",
-		"l":      "Show logs",
-		"r":      "Refresh",
-		"f":      "Follow logs",
-		"s":      "Shell/Exec",
-		
+		"enter": "Select/Open",
+		"space": "Select/Toggle",
+		"d":     "Delete",
+		"e":     "Edit",
+		"v":     "View",
+		"l":     "Show logs",
+		"r":     "Refresh",
+		"f":     "Follow logs",
+		"s":     "Shell/Exec",
+
 		// Panels
 		"ctrl+j": "Focus next panel",
 		"ctrl+k": "Focus previous panel",
 		"ctrl+h": "Hide/Show details",
 		"ctrl+l": "Hide/Show logs",
-		
+
 		// General
 		"?":      "Show help",
 		"ctrl+c": "Quit",

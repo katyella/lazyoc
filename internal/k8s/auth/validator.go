@@ -27,7 +27,7 @@ func NewCredentialValidator(config *rest.Config) (*CredentialValidator, error) {
 			err,
 		)
 	}
-	
+
 	return &CredentialValidator{
 		config:    config,
 		clientset: clientset,
@@ -39,7 +39,7 @@ func (cv *CredentialValidator) ValidateConnection(ctx context.Context) error {
 	// Set a reasonable timeout for validation
 	ctx, cancel := context.WithTimeout(ctx, constants.ValidationTimeout)
 	defer cancel()
-	
+
 	// Try to get server version as a lightweight connectivity test
 	version, err := cv.clientset.Discovery().ServerVersion()
 	if err != nil {
@@ -49,7 +49,7 @@ func (cv *CredentialValidator) ValidateConnection(ctx context.Context) error {
 			err,
 		)
 	}
-	
+
 	// Basic sanity check on the version response
 	if version.GitVersion == "" {
 		return NewAuthError(
@@ -58,7 +58,7 @@ func (cv *CredentialValidator) ValidateConnection(ctx context.Context) error {
 			nil,
 		)
 	}
-	
+
 	return nil
 }
 
@@ -67,7 +67,7 @@ func (cv *CredentialValidator) ValidatePermissions(ctx context.Context) error {
 	// Set a reasonable timeout
 	ctx, cancel := context.WithTimeout(ctx, constants.ValidationTimeout)
 	defer cancel()
-	
+
 	// Try to list namespaces (a basic permission check)
 	_, err := cv.clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{Limit: 1})
 	if err != nil {
@@ -77,7 +77,7 @@ func (cv *CredentialValidator) ValidatePermissions(ctx context.Context) error {
 			err,
 		)
 	}
-	
+
 	return nil
 }
 
@@ -85,7 +85,7 @@ func (cv *CredentialValidator) ValidatePermissions(ctx context.Context) error {
 func (cv *CredentialValidator) GetServerInfo(ctx context.Context) (*ServerInfo, error) {
 	ctx, cancel := context.WithTimeout(ctx, constants.ValidationTimeout)
 	defer cancel()
-	
+
 	version, err := cv.clientset.Discovery().ServerVersion()
 	if err != nil {
 		return nil, NewAuthError(
@@ -94,17 +94,17 @@ func (cv *CredentialValidator) GetServerInfo(ctx context.Context) (*ServerInfo, 
 			err,
 		)
 	}
-	
+
 	// Check if this is an OpenShift cluster by looking for OpenShift-specific APIs
 	isOpenShift := cv.isOpenShiftCluster(ctx)
-	
+
 	return &ServerInfo{
-		GitVersion:   version.GitVersion,
-		Major:        version.Major,
-		Minor:        version.Minor,
-		Platform:     version.Platform,
-		IsOpenShift:  isOpenShift,
-		ServerHost:   cv.config.Host,
+		GitVersion:  version.GitVersion,
+		Major:       version.Major,
+		Minor:       version.Minor,
+		Platform:    version.Platform,
+		IsOpenShift: isOpenShift,
+		ServerHost:  cv.config.Host,
 	}, nil
 }
 
@@ -115,16 +115,16 @@ func (cv *CredentialValidator) isOpenShiftCluster(ctx context.Context) bool {
 	if err != nil {
 		return false
 	}
-	
+
 	// Look for OpenShift-specific API groups
 	for _, group := range apiGroups.Groups {
 		if group.Name == "route.openshift.io" ||
-		   group.Name == "build.openshift.io" ||
-		   group.Name == "image.openshift.io" {
+			group.Name == "build.openshift.io" ||
+			group.Name == "image.openshift.io" {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -143,7 +143,7 @@ func (si *ServerInfo) String() string {
 	if si.IsOpenShift {
 		clusterType = "OpenShift"
 	}
-	
-	return fmt.Sprintf("%s %s.%s (%s) at %s", 
+
+	return fmt.Sprintf("%s %s.%s (%s) at %s",
 		clusterType, si.Major, si.Minor, si.GitVersion, si.ServerHost)
 }

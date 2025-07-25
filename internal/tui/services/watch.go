@@ -9,13 +9,13 @@ import (
 // WatchService manages resource watching
 type WatchService struct {
 	mu sync.RWMutex
-	
+
 	// Kubernetes service
 	k8s *KubernetesService
-	
+
 	// Active watchers
 	watchers map[string]*resourceWatcher
-	
+
 	// Observers
 	observers []WatchObserver
 }
@@ -56,7 +56,7 @@ func (w *WatchService) AddObserver(observer WatchObserver) {
 func (w *WatchService) RemoveObserver(observer WatchObserver) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	
+
 	for i, obs := range w.observers {
 		if obs == observer {
 			w.observers = append(w.observers[:i], w.observers[i+1:]...)
@@ -69,23 +69,23 @@ func (w *WatchService) RemoveObserver(observer WatchObserver) {
 func (w *WatchService) StartWatching(resourceType string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	
+
 	// Stop existing watcher if any
 	if existing, ok := w.watchers[resourceType]; ok {
 		existing.cancel()
 		delete(w.watchers, resourceType)
 	}
-	
+
 	// Create context for watcher
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	// Start watching
 	eventChan, err := w.k8s.WatchResources(ctx, resourceType)
 	if err != nil {
 		cancel()
 		return err
 	}
-	
+
 	// Create watcher record
 	watcher := &resourceWatcher{
 		resourceType: resourceType,
@@ -93,12 +93,12 @@ func (w *WatchService) StartWatching(resourceType string) error {
 		cancel:       cancel,
 		eventChan:    eventChan,
 	}
-	
+
 	w.watchers[resourceType] = watcher
-	
+
 	// Start processing events
 	go w.processEvents(watcher)
-	
+
 	return nil
 }
 
@@ -106,7 +106,7 @@ func (w *WatchService) StartWatching(resourceType string) error {
 func (w *WatchService) StopWatching(resourceType string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	
+
 	if watcher, ok := w.watchers[resourceType]; ok {
 		watcher.cancel()
 		delete(w.watchers, resourceType)
@@ -117,11 +117,11 @@ func (w *WatchService) StopWatching(resourceType string) {
 func (w *WatchService) StopAllWatchers() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	
+
 	for _, watcher := range w.watchers {
 		watcher.cancel()
 	}
-	
+
 	w.watchers = make(map[string]*resourceWatcher)
 }
 
@@ -129,7 +129,7 @@ func (w *WatchService) StopAllWatchers() {
 func (w *WatchService) IsWatching(resourceType string) bool {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
-	
+
 	_, exists := w.watchers[resourceType]
 	return exists
 }
@@ -138,12 +138,12 @@ func (w *WatchService) IsWatching(resourceType string) bool {
 func (w *WatchService) GetActiveWatchers() []string {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
-	
+
 	types := make([]string, 0, len(w.watchers))
 	for resourceType := range w.watchers {
 		types = append(types, resourceType)
 	}
-	
+
 	return types
 }
 
@@ -156,10 +156,10 @@ func (w *WatchService) processEvents(watcher *resourceWatcher) {
 				// Channel closed, watcher stopped
 				return
 			}
-			
+
 			// Process event
 			w.handleEvent(watcher.resourceType, event)
-			
+
 		case <-watcher.context.Done():
 			// Context cancelled, stop processing
 			return
@@ -173,7 +173,7 @@ func (w *WatchService) handleEvent(resourceType string, event ResourceEvent) {
 	observers := make([]WatchObserver, len(w.observers))
 	copy(observers, w.observers)
 	w.mu.RUnlock()
-	
+
 	// Notify observers based on event type
 	for _, observer := range observers {
 		switch event.Type {
@@ -191,7 +191,7 @@ func (w *WatchService) handleEvent(resourceType string, event ResourceEvent) {
 func (w *WatchService) RefreshResource(resourceType string) error {
 	// This would trigger a manual refresh of the resource
 	// Implementation depends on the specific resource type
-	
+
 	// For now, simulate a refresh by creating synthetic events
 	switch resourceType {
 	case "pods":
@@ -200,7 +200,7 @@ func (w *WatchService) RefreshResource(resourceType string) error {
 			w.notifyError(resourceType, err)
 			return err
 		}
-		
+
 		// Create synthetic added events for all pods
 		for _, pod := range pods {
 			event := ResourceEvent{
@@ -210,14 +210,14 @@ func (w *WatchService) RefreshResource(resourceType string) error {
 			}
 			w.handleEvent(resourceType, event)
 		}
-		
+
 	case "services":
 		services, err := w.k8s.GetServices()
 		if err != nil {
 			w.notifyError(resourceType, err)
 			return err
 		}
-		
+
 		for _, svc := range services {
 			event := ResourceEvent{
 				Type:      EventModified,
@@ -226,14 +226,14 @@ func (w *WatchService) RefreshResource(resourceType string) error {
 			}
 			w.handleEvent(resourceType, event)
 		}
-		
+
 	case "deployments":
 		deployments, err := w.k8s.GetDeployments()
 		if err != nil {
 			w.notifyError(resourceType, err)
 			return err
 		}
-		
+
 		for _, dep := range deployments {
 			event := ResourceEvent{
 				Type:      EventModified,
@@ -242,12 +242,12 @@ func (w *WatchService) RefreshResource(resourceType string) error {
 			}
 			w.handleEvent(resourceType, event)
 		}
-		
+
 	default:
 		// Unsupported resource type
 		return nil
 	}
-	
+
 	return nil
 }
 
@@ -257,7 +257,7 @@ func (w *WatchService) notifyError(resourceType string, err error) {
 	observers := make([]WatchObserver, len(w.observers))
 	copy(observers, w.observers)
 	w.mu.RUnlock()
-	
+
 	for _, observer := range observers {
 		observer.OnWatchError(resourceType, err)
 	}
@@ -267,10 +267,10 @@ func (w *WatchService) notifyError(resourceType string, err error) {
 type WatchConfig struct {
 	// ResourceTypes to watch
 	ResourceTypes []string
-	
+
 	// RefreshInterval for manual refresh (if watch not supported)
 	RefreshInterval time.Duration
-	
+
 	// BufferSize for event channels
 	BufferSize int
 }
@@ -288,7 +288,7 @@ func DefaultWatchConfig() *WatchConfig {
 func (w *WatchService) ConfigureWatch(config *WatchConfig) error {
 	// Stop all existing watchers
 	w.StopAllWatchers()
-	
+
 	// Start watching configured resource types
 	for _, resourceType := range config.ResourceTypes {
 		if err := w.StartWatching(resourceType); err != nil {
@@ -296,6 +296,6 @@ func (w *WatchService) ConfigureWatch(config *WatchConfig) error {
 			continue
 		}
 	}
-	
+
 	return nil
 }

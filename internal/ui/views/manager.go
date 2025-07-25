@@ -32,13 +32,13 @@ type ViewContext struct {
 type View interface {
 	// Update handles tea messages and returns updated model and commands
 	Update(msg tea.Msg, ctx ViewContext) (View, tea.Cmd)
-	
+
 	// Render returns the string representation of the view
 	Render(ctx ViewContext) string
-	
+
 	// GetType returns the view type
 	GetType() ViewType
-	
+
 	// CanHandle returns true if this view can handle the given message
 	CanHandle(msg tea.Msg) bool
 }
@@ -101,13 +101,13 @@ func (vm *ViewManager) Initialize() {
 	if vm.initialized {
 		return
 	}
-	
+
 	// Register default views
 	vm.RegisterView(ViewTypePods, NewPodsView())
 	vm.RegisterView(ViewTypeLogs, NewLogsView())
 	vm.RegisterView(ViewTypeContainers, NewContainersView())
 	vm.RegisterView(ViewTypeResources, NewResourcesView())
-	
+
 	vm.initialized = true
 }
 

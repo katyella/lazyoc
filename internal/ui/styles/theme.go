@@ -13,22 +13,22 @@ import (
 // Theme represents a color theme for the UI
 type Theme struct {
 	Name string `json:"name"`
-	
+
 	// Basic colors
 	Background lipgloss.Color `json:"background"`
 	Foreground lipgloss.Color `json:"foreground"`
-	
+
 	// UI colors
 	Primary   lipgloss.Color `json:"primary"`
 	Secondary lipgloss.Color `json:"secondary"`
 	Border    lipgloss.Color `json:"border"`
-	
+
 	// Status colors
 	Success lipgloss.Color `json:"success"`
 	Warning lipgloss.Color `json:"warning"`
 	Error   lipgloss.Color `json:"error"`
 	Info    lipgloss.Color `json:"info"`
-	
+
 	// Additional UI colors
 	AccentForeground lipgloss.Color `json:"accent_foreground"`
 	MutedForeground  lipgloss.Color `json:"muted_foreground"`
@@ -87,20 +87,20 @@ type ThemeConfig struct {
 func NewThemeManager() *ThemeManager {
 	configDir := filepath.Join(os.Getenv("HOME"), constants.LazyOCConfigDir)
 	configPath := filepath.Join(configDir, constants.ConfigFileName)
-	
+
 	tm := &ThemeManager{
 		currentTheme: PredefinedThemes[constants.DefaultTheme],
 		configPath:   configPath,
 	}
-	
+
 	// Ensure config directory exists
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		// Silently continue if config directory creation fails
 	}
-	
+
 	// Load saved theme preference
 	tm.loadThemePreference()
-	
+
 	return tm
 }
 
@@ -115,14 +115,14 @@ func (tm *ThemeManager) SetTheme(themeName string) error {
 	if !exists {
 		theme = PredefinedThemes[constants.DefaultTheme] // fallback
 	}
-	
+
 	tm.currentTheme = theme
-	
+
 	// Save theme preference
 	if err := tm.saveThemePreference(); err != nil {
 		return err
 	}
-	
+
 	return nil
 }
 
@@ -144,13 +144,13 @@ func (tm *ThemeManager) loadThemePreference() {
 		}
 		return
 	}
-	
+
 	var config ThemeConfig
 	if err := json.Unmarshal(data, &config); err != nil {
 		// Silently ignore parse errors
 		return
 	}
-	
+
 	if config.SelectedTheme != "" {
 		tm.SetTheme(config.SelectedTheme)
 	}
@@ -161,12 +161,12 @@ func (tm *ThemeManager) saveThemePreference() error {
 	config := ThemeConfig{
 		SelectedTheme: tm.currentTheme.Name,
 	}
-	
+
 	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return err
 	}
-	
+
 	return os.WriteFile(tm.configPath, data, 0644)
 }
 
@@ -185,7 +185,7 @@ func CreateBorderStyle(theme *Theme, focused bool) lipgloss.Style {
 	if focused {
 		borderColor = theme.FocusBorder
 	}
-	
+
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(borderColor)
@@ -213,7 +213,7 @@ func CreateMutedStyle(theme *Theme) lipgloss.Style {
 // CreateStatusStyle creates a style based on status type
 func CreateStatusStyle(theme *Theme, statusType string) lipgloss.Style {
 	var color lipgloss.Color
-	
+
 	switch statusType {
 	case "success":
 		color = theme.Success
@@ -226,7 +226,7 @@ func CreateStatusStyle(theme *Theme, statusType string) lipgloss.Style {
 	default:
 		color = theme.Foreground
 	}
-	
+
 	return lipgloss.NewStyle().Foreground(color)
 }
 

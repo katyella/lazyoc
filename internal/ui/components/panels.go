@@ -34,12 +34,12 @@ func DefaultPanelConfig() PanelConfig {
 
 // FlexContainer represents a flexible container for arranging panels
 type FlexContainer struct {
-	Direction  FlexDirection
-	Children   []FlexItem
-	Width      int
-	Height     int
-	Gap        int
-	Padding    int
+	Direction      FlexDirection
+	Children       []FlexItem
+	Width          int
+	Height         int
+	Gap            int
+	Padding        int
 	JustifyContent JustifyType
 	AlignItems     AlignType
 }
@@ -142,11 +142,11 @@ func (fc *FlexContainer) Render() string {
 		style := child.Style.
 			Width(size.Width).
 			Height(size.Height)
-		
+
 		if child.Padding > 0 {
 			style = style.Padding(0, child.Padding)
 		}
-		
+
 		renderedChildren[i] = style.Render(child.Content)
 	}
 
@@ -173,28 +173,28 @@ func (fc *FlexContainer) Render() string {
 // calculateChildSizes calculates the sizes for each child based on flex properties
 func (fc *FlexContainer) calculateChildSizes(availableWidth, availableHeight int) []struct{ Width, Height int } {
 	sizes := make([]struct{ Width, Height int }, len(fc.Children))
-	
+
 	if fc.Direction == Row {
 		// Calculate widths for row layout
 		totalFlexGrow := 0
 		totalBasis := 0
 		gapSpace := (len(fc.Children) - 1) * fc.Gap
-		
+
 		for _, child := range fc.Children {
 			totalFlexGrow += child.FlexGrow
 			if child.FlexBasis > 0 {
 				totalBasis += child.FlexBasis
 			}
 		}
-		
+
 		remainingWidth := availableWidth - totalBasis - gapSpace
-		
+
 		for i, child := range fc.Children {
 			width := child.FlexBasis
 			if child.FlexGrow > 0 && totalFlexGrow > 0 {
 				width += (remainingWidth * child.FlexGrow) / totalFlexGrow
 			}
-			
+
 			// Apply constraints
 			if child.MinWidth > 0 && width < child.MinWidth {
 				width = child.MinWidth
@@ -202,7 +202,7 @@ func (fc *FlexContainer) calculateChildSizes(availableWidth, availableHeight int
 			if child.MaxWidth > 0 && width > child.MaxWidth {
 				width = child.MaxWidth
 			}
-			
+
 			height := availableHeight
 			if child.MinHeight > 0 && height < child.MinHeight {
 				height = child.MinHeight
@@ -210,7 +210,7 @@ func (fc *FlexContainer) calculateChildSizes(availableWidth, availableHeight int
 			if child.MaxHeight > 0 && height > child.MaxHeight {
 				height = child.MaxHeight
 			}
-			
+
 			sizes[i] = struct{ Width, Height int }{width, height}
 		}
 	} else {
@@ -218,22 +218,22 @@ func (fc *FlexContainer) calculateChildSizes(availableWidth, availableHeight int
 		totalFlexGrow := 0
 		totalBasis := 0
 		gapSpace := (len(fc.Children) - 1) * fc.Gap
-		
+
 		for _, child := range fc.Children {
 			totalFlexGrow += child.FlexGrow
 			if child.FlexBasis > 0 {
 				totalBasis += child.FlexBasis
 			}
 		}
-		
+
 		remainingHeight := availableHeight - totalBasis - gapSpace
-		
+
 		for i, child := range fc.Children {
 			height := child.FlexBasis
 			if child.FlexGrow > 0 && totalFlexGrow > 0 {
 				height += (remainingHeight * child.FlexGrow) / totalFlexGrow
 			}
-			
+
 			// Apply constraints
 			if child.MinHeight > 0 && height < child.MinHeight {
 				height = child.MinHeight
@@ -241,7 +241,7 @@ func (fc *FlexContainer) calculateChildSizes(availableWidth, availableHeight int
 			if child.MaxHeight > 0 && height > child.MaxHeight {
 				height = child.MaxHeight
 			}
-			
+
 			width := availableWidth
 			if child.MinWidth > 0 && width < child.MinWidth {
 				width = child.MinWidth
@@ -249,11 +249,11 @@ func (fc *FlexContainer) calculateChildSizes(availableWidth, availableHeight int
 			if child.MaxWidth > 0 && width > child.MaxWidth {
 				width = child.MaxWidth
 			}
-			
+
 			sizes[i] = struct{ Width, Height int }{width, height}
 		}
 	}
-	
+
 	return sizes
 }
 
@@ -262,16 +262,16 @@ func (fc *FlexContainer) arrangeRow(children []string, availableWidth, available
 	if len(children) == 0 {
 		return ""
 	}
-	
+
 	// Add gaps between children
 	gapStyle := lipgloss.NewStyle().Width(fc.Gap)
 	gap := gapStyle.Render("")
-	
+
 	result := children[0]
 	for i := 1; i < len(children); i++ {
 		result = lipgloss.JoinHorizontal(lipgloss.Top, result, gap, children[i])
 	}
-	
+
 	return result
 }
 
@@ -280,19 +280,19 @@ func (fc *FlexContainer) arrangeColumn(children []string, availableWidth, availa
 	if len(children) == 0 {
 		return ""
 	}
-	
+
 	// Add gaps between children
 	if fc.Gap > 0 {
 		gapStyle := lipgloss.NewStyle().Height(fc.Gap).Width(availableWidth)
 		gap := gapStyle.Render("")
-		
+
 		result := children[0]
 		for i := 1; i < len(children); i++ {
 			result = lipgloss.JoinVertical(lipgloss.Left, result, gap, children[i])
 		}
 		return result
 	}
-	
+
 	return lipgloss.JoinVertical(lipgloss.Left, children...)
 }
 
@@ -301,7 +301,7 @@ func CreateMainLayout(lm *LayoutManager) *FlexContainer {
 	// Main vertical container
 	mainContainer := NewFlexContainer(Column, lm.Width, lm.Height)
 	mainContainer.SetGap(0)
-	
+
 	// Header (fixed height)
 	headerDims := lm.GetPanelDimensions(PanelHeader)
 	headerItem := FlexItem{
@@ -310,7 +310,7 @@ func CreateMainLayout(lm *LayoutManager) *FlexContainer {
 		Style:     lm.getHeaderStyle(),
 	}
 	mainContainer.AddChild(headerItem)
-	
+
 	// Tabs (fixed height)
 	tabsDims := lm.GetPanelDimensions(PanelTabs)
 	tabsItem := FlexItem{
@@ -319,20 +319,20 @@ func CreateMainLayout(lm *LayoutManager) *FlexContainer {
 		Style:     lm.getTabsStyle(),
 	}
 	mainContainer.AddChild(tabsItem)
-	
+
 	// Content area (flexible)
 	contentContainer := NewFlexContainer(Row, lm.Width, 0)
 	contentContainer.SetGap(1)
-	
+
 	// Main content pane
 	mainItem := FlexItem{
-		Content:   CreateMainContent(lm),
-		FlexGrow:  1,
-		MinWidth:  lm.MinPanelWidth,
-		Style:     lm.getMainContentStyle(),
+		Content:  CreateMainContent(lm),
+		FlexGrow: 1,
+		MinWidth: lm.MinPanelWidth,
+		Style:    lm.getMainContentStyle(),
 	}
 	contentContainer.AddChild(mainItem)
-	
+
 	// Detail pane (if visible)
 	if lm.DetailPaneVisible {
 		detailDims := lm.GetPanelDimensions(PanelDetail)
@@ -344,14 +344,14 @@ func CreateMainLayout(lm *LayoutManager) *FlexContainer {
 		}
 		contentContainer.AddChild(detailItem)
 	}
-	
+
 	// Render content container and add to main container
 	contentItem := FlexItem{
 		Content:  contentContainer.Render(),
 		FlexGrow: 1,
 	}
 	mainContainer.AddChild(contentItem)
-	
+
 	// Log pane (if visible)
 	if lm.LogPaneVisible {
 		logDims := lm.GetPanelDimensions(PanelLog)
@@ -362,7 +362,7 @@ func CreateMainLayout(lm *LayoutManager) *FlexContainer {
 		}
 		mainContainer.AddChild(logItem)
 	}
-	
+
 	// Status bar (fixed height)
 	statusDims := lm.GetPanelDimensions(PanelStatusBar)
 	statusItem := FlexItem{
@@ -371,7 +371,7 @@ func CreateMainLayout(lm *LayoutManager) *FlexContainer {
 		Style:     lm.getStatusBarStyle(),
 	}
 	mainContainer.AddChild(statusItem)
-	
+
 	return mainContainer
 }
 
@@ -462,13 +462,13 @@ func CreateLogPaneContent(lm *LayoutManager) string {
 func CreateStatusBarContent(lm *LayoutManager) string {
 	leftStatus := "Ready • Connected to cluster"
 	rightStatus := fmt.Sprintf("Focus: Panel%d", int(lm.FocusedPanel))
-	
+
 	// Calculate spacing
 	statusWidth := lm.Width - lipgloss.Width(leftStatus) - lipgloss.Width(rightStatus)
 	spacing := ""
 	if statusWidth > 0 {
 		spacing = strings.Repeat(" ", statusWidth)
 	}
-	
+
 	return leftStatus + spacing + rightStatus
 }

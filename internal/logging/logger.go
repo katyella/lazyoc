@@ -1,3 +1,6 @@
+// Package logging provides centralized logging functionality for LazyOC.
+// It supports different log levels and can be configured for debug or production mode.
+// In debug mode, logs are written to a file; in production, they are discarded to avoid interfering with the TUI.
 package logging
 
 import (
@@ -8,11 +11,18 @@ import (
 	"github.com/katyella/lazyoc/internal/constants"
 )
 
-// Logger levels
+// Logger level constants define the available log levels for the application.
 const (
+	// LevelDebug represents debug-level logging for detailed diagnostic information
 	LevelDebug = "DEBUG"
-	LevelInfo  = "INFO"
-	LevelWarn  = "WARN"
+	
+	// LevelInfo represents informational logging for general application events
+	LevelInfo = "INFO"
+	
+	// LevelWarn represents warning-level logging for potentially problematic situations
+	LevelWarn = "WARN"
+	
+	// LevelError represents error-level logging for error conditions
 	LevelError = "ERROR"
 )
 

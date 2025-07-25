@@ -11,28 +11,28 @@ import (
 type NavigationController struct {
 	registry     *KeybindingRegistry
 	focusManager *FocusManager
-	
+
 	// Multi-key sequence handling
-	pendingSequence    string
-	lastKeyTime        time.Time
-	sequenceTimeout    time.Duration
-	
+	pendingSequence string
+	lastKeyTime     time.Time
+	sequenceTimeout time.Duration
+
 	// Search and command state
 	searchQuery     string
 	commandBuffer   string
 	isSearchActive  bool
 	isCommandActive bool
-	
+
 	// Event callbacks
 	callbacks map[KeyAction]func() tea.Cmd
 }
 
 // FocusManager manages panel focus and navigation
 type FocusManager struct {
-	currentPanel    components.PanelType
-	previousPanel   components.PanelType
-	focusOrder      []components.PanelType
-	panelEnabled    map[components.PanelType]bool
+	currentPanel  components.PanelType
+	previousPanel components.PanelType
+	focusOrder    []components.PanelType
+	panelEnabled  map[components.PanelType]bool
 }
 
 // NavigationMsg represents navigation-related messages
@@ -70,7 +70,7 @@ func NewNavigationController() *NavigationController {
 		sequenceTimeout: 500 * time.Millisecond,
 		callbacks:       make(map[KeyAction]func() tea.Cmd),
 	}
-	
+
 	return nc
 }
 
@@ -109,7 +109,7 @@ func (nc *NavigationController) GetFocusManager() *FocusManager {
 func (nc *NavigationController) ProcessKeyMsg(msg tea.KeyMsg) ([]tea.Cmd, bool) {
 	var cmds []tea.Cmd
 	keyStr := msg.String()
-	
+
 	// Handle multi-key sequences (like 'gg')
 	if handled, cmd := nc.handleMultiKeySequence(keyStr); handled {
 		if cmd != nil {
@@ -117,49 +117,49 @@ func (nc *NavigationController) ProcessKeyMsg(msg tea.KeyMsg) ([]tea.Cmd, bool) 
 		}
 		return cmds, true
 	}
-	
+
 	// Get action from registry
 	action, exists := nc.registry.ProcessKeyMsg(msg)
 	if !exists {
 		return nil, false
 	}
-	
+
 	// Handle mode transitions first
 	if modeCmd := nc.handleModeTransitions(action); modeCmd != nil {
 		cmds = append(cmds, modeCmd)
 	}
-	
+
 	// Handle navigation actions
 	if navCmd := nc.handleNavigationActions(action); navCmd != nil {
 		cmds = append(cmds, navCmd)
 	}
-	
+
 	// Handle general actions
 	if actionCmd := nc.handleGeneralActions(action); actionCmd != nil {
 		cmds = append(cmds, actionCmd)
 	}
-	
+
 	// Execute registered callbacks
 	if callback, exists := nc.callbacks[action]; exists {
 		if cmd := callback(); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	}
-	
+
 	return cmds, len(cmds) > 0
 }
 
 // handleMultiKeySequence handles multi-key sequences like 'gg'
 func (nc *NavigationController) handleMultiKeySequence(keyStr string) (bool, tea.Cmd) {
 	now := time.Now()
-	
+
 	// Check for sequence timeout
 	if !nc.lastKeyTime.IsZero() && now.Sub(nc.lastKeyTime) > nc.sequenceTimeout {
 		nc.pendingSequence = ""
 	}
-	
+
 	nc.lastKeyTime = now
-	
+
 	// Handle 'gg' sequence for go-to-top
 	if keyStr == "g" {
 		if nc.pendingSequence == "g" {
@@ -174,12 +174,12 @@ func (nc *NavigationController) handleMultiKeySequence(keyStr string) (bool, tea
 			return true, nil
 		}
 	}
-	
+
 	// If we have a pending sequence and this isn't completing it, clear it
 	if nc.pendingSequence != "" && keyStr != "g" {
 		nc.pendingSequence = ""
 	}
-	
+
 	return false, nil
 }
 
@@ -187,24 +187,24 @@ func (nc *NavigationController) handleMultiKeySequence(keyStr string) (bool, tea
 func (nc *NavigationController) handleModeTransitions(action KeyAction) tea.Cmd {
 	var newMode NavigationMode
 	var handled bool
-	
+
 	switch action {
 	case ActionEnterSearch:
 		newMode = ModeSearch
 		handled = true
 		nc.isSearchActive = true
 		nc.searchQuery = ""
-		
+
 	case ActionEnterCommand:
 		newMode = ModeCommand
 		handled = true
 		nc.isCommandActive = true
 		nc.commandBuffer = ""
-		
+
 	case ActionEnterInsert:
 		newMode = ModeInsert
 		handled = true
-		
+
 	case ActionEnterNormal, ActionEscape:
 		newMode = ModeNormal
 		handled = true
@@ -213,16 +213,16 @@ func (nc *NavigationController) handleModeTransitions(action KeyAction) tea.Cmd 
 		nc.searchQuery = ""
 		nc.commandBuffer = ""
 	}
-	
+
 	if handled {
 		oldMode := nc.registry.GetMode()
 		nc.registry.SetMode(newMode)
-		
+
 		return func() tea.Msg {
 			return ModeChangeMsg{OldMode: oldMode, NewMode: newMode}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -234,45 +234,45 @@ func (nc *NavigationController) handleNavigationActions(action KeyAction) tea.Cm
 		return func() tea.Msg {
 			return NavigationMsg{Action: action, Panel: nc.focusManager.currentPanel}
 		}
-		
+
 	case ActionPrevPanel:
 		nc.focusManager.PrevPanel()
 		return func() tea.Msg {
 			return NavigationMsg{Action: action, Panel: nc.focusManager.currentPanel}
 		}
-		
+
 	case ActionFocusMain:
 		nc.focusManager.SetFocus(components.PanelMain)
 		return func() tea.Msg {
 			return NavigationMsg{Action: action, Panel: components.PanelMain}
 		}
-		
+
 	case ActionFocusDetail:
 		nc.focusManager.SetFocus(components.PanelDetail)
 		return func() tea.Msg {
 			return NavigationMsg{Action: action, Panel: components.PanelDetail}
 		}
-		
+
 	case ActionFocusLog:
 		nc.focusManager.SetFocus(components.PanelLog)
 		return func() tea.Msg {
 			return NavigationMsg{Action: action, Panel: components.PanelLog}
 		}
-		
+
 	case ActionNextTab, ActionPrevTab:
 		// Tab navigation actions - route to TUI
 		return func() tea.Msg {
 			return NavigationMsg{Action: action, Panel: nc.focusManager.currentPanel}
 		}
-		
+
 	case ActionMoveUp, ActionMoveDown, ActionMoveLeft, ActionMoveRight,
-		 ActionPageUp, ActionPageDown, ActionHalfPageUp, ActionHalfPageDown,
-		 ActionGoToTop, ActionGoToBottom:
+		ActionPageUp, ActionPageDown, ActionHalfPageUp, ActionHalfPageDown,
+		ActionGoToTop, ActionGoToBottom:
 		return func() tea.Msg {
 			return NavigationMsg{Action: action, Panel: nc.focusManager.currentPanel}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -302,14 +302,14 @@ func (nc *NavigationController) handleGeneralActions(action KeyAction) tea.Cmd {
 				return NavigationMsg{Action: action, Panel: nc.focusManager.currentPanel}
 			}
 		}
-		
+
 	default:
 		// Other actions that need to be routed
 		return func() tea.Msg {
 			return NavigationMsg{Action: action, Panel: nc.focusManager.currentPanel}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -385,7 +385,7 @@ func (fm *FocusManager) NextPanel() {
 	if currentIndex == -1 {
 		return
 	}
-	
+
 	// Find next enabled panel
 	for i := 1; i < len(fm.focusOrder); i++ {
 		nextIndex := (currentIndex + i) % len(fm.focusOrder)
@@ -403,7 +403,7 @@ func (fm *FocusManager) PrevPanel() {
 	if currentIndex == -1 {
 		return
 	}
-	
+
 	// Find previous enabled panel
 	for i := 1; i < len(fm.focusOrder); i++ {
 		prevIndex := (currentIndex - i + len(fm.focusOrder)) % len(fm.focusOrder)

@@ -1,3 +1,5 @@
+// Package models defines the core data structures and state management for the LazyOC UI.
+// It provides application state models, view modes, and tab management for the terminal interface.
 package models
 
 import (
@@ -9,9 +11,16 @@ import (
 type AppState int
 
 const (
+	// StateLoading indicates the application is initializing or loading data
 	StateLoading AppState = iota
+	
+	// StateMain indicates the application is in normal operation mode
 	StateMain
+	
+	// StateHelp indicates the help overlay is currently displayed
 	StateHelp
+	
+	// StateError indicates the application is displaying an error state
 	StateError
 )
 
@@ -57,28 +66,28 @@ type App struct {
 	Logger *log.Logger
 
 	// Loading state
-	Loading bool
+	Loading        bool
 	LoadingMessage string
 
 	// Help state
 	ShowHelp bool
 
 	// Application metadata
-	Version string
+	Version   string
 	StartTime time.Time
 }
 
 // NewApp creates a new application model with default values
 func NewApp(version string) *App {
 	return &App{
-		State:     StateLoading,
-		ViewMode:  ViewResourceList,
-		ActiveTab: TabPods,
-		Debug:     false,
-		Loading:   true,
+		State:          StateLoading,
+		ViewMode:       ViewResourceList,
+		ActiveTab:      TabPods,
+		Debug:          false,
+		Loading:        true,
 		LoadingMessage: "Initializing LazyOC...",
-		Version:   version,
-		StartTime: time.Now(),
+		Version:        version,
+		StartTime:      time.Now(),
 	}
 }
 
@@ -88,7 +97,7 @@ func (a *App) SetError(err error) {
 	a.ErrorTime = time.Now()
 	a.State = StateError
 	a.Loading = false
-	
+
 	if a.Logger != nil {
 		a.Logger.Printf("Error: %v", err)
 	}

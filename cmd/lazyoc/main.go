@@ -6,8 +6,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/spf13/cobra"
 	"github.com/katyella/lazyoc/internal/ui"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -18,11 +18,11 @@ var (
 
 func main() {
 	ctx := context.Background()
-	
+
 	var debugMode bool
 	var noAltScreen bool
 	var kubeconfigPath string
-	
+
 	rootCmd := &cobra.Command{
 		Use:   "lazyoc",
 		Short: "LazyOC - A lazy terminal UI for OpenShift/Kubernetes clusters",
@@ -57,7 +57,7 @@ func runTUI(debug bool, altScreen bool, kubeconfigPath string) {
 		MouseSupport: false, // Can be enabled later via flag
 		KubeConfig:   kubeconfigPath,
 	}
-	
+
 	if err := ui.RunTUI(opts); err != nil {
 		log.Fatalf("Error running TUI: %v", err)
 		os.Exit(1)

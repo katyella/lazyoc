@@ -1,3 +1,6 @@
+// Package messages defines the message types used for communication in the LazyOC TUI.
+// It provides structured message types for UI events, Kubernetes operations,
+// and application state changes using the Bubble Tea architecture.
 package messages
 
 import "github.com/katyella/lazyoc/internal/k8s/resources"

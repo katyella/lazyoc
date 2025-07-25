@@ -13,14 +13,14 @@ import (
 
 // LogsView handles the logs panel
 type LogsView struct {
-	panel        *components.PanelComponent
-	resourceType string
-	resourceName string
-	container    string
-	logs         []LogEntry
-	follow       bool
+	panel         *components.PanelComponent
+	resourceType  string
+	resourceName  string
+	container     string
+	logs          []LogEntry
+	follow        bool
 	showTimestamp bool
-	style        LogsStyle
+	style         LogsStyle
 }
 
 // LogEntry represents a single log line
@@ -86,15 +86,15 @@ func (v *LogsView) Update(msg tea.Msg) (tea.Cmd, error) {
 	case StartLogsMsg:
 		v.StartLogs(msg.Type, msg.Name, msg.Container)
 		return nil, nil
-		
+
 	case LogsReceivedMsg:
 		v.AppendLogs(msg.Entries)
 		return nil, nil
-		
+
 	case StopLogsMsg:
 		v.Clear()
 		return nil, nil
-		
+
 	case tea.KeyMsg:
 		if v.panel.IsFocused() {
 			switch msg.String() {
@@ -109,7 +109,7 @@ func (v *LogsView) Update(msg tea.Msg) (tea.Cmd, error) {
 			}
 		}
 	}
-	
+
 	return v.panel.Update(msg)
 }
 
@@ -130,13 +130,13 @@ func (v *LogsView) StartLogs(resourceType, name, container string) {
 // AppendLogs adds new log entries
 func (v *LogsView) AppendLogs(entries []LogEntry) {
 	v.logs = append(v.logs, entries...)
-	
+
 	// Keep only last N entries to prevent memory issues
 	maxLogs := 1000
 	if len(v.logs) > maxLogs {
 		v.logs = v.logs[len(v.logs)-maxLogs:]
 	}
-	
+
 	v.updateContent()
 }
 
@@ -155,9 +155,9 @@ func (v *LogsView) updateContent() {
 		v.panel.SetContent("No logs to display")
 		return
 	}
-	
+
 	var lines []string
-	
+
 	// Header
 	header := fmt.Sprintf("Logs: %s/%s", v.resourceType, v.resourceName)
 	if v.container != "" {
@@ -168,13 +168,13 @@ func (v *LogsView) updateContent() {
 	}
 	lines = append(lines, v.style.headerStyle.Render(header))
 	lines = append(lines, "")
-	
+
 	// Status line
 	status := fmt.Sprintf("Lines: %d | Follow: %v | Timestamps: %v",
 		len(v.logs), v.follow, v.showTimestamp)
 	lines = append(lines, v.style.timestampStyle.Render(status))
 	lines = append(lines, "")
-	
+
 	// Logs
 	if len(v.logs) == 0 {
 		lines = append(lines, v.style.infoStyle.Render("Waiting for logs..."))
@@ -183,9 +183,9 @@ func (v *LogsView) updateContent() {
 			lines = append(lines, v.formatLogEntry(entry))
 		}
 	}
-	
+
 	v.panel.SetContentLines(lines)
-	
+
 	// Auto-scroll to bottom if following
 	if v.follow && len(v.logs) > 0 {
 		v.panel.SetSelectedIndex(len(lines) - 1)
@@ -195,13 +195,13 @@ func (v *LogsView) updateContent() {
 // formatLogEntry formats a single log entry
 func (v *LogsView) formatLogEntry(entry LogEntry) string {
 	var parts []string
-	
+
 	// Timestamp
 	if v.showTimestamp {
 		ts := entry.Timestamp.Format("15:04:05.000")
 		parts = append(parts, v.style.timestampStyle.Render(ts))
 	}
-	
+
 	// Choose style based on log level
 	var style lipgloss.Style
 	switch entry.Level {
@@ -214,38 +214,38 @@ func (v *LogsView) formatLogEntry(entry LogEntry) string {
 	default:
 		style = v.style.infoStyle
 	}
-	
+
 	// Log line
 	parts = append(parts, style.Render(entry.Line))
-	
+
 	return strings.Join(parts, " ")
 }
 
 // DetectLogLevel attempts to detect the log level from the log line
 func DetectLogLevel(line string) LogLevel {
 	lower := strings.ToLower(line)
-	
+
 	if strings.Contains(lower, "error") || strings.Contains(lower, "err") ||
 		strings.Contains(lower, "fatal") || strings.Contains(lower, "panic") {
 		return LogLevelError
 	}
-	
+
 	if strings.Contains(lower, "warn") || strings.Contains(lower, "warning") {
 		return LogLevelWarn
 	}
-	
+
 	if strings.Contains(lower, "debug") || strings.Contains(lower, "trace") {
 		return LogLevelDebug
 	}
-	
+
 	return LogLevelInfo
 }
 
 // Component interface implementation
-func (v *LogsView) Focus() error     { return v.panel.Focus() }
-func (v *LogsView) Blur() error      { return v.panel.Blur() }
-func (v *LogsView) IsFocused() bool  { return v.panel.IsFocused() }
-func (v *LogsView) SetSize(w, h int) { v.panel.SetSize(w, h) }
+func (v *LogsView) Focus() error        { return v.panel.Focus() }
+func (v *LogsView) Blur() error         { return v.panel.Blur() }
+func (v *LogsView) IsFocused() bool     { return v.panel.IsFocused() }
+func (v *LogsView) SetSize(w, h int)    { v.panel.SetSize(w, h) }
 func (v *LogsView) GetSize() (int, int) { return v.panel.GetSize() }
 
 // Messages

@@ -53,17 +53,17 @@ type LogEntry struct {
 func (le LogEntry) Format() string {
 	timestamp := le.Timestamp.Format("15:04:05.000")
 	level := le.Level.String()
-	
+
 	var line strings.Builder
 	line.WriteString(fmt.Sprintf("[%s] %5s", timestamp, level))
-	
+
 	if le.Source != "" {
 		line.WriteString(fmt.Sprintf(" [%s]", le.Source))
 	}
-	
+
 	line.WriteString(": ")
 	line.WriteString(le.Message)
-	
+
 	return line.String()
 }
 
@@ -73,36 +73,36 @@ type LogPane struct {
 	Width     int
 	Height    int
 	MinHeight int
-	
+
 	// State management
-	Visible      bool
-	Collapsed    bool
-	Focused      bool
-	AutoScroll   bool
-	Paused       bool
-	Ready        bool  // Track if viewport is properly initialized
-	
+	Visible    bool
+	Collapsed  bool
+	Focused    bool
+	AutoScroll bool
+	Paused     bool
+	Ready      bool // Track if viewport is properly initialized
+
 	// Log management
 	entries      []LogEntry
 	maxEntries   int
 	currentLevel LogLevel
 	filters      map[string]bool
 	mutex        sync.RWMutex
-	
+
 	// Display options
-	ShowHeader     bool
-	ShowScrollBar  bool
-	ShowTimestamp  bool
-	ShowLevel      bool
-	ShowSource     bool
-	WrapLines      bool
-	
+	ShowHeader    bool
+	ShowScrollBar bool
+	ShowTimestamp bool
+	ShowLevel     bool
+	ShowSource    bool
+	WrapLines     bool
+
 	// Styling
 	HeaderStyle    lipgloss.Style
 	TitleStyle     lipgloss.Style
 	BorderStyle    lipgloss.Style
 	ScrollBarStyle lipgloss.Style
-	
+
 	// Level-specific styles
 	debugStyle lipgloss.Style
 	infoStyle  lipgloss.Style
@@ -115,62 +115,62 @@ type LogPane struct {
 func NewLogPane(width, height int) *LogPane {
 	// DON'T create viewport yet - wait for proper initialization
 	var vp viewport.Model
-	
+
 	return &LogPane{
-		Model:        vp,
-		Width:        width,
-		Height:       height,
-		MinHeight:    5,
-		
-		Visible:      true,
-		Collapsed:    false,
-		Focused:      false,
-		AutoScroll:   true,
-		Paused:       false,
-		Ready:        false, // Not ready until properly sized
-		
+		Model:     vp,
+		Width:     width,
+		Height:    height,
+		MinHeight: 5,
+
+		Visible:    true,
+		Collapsed:  false,
+		Focused:    false,
+		AutoScroll: true,
+		Paused:     false,
+		Ready:      false, // Not ready until properly sized
+
 		entries:      make([]LogEntry, 0),
 		maxEntries:   1000,
 		currentLevel: LogLevelDebug,
 		filters:      make(map[string]bool),
-		
+
 		ShowHeader:    true,
 		ShowScrollBar: true,
 		ShowTimestamp: true,
 		ShowLevel:     true,
 		ShowSource:    false,
 		WrapLines:     true,
-		
+
 		HeaderStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("11")).
 			Bold(true).
 			Padding(0, 1),
-			
+
 		TitleStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("15")).
 			Bold(true),
-			
+
 		BorderStyle: lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(lipgloss.Color("8")),
-			
+
 		ScrollBarStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("8")),
-			
+
 		// Level-specific styling
 		debugStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("8")), // Gray
-			
+
 		infoStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("12")), // Blue
-			
+
 		warnStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("11")), // Yellow
-			
+
 		errorStyle: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("9")).  // Red
+			Foreground(lipgloss.Color("9")). // Red
 			Bold(true),
-			
+
 		fatalStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("15")). // White
 			Background(lipgloss.Color("9")).  // Red background
@@ -211,7 +211,7 @@ func (lp *LogPane) ToggleCollapse() {
 // SetFocus sets the focus state
 func (lp *LogPane) SetFocus(focused bool) {
 	lp.Focused = focused
-	
+
 	// Update border style based on focus
 	if focused {
 		lp.BorderStyle = lp.BorderStyle.
@@ -228,32 +228,32 @@ func (lp *LogPane) SetFocus(focused bool) {
 func (lp *LogPane) SetDimensions(width, height int) {
 	lp.Width = width
 	lp.Height = height
-	
+
 	// Enforce minimum height
 	if height < lp.MinHeight {
 		lp.Height = lp.MinHeight
 	}
-	
+
 	// Calculate viewport dimensions
 	vpHeight := lp.Height - 2 // Border
 	if lp.ShowHeader {
 		vpHeight -= 1 // Header
 	}
-	
+
 	vpWidth := width - 2 // Border
 	if lp.ShowScrollBar {
 		vpWidth -= 1 // Scroll bar
 	}
-	
+
 	// Initialize or update viewport with proper dimensions
 	if !lp.Ready && vpWidth > 0 && vpHeight > 0 {
 		// First time setup - create viewport with proper dimensions
 		lp.Model = viewport.New(vpWidth, vpHeight)
 		lp.Model.HighPerformanceRendering = true
 		lp.Ready = true
-		
+
 		// Viewport successfully initialized
-		
+
 		// Set initial content immediately since this is called from Update/Init path
 		// This is safe because SetDimensions is only called from Update flow
 		lp.refreshContent()
@@ -261,7 +261,7 @@ func (lp *LogPane) SetDimensions(width, height int) {
 		// Update existing viewport
 		lp.Model.Width = vpWidth
 		lp.Model.Height = vpHeight
-		
+
 		// Don't refresh content here - it should be triggered by specific messages
 	}
 }
@@ -275,20 +275,20 @@ func (lp *LogPane) AddLog(level LogLevel, message, source string) {
 		Source:    source,
 		Extra:     make(map[string]interface{}),
 	}
-	
+
 	lp.mutex.Lock()
 	defer lp.mutex.Unlock()
-	
+
 	// Add entry
 	lp.entries = append(lp.entries, entry)
-	
+
 	// Trim entries if we exceed max
 	if len(lp.entries) > lp.maxEntries {
 		// Remove oldest entries
 		excess := len(lp.entries) - lp.maxEntries
 		lp.entries = lp.entries[excess:]
 	}
-	
+
 	// If ready, refresh content immediately (this is safe if called from init/update context)
 	if lp.Ready {
 		lp.refreshContent()
@@ -338,10 +338,10 @@ func (lp *LogPane) SetLogLevel(level LogLevel) {
 // SetMaxEntries sets the maximum number of log entries to keep (no auto-refresh)
 func (lp *LogPane) SetMaxEntries(max int) {
 	lp.maxEntries = max
-	
+
 	lp.mutex.Lock()
 	defer lp.mutex.Unlock()
-	
+
 	// Trim existing entries if necessary
 	if len(lp.entries) > max {
 		excess := len(lp.entries) - max
@@ -354,7 +354,7 @@ func (lp *LogPane) SetMaxEntries(max int) {
 func (lp *LogPane) ClearLogs() {
 	lp.mutex.Lock()
 	defer lp.mutex.Unlock()
-	
+
 	lp.entries = make([]LogEntry, 0)
 	// Don't auto-refresh here - it will be handled in Update()
 }
@@ -377,17 +377,17 @@ func (lp *LogPane) Update(msg tea.Msg) (*LogPane, tea.Cmd) {
 	if !lp.Visible || lp.Collapsed {
 		return lp, nil
 	}
-	
+
 	var cmd tea.Cmd
 	lp.Model, cmd = lp.Model.Update(msg)
-	
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		// Handle resize and refresh content if ready
 		if lp.Ready {
 			lp.refreshContent()
 		}
-		
+
 	case LogRefreshMsg:
 		// Handle explicit refresh requests
 		if lp.Ready {
@@ -396,7 +396,7 @@ func (lp *LogPane) Update(msg tea.Msg) (*LogPane, tea.Cmd) {
 				lp.Model.GotoBottom()
 			}
 		}
-		
+
 	case tea.KeyMsg:
 		if lp.Focused {
 			switch msg.String() {
@@ -431,7 +431,7 @@ func (lp *LogPane) Update(msg tea.Msg) (*LogPane, tea.Cmd) {
 			}
 		}
 	}
-	
+
 	return lp, cmd
 }
 
@@ -440,11 +440,11 @@ func (lp *LogPane) Render() string {
 	if !lp.Visible {
 		return ""
 	}
-	
+
 	if lp.Collapsed {
 		return lp.renderCollapsed()
 	}
-	
+
 	return lp.renderExpanded()
 }
 
@@ -453,31 +453,31 @@ func (lp *LogPane) renderCollapsed() string {
 	lp.mutex.RLock()
 	entryCount := len(lp.entries)
 	lp.mutex.RUnlock()
-	
+
 	collapsedContent := fmt.Sprintf("▶ Logs (%d entries) - %s", entryCount, lp.getStatusString())
-	
+
 	style := lp.BorderStyle.
 		Width(lp.Width).
 		Height(3) // Minimum height for collapsed state
-	
+
 	return style.Render(collapsedContent)
 }
 
 // renderExpanded renders the expanded state with full content
 func (lp *LogPane) renderExpanded() string {
 	var content strings.Builder
-	
+
 	// Header
 	if lp.ShowHeader {
 		header := lp.renderHeader()
 		content.WriteString(header)
 		content.WriteString("\n")
 	}
-	
+
 	// Content area - use viewport's current content, don't modify it
 	if lp.Ready {
 		viewportContent := lp.Model.View()
-		
+
 		if lp.ShowScrollBar {
 			viewportContent = lp.addScrollBar(viewportContent)
 		}
@@ -486,12 +486,12 @@ func (lp *LogPane) renderExpanded() string {
 		// Show loading state if not ready
 		content.WriteString("Initializing log view...")
 	}
-	
+
 	// Apply border
 	style := lp.BorderStyle.
 		Width(lp.Width).
 		Height(lp.Height)
-	
+
 	return style.Render(content.String())
 }
 
@@ -500,24 +500,24 @@ func (lp *LogPane) renderHeader() string {
 	lp.mutex.RLock()
 	entryCount := len(lp.entries)
 	lp.mutex.RUnlock()
-	
+
 	// Left side: Title and collapse indicator
 	leftSide := fmt.Sprintf("▼ Logs (%d)", entryCount)
-	
+
 	// Right side: Status
 	rightSide := lp.getStatusString()
-	
+
 	// Calculate spacing
 	leftWidth := lipgloss.Width(leftSide)
 	rightWidth := lipgloss.Width(rightSide)
 	availableWidth := lp.Width - 4 // Account for border and padding
 	spacingWidth := availableWidth - leftWidth - rightWidth
-	
+
 	var spacing string
 	if spacingWidth > 0 {
 		spacing = strings.Repeat(" ", spacingWidth)
 	}
-	
+
 	headerContent := leftSide + spacing + rightSide
 	return lp.HeaderStyle.Render(headerContent)
 }
@@ -525,17 +525,17 @@ func (lp *LogPane) renderHeader() string {
 // getStatusString returns the current status string
 func (lp *LogPane) getStatusString() string {
 	var status []string
-	
+
 	if lp.Paused {
 		status = append(status, "PAUSED")
 	}
-	
+
 	if !lp.AutoScroll {
 		status = append(status, "NO-SCROLL")
 	}
-	
+
 	status = append(status, lp.currentLevel.String())
-	
+
 	return strings.Join(status, " ")
 }
 
@@ -544,37 +544,37 @@ func (lp *LogPane) addScrollBar(content string) string {
 	if !lp.ShowScrollBar {
 		return content
 	}
-	
+
 	lines := strings.Split(content, "\n")
-	
+
 	// Calculate scroll bar
 	lp.mutex.RLock()
 	totalEntries := len(lp.entries)
 	lp.mutex.RUnlock()
-	
+
 	visibleLines := lp.Model.Height
 	scrollTop := lp.Model.YOffset
-	
+
 	var scrollBar []string
 	for i := 0; i < len(lines); i++ {
 		scrollPos := i + scrollTop
 		char := " "
-		
+
 		if totalEntries > visibleLines {
 			scrollRatio := float64(scrollPos) / float64(totalEntries-visibleLines)
 			barHeight := visibleLines
 			barPos := int(scrollRatio * float64(barHeight-1))
-			
+
 			if i == barPos {
 				char = "█"
 			} else if scrollPos < totalEntries {
 				char = "│"
 			}
 		}
-		
+
 		scrollBar = append(scrollBar, lp.ScrollBarStyle.Render(char))
 	}
-	
+
 	// Combine content with scroll bar
 	var result strings.Builder
 	for i, line := range lines {
@@ -582,12 +582,12 @@ func (lp *LogPane) addScrollBar(content string) string {
 		if i < len(scrollBar) {
 			result.WriteString(scrollBar[i])
 		}
-		
+
 		if i < len(lines)-1 {
 			result.WriteString("\n")
 		}
 	}
-	
+
 	return result.String()
 }
 
@@ -595,31 +595,31 @@ func (lp *LogPane) addScrollBar(content string) string {
 func (lp *LogPane) buildContent() string {
 	lp.mutex.RLock()
 	defer lp.mutex.RUnlock()
-	
+
 	var content strings.Builder
-	
+
 	for _, entry := range lp.entries {
 		// Filter by log level
 		if entry.Level < lp.currentLevel {
 			continue
 		}
-		
+
 		// Apply source filters if any
 		if len(lp.filters) > 0 && !lp.filters[entry.Source] {
 			continue
 		}
-		
+
 		// Format and style the entry
 		formattedEntry := lp.formatLogEntry(entry)
 		content.WriteString(formattedEntry)
 		content.WriteString("\n")
 	}
-	
+
 	contentStr := content.String()
 	if contentStr == "" {
 		contentStr = "No log entries available"
 	}
-	
+
 	return contentStr
 }
 
@@ -629,9 +629,9 @@ func (lp *LogPane) refreshContent() {
 	if !lp.Ready {
 		return
 	}
-	
+
 	contentStr := lp.buildContent()
-	
+
 	// CRITICAL: Only call SetContent in Update(), never in View()
 	lp.Model.SetContent(contentStr)
 	lp.Model.SetYOffset(0)
@@ -641,7 +641,7 @@ func (lp *LogPane) refreshContent() {
 func (lp *LogPane) formatLogEntry(entry LogEntry) string {
 	// Get base formatted string
 	formatted := entry.Format()
-	
+
 	// Apply styling based on log level
 	switch entry.Level {
 	case LogLevelError:
@@ -686,7 +686,8 @@ func (lp *LogPane) GetLogCount() int {
 	defer lp.mutex.RUnlock()
 	return len(lp.entries)
 }
-// GetEntryCount returns the number of log entries  
+
+// GetEntryCount returns the number of log entries
 func (lp *LogPane) GetEntryCount() int {
 	lp.mutex.RLock()
 	defer lp.mutex.RUnlock()

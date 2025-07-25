@@ -41,46 +41,46 @@ func (st StatusType) String() string {
 type StatusBarComponent struct {
 	Width  int
 	Height int
-	
+
 	// Status information
-	LeftStatus    string
-	CenterStatus  string
-	RightStatus   string
-	StatusType    StatusType
-	LastUpdated   time.Time
-	
+	LeftStatus   string
+	CenterStatus string
+	RightStatus  string
+	StatusType   StatusType
+	LastUpdated  time.Time
+
 	// Connection info
 	ClusterName     string
 	Namespace       string
 	IsConnected     bool
 	ConnectionCount int
-	
+
 	// Application state
-	ActivePanel     string
-	KeyHints        []KeyHint
-	FocusMode       bool
-	
+	ActivePanel string
+	KeyHints    []KeyHint
+	FocusMode   bool
+
 	// Display options
-	ShowKeyHints    bool
-	ShowTimestamp   bool
-	ShowConnection  bool
-	ShowResources   bool
-	ShowFocus       bool
-	AutoUpdate      bool
-	
+	ShowKeyHints   bool
+	ShowTimestamp  bool
+	ShowConnection bool
+	ShowResources  bool
+	ShowFocus      bool
+	AutoUpdate     bool
+
 	// Styling
-	BaseStyle       lipgloss.Style
-	LeftStyle       lipgloss.Style
-	CenterStyle     lipgloss.Style
-	RightStyle      lipgloss.Style
-	
+	BaseStyle   lipgloss.Style
+	LeftStyle   lipgloss.Style
+	CenterStyle lipgloss.Style
+	RightStyle  lipgloss.Style
+
 	// Status type styles
 	infoStyle    lipgloss.Style
 	successStyle lipgloss.Style
 	warningStyle lipgloss.Style
 	errorStyle   lipgloss.Style
 	loadingStyle lipgloss.Style
-	
+
 	// Key hint styling
 	keyHintStyle lipgloss.Style
 }
@@ -97,60 +97,60 @@ func NewStatusBarComponent(width, height int) *StatusBarComponent {
 	return &StatusBarComponent{
 		Width:  width,
 		Height: height,
-		
-		LeftStatus:    "Ready",
-		CenterStatus:  "",
-		RightStatus:   "",
-		StatusType:    StatusInfo,
-		LastUpdated:   time.Now(),
-		
+
+		LeftStatus:   "Ready",
+		CenterStatus: "",
+		RightStatus:  "",
+		StatusType:   StatusInfo,
+		LastUpdated:  time.Now(),
+
 		ClusterName:     "",
 		Namespace:       "default",
 		IsConnected:     false,
 		ConnectionCount: 0,
-		
+
 		ActivePanel: "main",
 		KeyHints:    make([]KeyHint, 0),
 		FocusMode:   false,
-		
+
 		ShowKeyHints:   true,
 		ShowTimestamp:  false,
 		ShowConnection: true,
 		ShowResources:  true,
 		ShowFocus:      true,
 		AutoUpdate:     true,
-		
+
 		BaseStyle: lipgloss.NewStyle().
 			Width(width).
 			Height(height).
 			Foreground(lipgloss.Color("15")). // White
 			Background(lipgloss.Color("0")),  // Black
-			
+
 		LeftStyle: lipgloss.NewStyle().
 			Bold(true),
-			
+
 		CenterStyle: lipgloss.NewStyle().
 			Align(lipgloss.Center),
-			
+
 		RightStyle: lipgloss.NewStyle().
 			Align(lipgloss.Right),
-			
+
 		// Status type specific styles
 		infoStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("12")), // Blue
-			
+
 		successStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("10")), // Green
-			
+
 		warningStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("11")), // Yellow
-			
+
 		errorStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("9")), // Red
-			
+
 		loadingStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("14")), // Cyan
-			
+
 		keyHintStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("8")). // Gray
 			Bold(false),
@@ -192,11 +192,11 @@ func (sb *StatusBarComponent) SetClusterInfo(clusterName, namespace string, conn
 	sb.ClusterName = clusterName
 	sb.Namespace = namespace
 	sb.IsConnected = connected
-	
+
 	if connected {
 		sb.ConnectionCount++
 	}
-	
+
 	sb.LastUpdated = time.Now()
 }
 
@@ -235,11 +235,11 @@ func (sb *StatusBarComponent) Render() string {
 	if sb.FocusMode {
 		return sb.renderFocusMode()
 	}
-	
+
 	if sb.Height == 1 {
 		return sb.renderSingleLine()
 	}
-	
+
 	return sb.renderMultiLine()
 }
 
@@ -247,25 +247,25 @@ func (sb *StatusBarComponent) Render() string {
 func (sb *StatusBarComponent) renderSingleLine() string {
 	// Build left section
 	leftSection := sb.buildLeftSection()
-	
+
 	// Build center section
 	centerSection := sb.buildCenterSection()
-	
+
 	// Build right section
 	rightSection := sb.buildRightSection()
-	
+
 	// Calculate spacing
 	leftWidth := lipgloss.Width(leftSection)
 	centerWidth := lipgloss.Width(centerSection)
 	rightWidth := lipgloss.Width(rightSection)
-	
+
 	// Calculate center position
 	centerPosition := (sb.Width - centerWidth) / 2
-	
+
 	// Calculate spacing
 	leftSpacing := centerPosition - leftWidth
 	rightSpacing := sb.Width - centerPosition - centerWidth - rightWidth
-	
+
 	// Ensure minimum spacing
 	if leftSpacing < 1 {
 		leftSpacing = 1
@@ -273,7 +273,7 @@ func (sb *StatusBarComponent) renderSingleLine() string {
 	if rightSpacing < 1 {
 		rightSpacing = 1
 	}
-	
+
 	// Build final status line
 	var statusLine strings.Builder
 	statusLine.WriteString(leftSection)
@@ -281,24 +281,24 @@ func (sb *StatusBarComponent) renderSingleLine() string {
 	statusLine.WriteString(centerSection)
 	statusLine.WriteString(strings.Repeat(" ", rightSpacing))
 	statusLine.WriteString(rightSection)
-	
+
 	// Truncate if too long
 	line := statusLine.String()
 	if len(line) > sb.Width {
 		line = line[:sb.Width-3] + "..."
 	}
-	
+
 	return sb.BaseStyle.Render(line)
 }
 
 // renderMultiLine renders a multi-line status bar
 func (sb *StatusBarComponent) renderMultiLine() string {
 	lines := make([]string, 0, sb.Height)
-	
+
 	// Line 1: Main status and connection info
 	line1 := sb.buildMainStatusLine()
 	lines = append(lines, line1)
-	
+
 	// Line 2 (if height >= 2): Key hints or additional info
 	if sb.Height >= 2 {
 		if sb.ShowKeyHints && len(sb.KeyHints) > 0 {
@@ -310,12 +310,12 @@ func (sb *StatusBarComponent) renderMultiLine() string {
 			lines = append(lines, line2)
 		}
 	}
-	
+
 	// Additional lines for more key hints
 	for i := 2; i < sb.Height; i++ {
 		lines = append(lines, "")
 	}
-	
+
 	// Join lines and apply styling
 	content := strings.Join(lines, "\n")
 	return sb.BaseStyle.Render(content)
@@ -324,11 +324,11 @@ func (sb *StatusBarComponent) renderMultiLine() string {
 // renderFocusMode renders a minimal focus mode status bar
 func (sb *StatusBarComponent) renderFocusMode() string {
 	focusContent := fmt.Sprintf("Focus: %s", sb.ActivePanel)
-	
+
 	if sb.IsConnected {
 		focusContent += fmt.Sprintf(" • %s", sb.ClusterName)
 	}
-	
+
 	// Center the content
 	contentWidth := lipgloss.Width(focusContent)
 	if contentWidth < sb.Width {
@@ -337,7 +337,7 @@ func (sb *StatusBarComponent) renderFocusMode() string {
 		rightPad := strings.Repeat(" ", sb.Width-contentWidth-padding)
 		focusContent = leftPad + focusContent + rightPad
 	}
-	
+
 	return sb.BaseStyle.Render(focusContent)
 }
 
@@ -357,7 +357,7 @@ func (sb *StatusBarComponent) buildLeftSection() string {
 	case StatusLoading:
 		statusStyle = sb.loadingStyle
 	}
-	
+
 	// Add status indicator
 	var indicator string
 	switch sb.StatusType {
@@ -372,7 +372,7 @@ func (sb *StatusBarComponent) buildLeftSection() string {
 	default:
 		indicator = "● "
 	}
-	
+
 	return statusStyle.Render(indicator + sb.LeftStatus)
 }
 
@@ -387,29 +387,29 @@ func (sb *StatusBarComponent) buildCenterSection() string {
 // buildRightSection builds the right section of the status bar
 func (sb *StatusBarComponent) buildRightSection() string {
 	var rightParts []string
-	
+
 	// Add custom right status if set
 	if sb.RightStatus != "" {
 		rightParts = append(rightParts, sb.RightStatus)
 	}
-	
+
 	// Add active panel if enabled
 	if sb.ShowFocus && sb.ActivePanel != "" {
 		rightParts = append(rightParts, fmt.Sprintf("Focus: %s", sb.ActivePanel))
 	}
-	
+
 	// Add connection info if enabled
 	if sb.ShowConnection && sb.IsConnected {
 		connInfo := fmt.Sprintf("%s[%s]", sb.ClusterName, sb.Namespace)
 		rightParts = append(rightParts, connInfo)
 	}
-	
+
 	// Add timestamp if enabled
 	if sb.ShowTimestamp {
 		timestamp := sb.LastUpdated.Format("15:04:05")
 		rightParts = append(rightParts, timestamp)
 	}
-	
+
 	return strings.Join(rightParts, " • ")
 }
 
@@ -417,17 +417,17 @@ func (sb *StatusBarComponent) buildRightSection() string {
 func (sb *StatusBarComponent) buildMainStatusLine() string {
 	left := sb.buildLeftSection()
 	right := sb.buildRightSection()
-	
+
 	// Calculate spacing
 	leftWidth := lipgloss.Width(left)
 	rightWidth := lipgloss.Width(right)
 	spacingWidth := sb.Width - leftWidth - rightWidth
-	
+
 	var spacing string
 	if spacingWidth > 0 {
 		spacing = strings.Repeat(" ", spacingWidth)
 	}
-	
+
 	return left + spacing + right
 }
 
@@ -436,20 +436,20 @@ func (sb *StatusBarComponent) buildKeyHintLine() string {
 	if len(sb.KeyHints) == 0 {
 		return ""
 	}
-	
+
 	var hints []string
 	availableWidth := sb.Width - 4 // Account for padding
-	
+
 	for _, hint := range sb.KeyHints {
 		hintText := fmt.Sprintf("%s:%s", hint.Key, hint.Description)
 		hintStyled := sb.keyHintStyle.Render(hintText)
-		
+
 		// Check if we have space for this hint
 		currentLength := 0
 		for _, h := range hints {
 			currentLength += lipgloss.Width(h) + 2 // +2 for separator
 		}
-		
+
 		if currentLength+lipgloss.Width(hintStyled) <= availableWidth {
 			hints = append(hints, hintStyled)
 		} else {
@@ -460,13 +460,13 @@ func (sb *StatusBarComponent) buildKeyHintLine() string {
 			break
 		}
 	}
-	
+
 	if len(hints) == 0 {
 		return ""
 	}
-	
+
 	hintLine := strings.Join(hints, "  ")
-	
+
 	// Center the hints
 	hintWidth := lipgloss.Width(hintLine)
 	if hintWidth < sb.Width {
@@ -475,29 +475,29 @@ func (sb *StatusBarComponent) buildKeyHintLine() string {
 		rightPad := strings.Repeat(" ", sb.Width-hintWidth-padding)
 		hintLine = leftPad + hintLine + rightPad
 	}
-	
+
 	return hintLine
 }
 
 // buildAdditionalInfoLine builds an additional info line
 func (sb *StatusBarComponent) buildAdditionalInfoLine() string {
 	var infoParts []string
-	
+
 	if sb.ShowResources {
 		infoParts = append(infoParts, "Resources: Ready")
 	}
-	
+
 	if sb.IsConnected {
 		infoParts = append(infoParts, fmt.Sprintf("Connected: %d times", sb.ConnectionCount))
 	}
-	
+
 	if len(infoParts) == 0 {
 		return ""
 	}
-	
+
 	infoLine := strings.Join(infoParts, " • ")
 	infoStyled := sb.keyHintStyle.Render(infoLine)
-	
+
 	// Center the info
 	infoWidth := lipgloss.Width(infoStyled)
 	if infoWidth < sb.Width {
@@ -506,7 +506,7 @@ func (sb *StatusBarComponent) buildAdditionalInfoLine() string {
 		rightPad := strings.Repeat(" ", sb.Width-infoWidth-padding)
 		infoStyled = leftPad + infoStyled + rightPad
 	}
-	
+
 	return infoStyled
 }
 
