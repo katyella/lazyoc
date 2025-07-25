@@ -28,6 +28,9 @@ const (
 	// PodRefreshInterval is the time between automatic pod list refreshes
 	PodRefreshInterval = 30 * time.Second
 
+	// PodLogRefreshInterval is the time between automatic pod log refreshes
+	PodLogRefreshInterval = 10 * time.Second
+
 	// DefaultHealthCheckInterval is the time between health check operations
 	DefaultHealthCheckInterval = 30 * time.Second
 

@@ -62,6 +62,9 @@ type SimplifiedTUI struct {
 	logScrollOffset int
 	maxLogLines     int
 	userScrolled    bool  // Track if user manually scrolled
+	lastLogTime     string // Track last log timestamp for streaming
+	tailMode        bool   // True when auto-scrolling to new logs
+	seenLogLines    map[string]bool // Track seen log lines to prevent duplicates
 	
 	// Log view mode: "app" or "pod"
 	logViewMode    string
@@ -132,6 +135,8 @@ func NewSimplifiedTUI(version string, debug bool) *SimplifiedTUI {
 		podLogs:       []string{},
 		maxLogLines:   constants.MaxLogLines,
 		logViewMode:   constants.DefaultLogViewMode,
+		tailMode:      true,  // Start in tail mode by default
+		seenLogLines:  make(map[string]bool),
 		// Error handling
 		errorDisplay:   components.NewErrorDisplayComponent("dark"),
 		maxRetries:     constants.DefaultRetryAttempts,
@@ -311,8 +316,10 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// Auto-load pod logs if not loaded and we have a selected pod
 					if len(t.podLogs) == 0 && len(t.pods) > 0 && t.selectedPod < len(t.pods) {
 						t.clearPodLogs() // This sets loadingLogs = true
-						return t, t.loadPodLogs()
+						return t, tea.Batch(t.loadPodLogs(), t.startPodLogRefreshTimer())
 					}
+					// Start log refresh timer even if logs are already loaded
+					return t, t.startPodLogRefreshTimer()
 				} else {
 					t.logViewMode = constants.DefaultLogViewMode
 				}
@@ -367,6 +374,9 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				t.updatePodDisplay()
 				// Clear logs and load logs for newly selected pod
 				t.clearPodLogs()
+				if t.logViewMode == constants.PodLogViewMode {
+					return t, tea.Batch(t.loadPodLogs(), t.startPodLogRefreshTimer())
+				}
 				return t, t.loadPodLogs()
 			} else if t.focusedPanel == 0 && t.showLogs {
 				// Move focus down to logs panel
@@ -380,6 +390,11 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if t.logScrollOffset < maxScroll {
 					t.logScrollOffset += 1
 					t.userScrolled = true
+					t.tailMode = false // Disable tail mode when manually scrolling
+				} else {
+					// If at bottom and trying to scroll down, enable tail mode
+					t.tailMode = true
+					t.userScrolled = false
 				}
 			}
 			return t, nil
@@ -394,12 +409,16 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				t.updatePodDisplay()
 				// Clear logs and load logs for newly selected pod
 				t.clearPodLogs()
+				if t.logViewMode == constants.PodLogViewMode {
+					return t, tea.Batch(t.loadPodLogs(), t.startPodLogRefreshTimer())
+				}
 				return t, t.loadPodLogs()
 			} else if t.focusedPanel == 2 && t.logViewMode == "pod" && len(t.podLogs) > 0 {
 				// Scroll up in pod logs - improved bounds checking
 				if t.logScrollOffset > 0 {
 					t.logScrollOffset -= 1
 					t.userScrolled = true
+					t.tailMode = false // Disable tail mode when manually scrolling up
 				}
 				// Stay in log panel even at the top
 			} else if t.focusedPanel == 2 {
@@ -414,6 +433,7 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				pageSize := t.getLogPageSize()
 				t.logScrollOffset = max(0, t.logScrollOffset-pageSize)
 				t.userScrolled = true
+				t.tailMode = false // Disable tail mode when paging up
 			}
 			return t, nil
 			
@@ -422,8 +442,16 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Page down in pod logs
 				pageSize := t.getLogPageSize()
 				maxScroll := t.getMaxLogScrollOffset()
-				t.logScrollOffset = min(maxScroll, t.logScrollOffset+pageSize)
+				newOffset := min(maxScroll, t.logScrollOffset+pageSize)
+				t.logScrollOffset = newOffset
 				t.userScrolled = true
+				// If we reached the bottom, enable tail mode
+				if t.logScrollOffset >= maxScroll {
+					t.tailMode = true
+					t.userScrolled = false
+				} else {
+					t.tailMode = false
+				}
 			}
 			return t, nil
 			
@@ -432,14 +460,28 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Go to top of pod logs
 				t.logScrollOffset = 0
 				t.userScrolled = true
+				t.tailMode = false // Disable tail mode when going to top
 			}
 			return t, nil
 			
 		case "end":
 			if t.focusedPanel == 2 && t.logViewMode == "pod" && len(t.podLogs) > 0 {
-				// Go to bottom of pod logs
+				// Go to bottom of pod logs and enable tail mode
 				t.logScrollOffset = t.getMaxLogScrollOffset()
-				t.userScrolled = false  // At bottom means auto-scroll is re-enabled
+				t.userScrolled = false
+				t.tailMode = true // Enable tail mode when going to bottom
+			}
+			return t, nil
+			
+		case "shift+t", "T":
+			if t.focusedPanel == 2 && t.logViewMode == "pod" {
+				// Toggle tail mode
+				t.tailMode = !t.tailMode
+				if t.tailMode {
+					// If enabling tail mode, scroll to bottom
+					t.logScrollOffset = t.getMaxLogScrollOffset()
+					t.userScrolled = false
+				}
 			}
 			return t, nil
 			
@@ -492,6 +534,7 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			t.loadClusterInfo(),
 			t.loadPods(), 
 			t.startPodRefreshTimer(),
+			t.startPodLogRefreshTimer(),
 			t.startSpinnerAnimation(),
 		)
 		
@@ -545,6 +588,13 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return t, tea.Batch(t.loadPods(), t.startPodRefreshTimer())
 		}
 		return t, t.startPodRefreshTimer()
+
+	case messages.RefreshPodLogs:
+		// Automatically refresh pod logs and set up next refresh
+		if t.connected && t.logViewMode == constants.PodLogViewMode && len(t.pods) > 0 && t.selectedPod < len(t.pods) {
+			return t, tea.Batch(t.loadPodLogsInternal(true), t.startPodLogRefreshTimer())
+		}
+		return t, t.startPodLogRefreshTimer()
 		
 	case messages.NoKubeconfigMsg:
 		t.logContent = append(t.logContent, fmt.Sprintf("⚠️  %s", msg.Message))
@@ -641,17 +691,48 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		
 	case PodLogsLoaded:
-		// Pod logs successfully loaded
+		// Pod logs successfully loaded (initial load)
 		t.loadingLogs = false
 		t.podLogs = msg.Logs
+		
+		// Extract and store the timestamp from the last log line for future streaming
+		if len(t.podLogs) > 0 {
+			lastLog := t.podLogs[len(t.podLogs)-1]
+			t.lastLogTime = t.extractTimestampFromLogLine(lastLog)
+		}
+		
 		// Limit log lines to prevent memory issues
 		if len(t.podLogs) > t.maxLogLines {
 			t.podLogs = t.podLogs[len(t.podLogs)-t.maxLogLines:] // Keep last N lines
 		}
-		// Auto-scroll to bottom on new logs
+		// Auto-scroll to bottom on initial load
 		t.userScrolled = false
+		t.tailMode = true
 		t.logScrollOffset = t.getMaxLogScrollOffset()
 		t.logContent = append(t.logContent, fmt.Sprintf("📋 Loaded %d log lines from %s", len(msg.Logs), msg.PodName))
+		
+	case PodLogsRefreshed:
+		// Pod logs refreshed with new content (streaming)
+		if len(msg.Logs) > 0 {
+			// Append new logs to existing logs
+			t.podLogs = append(t.podLogs, msg.Logs...)
+			
+			// Update timestamp from the last new log
+			lastLog := msg.Logs[len(msg.Logs)-1]
+			t.lastLogTime = t.extractTimestampFromLogLine(lastLog)
+			
+			// Limit total log lines to prevent memory issues
+			if len(t.podLogs) > t.maxLogLines {
+				t.podLogs = t.podLogs[len(t.podLogs)-t.maxLogLines:] // Keep last N lines
+			}
+			
+			// Auto-scroll only if in tail mode
+			if t.tailMode {
+				t.logScrollOffset = t.getMaxLogScrollOffset()
+			}
+			
+			t.logContent = append(t.logContent, fmt.Sprintf("📋 Added %d new log lines from %s", len(msg.Logs), msg.PodName))
+		}
 		
 	case PodLogsError:
 		// Pod logs loading failed
@@ -996,7 +1077,11 @@ func (t *SimplifiedTUI) renderContent(availableHeight int) string {
 				logText = strings.Join(coloredLogs, "\n")
 				
 				if len(t.pods) > 0 && t.selectedPod < len(t.pods) {
-					logHeader = fmt.Sprintf("Pod Logs: %s", t.pods[t.selectedPod].Name)
+					tailIndicator := ""
+					if t.tailMode {
+						tailIndicator = " [TAIL]"
+					}
+					logHeader = fmt.Sprintf("Pod Logs: %s%s", t.pods[t.selectedPod].Name, tailIndicator)
 				} else {
 					logHeader = "Pod Logs"
 				}
@@ -1298,6 +1383,7 @@ Log Scrolling (when in log panel):
   j/k        Scroll up/down line by line
   PgUp/PgDn  Scroll up/down page by page
   Home/End   Jump to top/bottom of logs
+  T          Toggle tail mode (auto-scroll to new logs)
   
 Commands:
   ?          Toggle help  
@@ -1514,6 +1600,13 @@ func (t *SimplifiedTUI) startPodRefreshTimer() tea.Cmd {
 	})
 }
 
+// startPodLogRefreshTimer returns a command that sets up automatic pod log refresh
+func (t *SimplifiedTUI) startPodLogRefreshTimer() tea.Cmd {
+	return tea.Tick(constants.PodLogRefreshInterval, func(time.Time) tea.Msg {
+		return messages.RefreshPodLogs{}
+	})
+}
+
 // startSpinnerAnimation returns a command that triggers spinner animation updates
 func (t *SimplifiedTUI) startSpinnerAnimation() tea.Cmd {
 	return tea.Tick(constants.SpinnerAnimationInterval, func(time.Time) tea.Msg {
@@ -1538,10 +1631,18 @@ func (t *SimplifiedTUI) clearPodLogs() {
 	t.logScrollOffset = 0
 	t.loadingLogs = true
 	t.userScrolled = false  // Reset scroll tracking
+	t.lastLogTime = ""      // Reset timestamp tracking
+	t.tailMode = true       // Reset to tail mode
+	t.seenLogLines = make(map[string]bool) // Clear seen logs map
 }
 
 // loadPodLogs fetches logs from the currently selected pod
 func (t *SimplifiedTUI) loadPodLogs() tea.Cmd {
+	return t.loadPodLogsInternal(false)
+}
+
+// loadPodLogsInternal fetches logs with option for streaming (append mode)
+func (t *SimplifiedTUI) loadPodLogsInternal(isRefresh bool) tea.Cmd {
 	return func() tea.Msg {
 		if !t.connected || t.resourceClient == nil || len(t.pods) == 0 || t.selectedPod >= len(t.pods) {
 			return PodLogsError{Err: fmt.Errorf("no pod selected or not connected"), PodName: ""}
@@ -1563,11 +1664,30 @@ func (t *SimplifiedTUI) loadPodLogs() tea.Cmd {
 			containerName = selectedPod.ContainerInfo[0].Name
 		}
 		
-		// Set up log options - last 100 lines
-		tailLines := int64(constants.DefaultPodLogTailLines)
-		logOpts := resources.LogOptions{
-			TailLines:  &tailLines,
-			Timestamps: true,
+		// Set up log options based on whether this is initial load or refresh
+		var logOpts resources.LogOptions
+		if isRefresh && t.lastLogTime != "" {
+			// For refresh, get logs since last timestamp using SinceSeconds
+			// Parse last timestamp to calculate seconds ago
+			sinceSeconds := int64(30) // Default to 30 seconds if parsing fails
+			if lastTime, err := t.parseLogTimestamp(t.lastLogTime); err == nil {
+				secondsAgo := int64(time.Since(lastTime).Seconds())
+				if secondsAgo > 0 {
+					sinceSeconds = secondsAgo + 1 // Add 1 second buffer to avoid duplicates
+				}
+			}
+			
+			logOpts = resources.LogOptions{
+				SinceSeconds: &sinceSeconds,
+				Timestamps:   true,
+			}
+		} else {
+			// Initial load - get last 100 lines
+			tailLines := int64(constants.DefaultPodLogTailLines)
+			logOpts = resources.LogOptions{
+				TailLines:  &tailLines,
+				Timestamps: true,
+			}
 		}
 		
 		// Fetch logs
@@ -1576,14 +1696,68 @@ func (t *SimplifiedTUI) loadPodLogs() tea.Cmd {
 			return PodLogsError{Err: err, PodName: selectedPod.Name}
 		}
 		
-		// Split logs into lines
-		logLines := strings.Split(strings.TrimSpace(logsStr), "\n")
-		if len(logLines) == 1 && logLines[0] == "" {
-			logLines = []string{constants.NoLogsAvailableMessage}
+		// Split logs into lines and deduplicate
+		var logLines []string
+		if logsStr != "" {
+			lines := strings.Split(strings.TrimSpace(logsStr), "\n")
+			for _, line := range lines {
+				if line != "" {
+					// For refresh mode, check for duplicates
+					if isRefresh {
+						if !t.seenLogLines[line] {
+							logLines = append(logLines, line)
+							t.seenLogLines[line] = true
+						}
+					} else {
+						// For initial load, accept all lines and mark as seen
+						logLines = append(logLines, line)
+						t.seenLogLines[line] = true
+					}
+				}
+			}
 		}
 		
-		return PodLogsLoaded{Logs: logLines, PodName: selectedPod.Name}
+		// Return appropriate message based on load type
+		if isRefresh {
+			return PodLogsRefreshed{Logs: logLines, PodName: selectedPod.Name}
+		} else {
+			if len(logLines) == 0 {
+				logLines = []string{constants.NoLogsAvailableMessage}
+			}
+			return PodLogsLoaded{Logs: logLines, PodName: selectedPod.Name}
+		}
 	}
+}
+
+// parseLogTimestamp parses a timestamp from a log line
+func (t *SimplifiedTUI) parseLogTimestamp(timestamp string) (time.Time, error) {
+	// Common Kubernetes log timestamp formats
+	layouts := []string{
+		"2006-01-02T15:04:05.999999999Z07:00", // RFC3339 with nanoseconds
+		"2006-01-02T15:04:05.999999Z07:00",    // RFC3339 with microseconds
+		"2006-01-02T15:04:05.999Z07:00",       // RFC3339 with milliseconds
+		"2006-01-02T15:04:05Z07:00",           // RFC3339 basic
+		"2006-01-02 15:04:05.999999999",       // Space-separated with nanoseconds
+		"2006-01-02 15:04:05.999999",          // Space-separated with microseconds
+		"2006-01-02 15:04:05.999",             // Space-separated with milliseconds
+		"2006-01-02 15:04:05",                 // Space-separated basic
+	}
+	
+	for _, layout := range layouts {
+		if parsed, err := time.Parse(layout, timestamp); err == nil {
+			return parsed, nil
+		}
+	}
+	
+	return time.Time{}, fmt.Errorf("unable to parse timestamp: %s", timestamp)
+}
+
+// extractTimestampFromLogLine extracts timestamp from a log line
+func (t *SimplifiedTUI) extractTimestampFromLogLine(logLine string) string {
+	// Use the same pattern as in colorizePodLog
+	timestampPattern := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[\.\d]*[Z]?[+-]?\d{0,2}:?\d{0,2}`)
+	matches := timestampPattern.FindString(logLine)
+	return matches
 }
 
 // updatePodDisplay updates the main content with pod information
@@ -1738,6 +1912,12 @@ type ManualRetryMsg struct{}
 
 // PodLogsLoaded is sent when pod logs are successfully loaded
 type PodLogsLoaded struct {
+	Logs []string
+	PodName string
+}
+
+// PodLogsRefreshed is sent when pod logs are refreshed with new content
+type PodLogsRefreshed struct {
 	Logs []string
 	PodName string
 }

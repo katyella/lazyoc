@@ -26,6 +26,9 @@ type PodsLoaded struct {
 // RefreshPods is sent to trigger pod list refresh
 type RefreshPods struct{}
 
+// RefreshPodLogs is sent to trigger pod logs refresh
+type RefreshPodLogs struct{}
+
 // NamespaceChanged is sent when namespace is changed
 type NamespaceChanged struct {
 	Namespace string
