@@ -118,7 +118,7 @@ func (v *DeploymentsView) updateContent() {
 
 		// Parse ready state (e.g., "2/2" means 2 ready out of 2 desired)
 		var readyCount, desiredCount int
-		fmt.Sscanf(ready, "%d/%d", &readyCount, &desiredCount)
+		_, _ = fmt.Sscanf(ready, "%d/%d", &readyCount, &desiredCount)
 
 		if readyCount == desiredCount && desiredCount > 0 {
 			style = v.style.healthyStyle

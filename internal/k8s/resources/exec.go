@@ -69,7 +69,7 @@ func (c *K8sResourceClient) ExecuteInPod(ctx context.Context, opts ExecOptions) 
 	}
 
 	// Execute the command
-	err = exec.Stream(remotecommand.StreamOptions{
+	err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
 		Stdin:  opts.Stdin,
 		Stdout: opts.Stdout,
 		Stderr: opts.Stderr,

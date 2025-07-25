@@ -70,7 +70,7 @@ func (a *App) initializeComponents() {
 	a.registry.Register("logs", a.logsPanel)
 
 	// Set initial focus
-	a.mainPanel.Focus()
+	_ = a.mainPanel.Focus()
 }
 
 // Init initializes the application
@@ -190,7 +190,7 @@ func (a *App) focusNextPanel() {
 	for i, name := range panels {
 		if comp, ok := a.registry.Get(name); ok && comp.IsFocused() {
 			currentFocus = i
-			comp.Blur()
+			_ = comp.Blur()
 			break
 		}
 	}
@@ -198,7 +198,7 @@ func (a *App) focusNextPanel() {
 	// Focus next panel
 	nextFocus := (currentFocus + 1) % len(panels)
 	if comp, ok := a.registry.Get(panels[nextFocus]); ok {
-		comp.Focus()
+		_ = comp.Focus()
 	}
 }
 
@@ -211,7 +211,7 @@ func (a *App) focusPreviousPanel() {
 	for i, name := range panels {
 		if comp, ok := a.registry.Get(name); ok && comp.IsFocused() {
 			currentFocus = i
-			comp.Blur()
+			_ = comp.Blur()
 			break
 		}
 	}
@@ -219,7 +219,7 @@ func (a *App) focusPreviousPanel() {
 	// Focus previous panel
 	prevFocus := (currentFocus - 1 + len(panels)) % len(panels)
 	if comp, ok := a.registry.Get(panels[prevFocus]); ok {
-		comp.Focus()
+		_ = comp.Focus()
 	}
 }
 

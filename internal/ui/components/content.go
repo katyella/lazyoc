@@ -41,7 +41,6 @@ type ContentPane struct {
 // NewContentPane creates a new scrollable content pane
 func NewContentPane(width, height int) *ContentPane {
 	vp := viewport.New(width-2, height-2) // Account for borders
-	vp.HighPerformanceRendering = true
 
 	return &ContentPane{
 		Model:       vp,
@@ -155,16 +154,16 @@ func (cp *ContentPane) Update(msg tea.Msg) (*ContentPane, tea.Cmd) {
 				cp.SelectedRow = cp.ItemCount - 1
 				cp.Model.GotoBottom()
 			case "ctrl+d":
-				cp.Model.HalfViewDown()
+				cp.Model.HalfPageDown()
 				cp.updateSelectedFromScroll()
 			case "ctrl+u":
-				cp.Model.HalfViewUp()
+				cp.Model.HalfPageUp()
 				cp.updateSelectedFromScroll()
 			case "ctrl+f":
-				cp.Model.ViewDown()
+				cp.Model.PageDown()
 				cp.updateSelectedFromScroll()
 			case "ctrl+b":
-				cp.Model.ViewUp()
+				cp.Model.PageUp()
 				cp.updateSelectedFromScroll()
 			}
 		}

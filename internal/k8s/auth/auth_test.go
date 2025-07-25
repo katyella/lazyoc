@@ -102,6 +102,7 @@ users:
 
 	if config == nil {
 		t.Error("Expected non-nil config")
+		return
 	}
 
 	if config.Host != "https://test-server:6443" {

@@ -53,7 +53,6 @@ type DetailPane struct {
 // NewDetailPane creates a new detail pane
 func NewDetailPane(width, height int) *DetailPane {
 	vp := viewport.New(width-2, height-3) // Account for border and header
-	vp.HighPerformanceRendering = true
 
 	return &DetailPane{
 		Model:    vp,

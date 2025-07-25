@@ -249,7 +249,6 @@ func (lp *LogPane) SetDimensions(width, height int) {
 	if !lp.Ready && vpWidth > 0 && vpHeight > 0 {
 		// First time setup - create viewport with proper dimensions
 		lp.Model = viewport.New(vpWidth, vpHeight)
-		lp.Model.HighPerformanceRendering = true
 		lp.Ready = true
 
 		// Viewport successfully initialized

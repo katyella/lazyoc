@@ -31,11 +31,10 @@ func (v *PodsView) GetType() ViewType {
 
 // CanHandle returns true if this view can handle the given message
 func (v *PodsView) CanHandle(msg tea.Msg) bool {
-	switch msg.(type) {
+	switch keyMsg := msg.(type) {
 	case messages.PodsLoaded, messages.LoadPodsError:
 		return true
 	case tea.KeyMsg:
-		keyMsg := msg.(tea.KeyMsg)
 		// Handle pod navigation keys
 		switch keyMsg.String() {
 		case "j", "k", "up", "down":

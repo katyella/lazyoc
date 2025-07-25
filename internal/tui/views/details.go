@@ -2,7 +2,7 @@ package views
 
 import (
 	"fmt"
-	"strings"
+	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -122,7 +122,7 @@ func (v *DetailsView) updateContent() {
 	for key, value := range v.content {
 		if key != "metadata" && key != "spec" && key != "status" {
 			if section, ok := value.(map[string]interface{}); ok {
-				lines = append(lines, v.renderSection(strings.Title(key), section)...)
+				lines = append(lines, v.renderSection(capitalize(key), section)...)
 			}
 		}
 	}
@@ -195,3 +195,13 @@ type ResourceSelectedMsg struct {
 }
 
 type ClearDetailsMsg struct{}
+
+// capitalize capitalizes the first letter of a string
+func capitalize(s string) string {
+	if len(s) == 0 {
+		return s
+	}
+	r := []rune(s)
+	r[0] = unicode.ToUpper(r[0])
+	return string(r)
+}

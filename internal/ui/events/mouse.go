@@ -35,18 +35,22 @@ func (h *MouseHandler) HandleMouseEvent(event MouseEvent) []tea.Cmd {
 
 	var cmds []tea.Cmd
 
-	switch event.Mouse.Type {
-	case tea.MouseLeft:
-		cmds = append(cmds, h.handleLeftClick(event))
+	switch event.Mouse.Button {
+	case tea.MouseButtonLeft:
+		if event.Mouse.Action == tea.MouseActionPress {
+			cmds = append(cmds, h.handleLeftClick(event))
+		}
 
-	case tea.MouseWheelUp:
+	case tea.MouseButtonWheelUp:
 		cmds = append(cmds, h.handleScrollUp(event))
 
-	case tea.MouseWheelDown:
+	case tea.MouseButtonWheelDown:
 		cmds = append(cmds, h.handleScrollDown(event))
 
-	case tea.MouseRight:
-		cmds = append(cmds, h.handleRightClick(event))
+	case tea.MouseButtonRight:
+		if event.Mouse.Action == tea.MouseActionPress {
+			cmds = append(cmds, h.handleRightClick(event))
+		}
 	}
 
 	return cmds

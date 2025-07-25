@@ -309,8 +309,6 @@ func (nc *NavigationController) handleGeneralActions(action KeyAction) tea.Cmd {
 			return NavigationMsg{Action: action, Panel: nc.focusManager.currentPanel}
 		}
 	}
-
-	return nil
 }
 
 // UpdateSearchQuery updates the search query (called when in search mode)

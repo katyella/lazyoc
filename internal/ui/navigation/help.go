@@ -316,7 +316,7 @@ func (h *HelpComponent) FormatHints(hints []string) string {
 	var formattedHints []string
 	for _, hint := range hints {
 		formattedHints = append(formattedHints,
-			h.KeyStyle.Copy().Width(0).Render(hint))
+			h.KeyStyle.Width(0).Render(hint))
 	}
 
 	return strings.Join(formattedHints, " • ")

@@ -36,10 +36,6 @@ func NewCredentialValidator(config *rest.Config) (*CredentialValidator, error) {
 
 // ValidateConnection tests if the credentials can successfully connect to the cluster
 func (cv *CredentialValidator) ValidateConnection(ctx context.Context) error {
-	// Set a reasonable timeout for validation
-	ctx, cancel := context.WithTimeout(ctx, constants.ValidationTimeout)
-	defer cancel()
-
 	// Try to get server version as a lightweight connectivity test
 	version, err := cv.clientset.Discovery().ServerVersion()
 	if err != nil {

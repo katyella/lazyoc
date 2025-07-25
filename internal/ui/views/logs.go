@@ -53,11 +53,10 @@ func (v *LogsView) GetType() ViewType {
 
 // CanHandle returns true if this view can handle the given message
 func (v *LogsView) CanHandle(msg tea.Msg) bool {
-	switch msg.(type) {
+	switch keyMsg := msg.(type) {
 	case PodLogsLoaded, PodLogsError, messages.LoadPodLogsMsg:
 		return true
 	case tea.KeyMsg:
-		keyMsg := msg.(tea.KeyMsg)
 		// Handle log navigation and mode switching
 		switch keyMsg.String() {
 		case "l", "j", "k", "pgup", "pgdn", "home", "end":

@@ -125,7 +125,6 @@ func (kp *KubeconfigProvider) Authenticate(ctx context.Context) (*rest.Config, e
 			)
 		}
 		config = contextConfig
-	} else {
 	}
 
 	kp.config = config

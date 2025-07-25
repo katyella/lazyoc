@@ -421,7 +421,8 @@ func (t *SimplifiedTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Stay in log panel even at the top
 			} else if t.focusedPanel == 2 {
 				// Stay in log panel for app logs too
-				// Don't change focus
+				// Don't change focus - explicitly do nothing
+				_ = 0 // Explicitly do nothing
 			}
 			return t, nil
 

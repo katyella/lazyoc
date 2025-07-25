@@ -96,6 +96,7 @@ func NewThemeManager() *ThemeManager {
 	// Ensure config directory exists
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		// Silently continue if config directory creation fails
+		_ = err // Explicitly ignore error
 	}
 
 	// Load saved theme preference
@@ -129,9 +130,9 @@ func (tm *ThemeManager) SetTheme(themeName string) error {
 // ToggleTheme switches between light and dark themes
 func (tm *ThemeManager) ToggleTheme() {
 	if tm.currentTheme.Name == constants.DefaultTheme {
-		tm.SetTheme("light")
+		_ = tm.SetTheme("light")
 	} else {
-		tm.SetTheme(constants.DefaultTheme)
+		_ = tm.SetTheme(constants.DefaultTheme)
 	}
 }
 
@@ -141,6 +142,7 @@ func (tm *ThemeManager) loadThemePreference() {
 	if err != nil {
 		if !os.IsNotExist(err) {
 			// Silently ignore read errors
+			_ = err // Explicitly ignore error
 		}
 		return
 	}
@@ -152,7 +154,7 @@ func (tm *ThemeManager) loadThemePreference() {
 	}
 
 	if config.SelectedTheme != "" {
-		tm.SetTheme(config.SelectedTheme)
+		_ = tm.SetTheme(config.SelectedTheme)
 	}
 }
 

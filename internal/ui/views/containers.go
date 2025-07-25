@@ -30,9 +30,8 @@ func (v *ContainersView) GetType() ViewType {
 
 // CanHandle returns true if this view can handle the given message
 func (v *ContainersView) CanHandle(msg tea.Msg) bool {
-	switch msg.(type) {
+	switch keyMsg := msg.(type) {
 	case tea.KeyMsg:
-		keyMsg := msg.(tea.KeyMsg)
 		// Handle container navigation keys
 		switch keyMsg.String() {
 		case "j", "k", "up", "down":
