@@ -52,6 +52,14 @@ type TUI struct {
 	pods        []resources.PodInfo
 	selectedPod int
 	loadingPods bool
+	
+	// Kubernetes resource data
+	services        []resources.ServiceInfo
+	selectedService int
+	loadingServices bool
+	deployments        []resources.DeploymentInfo
+	selectedDeployment int
+	loadingDeployments bool
 
 	// OpenShift resource data
 	buildConfigs      []resources.BuildConfigInfo
@@ -273,6 +281,16 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch t.ActiveTab {
 				case 0: // Pods
 					return t, t.loadPods()
+				case 1: // Services
+					t.loadingServices = true
+					t.services = []resources.ServiceInfo{}
+					t.updateMainContent()
+					return t, t.loadServices()
+				case 2: // Deployments
+					t.loadingDeployments = true
+					t.deployments = []resources.DeploymentInfo{}
+					t.updateMainContent()
+					return t, t.loadDeployments()
 				case 5: // BuildConfigs
 					t.loadingBuildConfigs = true
 					t.buildConfigs = []resources.BuildConfigInfo{}
@@ -403,6 +421,16 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 						return t, t.loadPodLogs()
 					}
+				case models.TabServices:
+					if len(t.services) > 0 {
+						t.selectedService = (t.selectedService + 1) % len(t.services)
+						t.updateServiceDisplay()
+					}
+				case models.TabDeployments:
+					if len(t.deployments) > 0 {
+						t.selectedDeployment = (t.selectedDeployment + 1) % len(t.deployments)
+						t.updateDeploymentDisplay()
+					}
 				case models.TabBuildConfigs:
 					if len(t.buildConfigs) > 0 {
 						t.selectedBuildConfig = (t.selectedBuildConfig + 1) % len(t.buildConfigs)
@@ -457,6 +485,22 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							return t, tea.Batch(t.loadPodLogs(), t.startPodLogRefreshTimer())
 						}
 						return t, t.loadPodLogs()
+					}
+				case models.TabServices:
+					if len(t.services) > 0 {
+						t.selectedService = t.selectedService - 1
+						if t.selectedService < 0 {
+							t.selectedService = len(t.services) - 1
+						}
+						t.updateServiceDisplay()
+					}
+				case models.TabDeployments:
+					if len(t.deployments) > 0 {
+						t.selectedDeployment = t.selectedDeployment - 1
+						if t.selectedDeployment < 0 {
+							t.selectedDeployment = len(t.deployments) - 1
+						}
+						t.updateDeploymentDisplay()
 					}
 				case models.TabBuildConfigs:
 					if len(t.buildConfigs) > 0 {
@@ -652,6 +696,58 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.loadingPods = false
 		t.logContent = append(t.logContent, fmt.Sprintf("❌ Failed to load pods: %v", msg.Err))
 		t.updatePodDisplay()
+
+	// Kubernetes resource message handlers
+	case messages.ServicesLoaded:
+		// Store the previously selected service name to preserve selection during refresh
+		var previouslySelectedServiceName string
+		if len(t.services) > 0 && t.selectedService < len(t.services) {
+			previouslySelectedServiceName = t.services[t.selectedService].Name
+		}
+		t.services = msg.Services
+		t.loadingServices = false
+		// Try to preserve the selected service after refresh
+		newSelectedService := 0
+		if previouslySelectedServiceName != "" {
+			for i, svc := range msg.Services {
+				if svc.Name == previouslySelectedServiceName {
+					newSelectedService = i
+					break
+				}
+			}
+		}
+		t.selectedService = newSelectedService
+		t.updateServiceDisplay()
+		t.logContent = append(t.logContent, fmt.Sprintf("Loaded %d services from namespace %s", len(msg.Services), t.namespace))
+	case messages.ServicesLoadError:
+		t.loadingServices = false
+		t.logContent = append(t.logContent, fmt.Sprintf("❌ Failed to load services: %v", msg.Err))
+		t.updateServiceDisplay()
+	case messages.DeploymentsLoaded:
+		// Store the previously selected deployment name to preserve selection during refresh
+		var previouslySelectedDeploymentName string
+		if len(t.deployments) > 0 && t.selectedDeployment < len(t.deployments) {
+			previouslySelectedDeploymentName = t.deployments[t.selectedDeployment].Name
+		}
+		t.deployments = msg.Deployments
+		t.loadingDeployments = false
+		// Try to preserve the selected deployment after refresh
+		newSelectedDeployment := 0
+		if previouslySelectedDeploymentName != "" {
+			for i, deploy := range msg.Deployments {
+				if deploy.Name == previouslySelectedDeploymentName {
+					newSelectedDeployment = i
+					break
+				}
+			}
+		}
+		t.selectedDeployment = newSelectedDeployment
+		t.updateDeploymentDisplay()
+		t.logContent = append(t.logContent, fmt.Sprintf("Loaded %d deployments from namespace %s", len(msg.Deployments), t.namespace))
+	case messages.DeploymentsLoadError:
+		t.loadingDeployments = false
+		t.logContent = append(t.logContent, fmt.Sprintf("❌ Failed to load deployments: %v", msg.Err))
+		t.updateDeploymentDisplay()
 
 	// OpenShift resource message handlers
 	case messages.BuildConfigsLoaded:
@@ -1545,6 +1641,10 @@ Press 'q' to quit`, tabName)
 	switch t.ActiveTab {
 	case 0: // Pods tab
 		t.updatePodDisplay()
+	case 1: // Services tab
+		t.updateServiceDisplay()
+	case 2: // Deployments tab
+		t.updateDeploymentDisplay()
 	case 5: // BuildConfigs tab
 		t.updateBuildConfigDisplay()
 	case 6: // ImageStreams tab
@@ -1705,6 +1805,60 @@ func (t *TUI) loadPods() tea.Cmd {
 
 		t.loadingPods = false
 		return messages.PodsLoaded{Pods: podList.Items}
+	}
+}
+
+// loadServices loads services from the resource client
+func (t *TUI) loadServices() tea.Cmd {
+	return func() tea.Msg {
+		if !t.connected || t.resourceClient == nil {
+			return messages.ServicesLoadError{Err: fmt.Errorf("not connected to cluster")}
+		}
+
+		t.loadingServices = true
+
+		ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultOperationTimeout)
+		defer cancel()
+
+		opts := resources.ListOptions{
+			Namespace: t.namespace,
+		}
+
+		serviceList, err := t.resourceClient.ListServices(ctx, opts)
+		if err != nil {
+			t.loadingServices = false
+			return messages.ServicesLoadError{Err: err}
+		}
+
+		t.loadingServices = false
+		return messages.ServicesLoaded{Services: serviceList.Items}
+	}
+}
+
+// loadDeployments loads deployments from the resource client
+func (t *TUI) loadDeployments() tea.Cmd {
+	return func() tea.Msg {
+		if !t.connected || t.resourceClient == nil {
+			return messages.DeploymentsLoadError{Err: fmt.Errorf("not connected to cluster")}
+		}
+
+		t.loadingDeployments = true
+
+		ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultOperationTimeout)
+		defer cancel()
+
+		opts := resources.ListOptions{
+			Namespace: t.namespace,
+		}
+
+		deploymentList, err := t.resourceClient.ListDeployments(ctx, opts)
+		if err != nil {
+			t.loadingDeployments = false
+			return messages.DeploymentsLoadError{Err: err}
+		}
+
+		t.loadingDeployments = false
+		return messages.DeploymentsLoaded{Deployments: deploymentList.Items}
 	}
 }
 
@@ -2111,6 +2265,62 @@ func (t *TUI) updateRouteDetails(route resources.RouteInfo) {
 	
 	if route.WildcardPolicy != "" {
 		details.WriteString(fmt.Sprintf("Wildcard:     %s\n", route.WildcardPolicy))
+	}
+
+	t.detailContent = details.String()
+}
+
+// updateServiceDetails updates the detail pane with Service information
+func (t *TUI) updateServiceDetails(svc resources.ServiceInfo) {
+	var details strings.Builder
+	details.WriteString(fmt.Sprintf("🔗 Service Details: %s\n\n", svc.Name))
+
+	details.WriteString(fmt.Sprintf("Namespace:    %s\n", svc.Namespace))
+	details.WriteString(fmt.Sprintf("Status:       %s\n", svc.Status))
+	details.WriteString(fmt.Sprintf("Type:         %s\n", svc.Type))
+	details.WriteString(fmt.Sprintf("Cluster IP:   %s\n", svc.ClusterIP))
+	details.WriteString(fmt.Sprintf("Age:          %s\n", svc.Age))
+	
+	if len(svc.ExternalIPs) > 0 {
+		details.WriteString(fmt.Sprintf("External IPs: %s\n", strings.Join(svc.ExternalIPs, ", ")))
+	}
+	
+	// Ports information
+	if len(svc.Ports) > 0 {
+		details.WriteString(fmt.Sprintf("\nPorts:\n"))
+		for _, port := range svc.Ports {
+			details.WriteString(fmt.Sprintf("  • %s\n", port))
+		}
+	}
+	
+	// Selector information
+	if svc.Selector != "" {
+		details.WriteString(fmt.Sprintf("\nSelector:     %s\n", svc.Selector))
+	}
+
+	t.detailContent = details.String()
+}
+
+// updateDeploymentDetails updates the detail pane with Deployment information
+func (t *TUI) updateDeploymentDetails(deploy resources.DeploymentInfo) {
+	var details strings.Builder
+	details.WriteString(fmt.Sprintf("🚀 Deployment Details: %s\n\n", deploy.Name))
+
+	details.WriteString(fmt.Sprintf("Namespace:    %s\n", deploy.Namespace))
+	details.WriteString(fmt.Sprintf("Status:       %s\n", deploy.Status))
+	details.WriteString(fmt.Sprintf("Strategy:     %s\n", deploy.Strategy))
+	details.WriteString(fmt.Sprintf("Age:          %s\n", deploy.Age))
+	
+	// Replica information
+	details.WriteString(fmt.Sprintf("\nReplicas:\n"))
+	details.WriteString(fmt.Sprintf("  Desired:    %d\n", deploy.Replicas))
+	details.WriteString(fmt.Sprintf("  Ready:      %d\n", deploy.ReadyReplicas))
+	details.WriteString(fmt.Sprintf("  Updated:    %d\n", deploy.UpdatedReplicas))
+	details.WriteString(fmt.Sprintf("  Available:  %d\n", deploy.AvailableReplicas))
+	
+	// Condition information
+	if deploy.Condition != "" {
+		details.WriteString(fmt.Sprintf("\nCondition:    %s\n", deploy.Condition))
 	}
 
 	t.detailContent = details.String()
@@ -2865,6 +3075,118 @@ func (t *TUI) updateRouteDisplay() {
 	}
 }
 
+// updateServiceDisplay updates the main content with service information
+func (t *TUI) updateServiceDisplay() {
+	if t.loadingServices {
+		t.mainContent = "🔗 Services\n\nLoading Services..."
+		return
+	}
+
+	if len(t.services) == 0 {
+		t.mainContent = "🔗 Services\n\nNo Services found in current namespace.\n\nPress 'r' to refresh"
+		return
+	}
+
+	var content strings.Builder
+	content.WriteString("🔗 Services\n\n")
+
+	// Header
+	header := fmt.Sprintf("%-30s %-15s %-20s %-30s %s", "NAME", "TYPE", "CLUSTER-IP", "PORTS", "AGE")
+	content.WriteString(lipgloss.NewStyle().Bold(true).Render(header))
+	content.WriteString("\n")
+	content.WriteString(strings.Repeat("-", 100))
+	content.WriteString("\n")
+
+	// Service rows
+	for i, svc := range t.services {
+		style := lipgloss.NewStyle()
+		if i == t.selectedService {
+			style = style.Background(lipgloss.Color("8")).Foreground(lipgloss.Color("15"))
+		}
+
+		ports := strings.Join(svc.Ports, ",")
+		if len(ports) > 30 {
+			ports = ports[:27] + "..."
+		}
+
+		row := fmt.Sprintf("%-30s %-15s %-20s %-30s %s",
+			truncateString(svc.Name, 30),
+			svc.Type,
+			truncateString(svc.ClusterIP, 20),
+			ports,
+			svc.Age,
+		)
+
+		content.WriteString(style.Render(row))
+		content.WriteString("\n")
+	}
+
+	// Instructions
+	content.WriteString("\nUse j/k or ↑↓ to navigate • Press 'enter' for details • Press 'r' to refresh")
+
+	t.mainContent = content.String()
+	
+	// Update detail panel with selected Service info
+	if t.selectedService < len(t.services) && t.selectedService >= 0 {
+		t.updateServiceDetails(t.services[t.selectedService])
+	}
+}
+
+// updateDeploymentDisplay updates the main content with deployment information
+func (t *TUI) updateDeploymentDisplay() {
+	if t.loadingDeployments {
+		t.mainContent = "🚀 Deployments\n\nLoading Deployments..."
+		return
+	}
+
+	if len(t.deployments) == 0 {
+		t.mainContent = "🚀 Deployments\n\nNo Deployments found in current namespace.\n\nPress 'r' to refresh"
+		return
+	}
+
+	var content strings.Builder
+	content.WriteString("🚀 Deployments\n\n")
+
+	// Header
+	header := fmt.Sprintf("%-30s %-10s %-10s %-10s %-15s %s", "NAME", "READY", "UP-TO-DATE", "AVAILABLE", "STRATEGY", "AGE")
+	content.WriteString(lipgloss.NewStyle().Bold(true).Render(header))
+	content.WriteString("\n")
+	content.WriteString(strings.Repeat("-", 95))
+	content.WriteString("\n")
+
+	// Deployment rows
+	for i, deploy := range t.deployments {
+		style := lipgloss.NewStyle()
+		if i == t.selectedDeployment {
+			style = style.Background(lipgloss.Color("8")).Foreground(lipgloss.Color("15"))
+		}
+
+		ready := fmt.Sprintf("%d/%d", deploy.ReadyReplicas, deploy.Replicas)
+
+		row := fmt.Sprintf("%-30s %-10s %-10d %-10d %-15s %s",
+			truncateString(deploy.Name, 30),
+			ready,
+			deploy.UpdatedReplicas,
+			deploy.AvailableReplicas,
+			truncateString(deploy.Strategy, 15),
+			deploy.Age,
+		)
+
+		content.WriteString(style.Render(row))
+		content.WriteString("\n")
+	}
+
+	// Instructions
+	content.WriteString("\nUse j/k or ↑↓ to navigate • Press 'enter' for details • Press 'r' to refresh")
+
+	t.mainContent = content.String()
+	
+	// Update detail panel with selected Deployment info
+	if t.selectedDeployment < len(t.deployments) && t.selectedDeployment >= 0 {
+		t.updateDeploymentDetails(t.deployments[t.selectedDeployment])
+	}
+}
+
 // Helper function to truncate strings
 func truncateString(s string, maxLen int) string {
 	if len(s) <= maxLen {
@@ -2877,9 +3199,19 @@ func truncateString(s string, maxLen int) string {
 func (t *TUI) handleTabSwitch() tea.Cmd {
 	t.updateMainContent()
 	
-	// Auto-load data for OpenShift tabs if needed
+	// Auto-load data for resource tabs if needed
 	if t.connected {
 		switch t.ActiveTab {
+		case 1: // Services
+			if len(t.services) == 0 && !t.loadingServices {
+				t.loadingServices = true
+				return t.loadServices()
+			}
+		case 2: // Deployments
+			if len(t.deployments) == 0 && !t.loadingDeployments {
+				t.loadingDeployments = true
+				return t.loadDeployments()
+			}
 		case 5: // BuildConfigs
 			if len(t.buildConfigs) == 0 && !t.loadingBuildConfigs {
 				t.loadingBuildConfigs = true

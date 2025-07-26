@@ -7,6 +7,7 @@
 - **Main Framework**: Bubble Tea (TUI)  
 - **Target**: OpenShift/Kubernetes cluster management
 - **Version**: 0.1.0 (from VERSION file)
+- **Status**: Full OpenShift support implemented with navigation and details panels
 
 ## Essential Build & Development Commands
 
@@ -88,15 +89,17 @@ lazyoc/
 - Flags: `--debug`, `--kubeconfig`, `--no-alt-screen`
 - Calls `ui.RunTUI()` to start interface
 
-**Primary TUI**: `internal/ui/`
-- Built with Bubble Tea framework
+**Primary TUI**: `internal/ui/tui.go` (Simplified Architecture)
+- Built with Bubble Tea framework - single TUI implementation
 - Program entry: `internal/ui/program.go`
 - Main app model: `internal/ui/models/app.go`
+- **Architecture Cleanup**: Removed dual TUI systems, now uses unified TUI implementation
 
-**K8s Integration**: `internal/k8s/`
-- Client wrapper around k8s.io/client-go
-- Authentication via kubeconfig
-- Resource operations and monitoring
+**K8s/OpenShift Integration**: `internal/k8s/`
+- Client wrapper around k8s.io/client-go and openshift/client-go
+- Authentication via kubeconfig (`oc login` compatible)
+- Full OpenShift resource support (BuildConfigs, ImageStreams, Routes)
+- Resource operations and monitoring for both platforms
 
 ## Code Patterns & Conventions
 
@@ -160,6 +163,7 @@ go test -v ./internal/k8s/...   # Specific package tests
 ### Dependencies
 - **TUI**: `github.com/charmbracelet/bubbletea`, `github.com/charmbracelet/lipgloss`
 - **K8s**: `k8s.io/client-go`, `k8s.io/api`, `k8s.io/apimachinery`
+- **OpenShift**: `github.com/openshift/client-go`, `github.com/openshift/api`
 - **CLI**: `github.com/spf13/cobra`
 
 ## Common File Locations
@@ -167,17 +171,24 @@ go test -v ./internal/k8s/...   # Specific package tests
 ### Entry Points
 - Main: `cmd/lazyoc/main.go:19`
 - TUI Start: `internal/ui/program.go` (RunTUI function)
+- Main TUI: `internal/ui/tui.go` (unified implementation)
 - App Model: `internal/ui/models/app.go`
 
 ### Key Implementations
-- K8s Client: `internal/k8s/client.go`
-- Resource Views: `internal/ui/views/pods.go`, `internal/ui/views/logs.go`
-- Navigation: `internal/ui/navigation/keybindings.go`
-- Authentication: `internal/k8s/auth/kubeconfig.go`
+- K8s/OpenShift Client: `internal/k8s/client.go`
+- OpenShift Resources: `internal/k8s/resources/openshift_client.go`
+- Resource Types: `internal/k8s/resources/types.go`
+- TUI Navigation: `internal/ui/tui.go` (key handling around lines 390-490)
+- Details Panels: `internal/ui/tui.go` (updatePodDetails, updateBuildConfigDetails, etc.)
+- Tab Management: `internal/ui/models/app.go` (NextTab, PrevTab, ActiveTab)
+
+### OpenShift Integration
+- Resource Constants: `internal/constants/ui.go` (ResourceTabs with 8 tabs)
+- Message Types: `internal/ui/messages/k8s_messages.go` (OpenShift-specific messages)
+- Client Factory: `internal/k8s/client.go` (OpenShift detection and client initialization)
 
 ### Configuration
 - Constants: `internal/constants/*.go`
-- Styles: `internal/ui/styles/theme.go`
 - Version: `VERSION` file (currently 0.1.0)
 
 ## Git & Release
@@ -598,6 +609,73 @@ These commands make AI calls and may take up to a minute:
 - Recommended for complex technical tasks
 
 **Note**: Task Master commands are optional workflow tools - core LazyOC development can proceed without them.
+
+---
+
+## Recent Major Implementation (January 2025)
+
+### OpenShift Integration Complete ✅
+**Status**: Task 7 completed with commit `bb2060c`
+
+#### Architecture Cleanup
+- **Problem**: LazyOC had two competing TUI implementations causing confusion
+- **Solution**: Removed complex component-based TUI, unified on `SimplifiedTUI` (renamed to `TUI`)
+- **Result**: Single, clean TUI architecture in `internal/ui/tui.go`
+
+#### OpenShift Resource Support
+**Added full support for OpenShift-specific resources:**
+
+1. **Resource Types** (`internal/k8s/resources/types.go`):
+   - `BuildConfigInfo` - Build configurations with strategies, sources, triggers
+   - `ImageStreamInfo` - Container image streams with tags and repositories  
+   - `RouteInfo` - HTTP/HTTPS routes with TLS configuration
+   - Full type definitions with proper field mapping
+
+2. **Client Integration** (`internal/k8s/client.go`):
+   - OpenShift cluster detection via API group discovery
+   - Automatic fallback to Kubernetes-only mode
+   - `InitializeOpenShiftAfterSetup()` method for proper client initialization
+   - Support for both `kubectl` and `oc login` authentication
+
+3. **UI Implementation** (`internal/ui/tui.go`):
+   - Extended from 5 to 8 resource tabs (added BuildConfigs, ImageStreams, Routes)
+   - Tab-aware navigation with 'j'/'k' keys working correctly in all tabs
+   - Resource-specific selection indices and display functions
+   - Proper async loading with Bubble Tea message system
+
+#### Navigation & Details Panel Fix
+**Critical Fix**: Resolved navigation and details panel issues
+
+**Before**:
+- 'j'/'k' keys only worked in Pods tab
+- Details panel always showed pod information regardless of current tab
+- OpenShift tabs showed "Coming soon" placeholders
+
+**After**:
+- Navigation works correctly in all 8 tabs with proper resource selection
+- Details panels show relevant resource information:
+  - **BuildConfigs**: Source info, build strategies, statistics, last build status
+  - **ImageStreams**: Repository URLs, tag listings, image counts
+  - **Routes**: Service targets, TLS configuration, routing policies
+- Full functionality for OpenShift resource browsing
+
+#### Key Files Modified
+- `internal/ui/tui.go`: Navigation logic (lines 390-490), details functions (lines 2006-2117)
+- `internal/constants/ui.go`: Extended ResourceTabs to 8 tabs
+- `internal/k8s/client.go`: OpenShift client initialization and detection
+- `internal/ui/models/app.go`: Tab management with OpenShift support
+- `internal/ui/messages/k8s_messages.go`: OpenShift-specific message types
+
+#### Testing Resources
+- Created `setup-openshift-resources.sh` script for testing
+- Adds sample BuildConfigs and Routes to current OpenShift project
+- Verified with real OpenShift cluster (rm3.7wse.p1.openshiftapps.com)
+
+#### Result
+- ✅ Complete OpenShift integration with navigation and details
+- ✅ Unified TUI architecture eliminates confusion
+- ✅ Production-ready OpenShift resource management
+- ✅ Maintains full Kubernetes compatibility
 
 ---
 

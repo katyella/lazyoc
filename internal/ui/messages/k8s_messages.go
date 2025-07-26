@@ -58,6 +58,28 @@ type ClusterInfoError struct {
 	Err error
 }
 
+// Kubernetes resource messages
+
+// ServicesLoaded is sent when Services are successfully loaded
+type ServicesLoaded struct {
+	Services []resources.ServiceInfo
+}
+
+// ServicesLoadError is sent when Service loading fails
+type ServicesLoadError struct {
+	Err error
+}
+
+// DeploymentsLoaded is sent when Deployments are successfully loaded
+type DeploymentsLoaded struct {
+	Deployments []resources.DeploymentInfo
+}
+
+// DeploymentsLoadError is sent when Deployment loading fails
+type DeploymentsLoadError struct {
+	Err error
+}
+
 // OpenShift-specific messages
 
 // BuildConfigsLoaded is sent when BuildConfigs are successfully loaded
