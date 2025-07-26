@@ -57,3 +57,35 @@ type ClusterInfoLoaded struct {
 type ClusterInfoError struct {
 	Err error
 }
+
+// OpenShift-specific messages
+
+// BuildConfigsLoaded is sent when BuildConfigs are successfully loaded
+type BuildConfigsLoaded struct {
+	BuildConfigs []resources.BuildConfigInfo
+}
+
+// BuildConfigsLoadError is sent when BuildConfig loading fails
+type BuildConfigsLoadError struct {
+	Err error
+}
+
+// ImageStreamsLoaded is sent when ImageStreams are successfully loaded
+type ImageStreamsLoaded struct {
+	ImageStreams []resources.ImageStreamInfo
+}
+
+// ImageStreamsLoadError is sent when ImageStream loading fails
+type ImageStreamsLoadError struct {
+	Err error
+}
+
+// RoutesLoaded is sent when Routes are successfully loaded
+type RoutesLoaded struct {
+	Routes []resources.RouteInfo
+}
+
+// RoutesLoadError is sent when Route loading fails
+type RoutesLoadError struct {
+	Err error
+}

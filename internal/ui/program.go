@@ -27,7 +27,7 @@ func DefaultProgramOptions() ProgramOptions {
 // NewProgram creates a new Bubble Tea program with the TUI model
 func NewProgram(opts ProgramOptions) *tea.Program {
 	// Create the simplified TUI model
-	tui := NewSimplifiedTUI(opts.Version, opts.Debug)
+	tui := NewTUI(opts.Version, opts.Debug)
 
 	// Set kubeconfig if provided
 	if opts.KubeConfig != "" {
@@ -66,7 +66,7 @@ func RunTUI(opts ProgramOptions) error {
 	}
 
 	// Log final state if debug is enabled
-	if tui, ok := model.(*SimplifiedTUI); ok && tui.Debug {
+	if tui, ok := model.(*TUI); ok && tui.Debug {
 		logging.Info(tui.Logger, "TUI program exited successfully")
 	}
 

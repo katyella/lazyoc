@@ -24,7 +24,7 @@ const (
 )
 
 // ResourceTabs defines the available resource tabs in the UI
-var ResourceTabs = []string{"Pods", "Services", "Deployments", "ConfigMaps", "Secrets"}
+var ResourceTabs = []string{"Pods", "Services", "Deployments", "ConfigMaps", "Secrets", "BuildConfigs", "ImageStreams", "Routes"}
 
 // PanelNames defines the available panels in the UI
 var PanelNames = []string{"Main", "Details", "Logs"}

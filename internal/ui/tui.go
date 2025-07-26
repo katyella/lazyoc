@@ -1,52 +1,122 @@
 package ui
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/katyella/lazyoc/internal/errors"
+	"github.com/katyella/lazyoc/internal/k8s"
+	"github.com/katyella/lazyoc/internal/k8s/auth"
+	"github.com/katyella/lazyoc/internal/k8s/monitor"
+	"github.com/katyella/lazyoc/internal/k8s/projects"
+	"github.com/katyella/lazyoc/internal/k8s/resources"
 	"github.com/katyella/lazyoc/internal/logging"
-	"github.com/katyella/lazyoc/internal/ui/commands"
 	"github.com/katyella/lazyoc/internal/ui/components"
+	"github.com/katyella/lazyoc/internal/ui/errors"
 	"github.com/katyella/lazyoc/internal/ui/messages"
 	"github.com/katyella/lazyoc/internal/ui/models"
-	"github.com/katyella/lazyoc/internal/ui/navigation"
-	"github.com/katyella/lazyoc/internal/ui/search"
-	"github.com/katyella/lazyoc/internal/ui/styles"
+	"k8s.io/client-go/kubernetes"
+
+	"github.com/katyella/lazyoc/internal/constants"
 )
 
-// TUI wraps the App model and implements the tea.Model interface
+// TUI is the main terminal user interface for LazyOC
 type TUI struct {
 	*models.App
 
-	// Navigation system
-	navController *navigation.NavigationController
-	helpComponent *navigation.HelpComponent
 
-	// Layout components
-	layoutManager *components.LayoutManager
-	header        *components.HeaderComponent
-	tabs          *components.TabComponent
-	contentPane   *components.ContentPane
-	detailPane    *components.DetailPane
-	logPane       *components.LogPane
-	statusBar     *components.StatusBarComponent
+	// Kubernetes client integration
+	k8sClient      k8s.Client
+	resourceClient resources.ResourceClient
+	connMonitor    monitor.ConnectionMonitor
+	authProvider   auth.AuthProvider
+	projectManager projects.ProjectManager
+	projectFactory *projects.DefaultProjectManagerFactory
 
-	// CRITICAL: Ready state pattern from research
-	isReady               bool // Never render until first WindowSizeMsg
-	componentsInitialized bool
+	// Connection state
+	connected      bool
+	connecting     bool
+	connectionErr  error
+	namespace      string
+	context        string
+	clusterVersion string
 
-	// Message handling
-	messageHandler *messages.MessageHandler
+	// Resource data
+	pods        []resources.PodInfo
+	selectedPod int
+	loadingPods bool
 
-	// Theme management
-	styleManager *styles.StyleManager
+	// OpenShift resource data
+	buildConfigs      []resources.BuildConfigInfo
+	selectedBuildConfig int
+	loadingBuildConfigs bool
 
-	// Search functionality
-	searchFilter *search.ResourceFilter
+	imageStreams      []resources.ImageStreamInfo
+	selectedImageStream int
+	loadingImageStreams bool
+
+	routes            []resources.RouteInfo
+	selectedRoute     int
+	loadingRoutes     bool
+
+	// Pod logs data
+	podLogs         []string
+	loadingLogs     bool
+	logScrollOffset int
+	maxLogLines     int
+	userScrolled    bool            // Track if user manually scrolled
+	lastLogTime     string          // Track last log timestamp for streaming
+	tailMode        bool            // True when auto-scrolling to new logs
+	seenLogLines    map[string]bool // Track seen log lines to prevent duplicates
+
+	// Log view mode: "app" or "pod"
+	logViewMode string
+
+	// Simple state instead of components
+	width        int
+	height       int
+	ready        bool
+	showHelp     bool
+	focusedPanel int
+
+	// Content
+	mainContent   string
+	logContent    []string
+	detailContent string
+
+	// Visibility
+	showDetails bool
+	showLogs    bool
+
+	// Project switching modal
+	showProjectModal   bool
+	projectList        []projects.ProjectInfo
+	selectedProject    int
+	currentProject     *projects.ProjectInfo
+	loadingProjects    bool
+	switchingProject   bool
+	projectModalHeight int
+	projectError       string
+
+	// Error handling and recovery
+	errorDisplay    *components.ErrorDisplayComponent
+	showErrorModal  bool
+	retryInProgress bool
+	retryCount      int
+	maxRetries      int
+
+	// Theme
+	theme string
+
+	// Kubeconfig path
+	KubeconfigPath string
 }
 
 // NewTUI creates a new TUI instance
@@ -55,1231 +125,2855 @@ func NewTUI(version string, debug bool) *TUI {
 	app.Debug = debug
 	app.Logger = logging.SetupLogger(debug)
 
-	logging.Info(app.Logger, "Initializing LazyOC TUI v%s", version)
+	logging.Info(app.Logger, "Initializing Simplified LazyOC TUI v%s", version)
 
-	// Create TUI with empty layout components (will be initialized on first resize)
 	tui := &TUI{
-		App:            app,
-		navController:  navigation.NewNavigationController(),
-		helpComponent:  navigation.NewHelpComponent(80, 24), // Default size, will be updated
-		messageHandler: messages.NewMessageHandler(),
-		styleManager:   styles.GetStyleManager(),
-		searchFilter:   search.NewResourceFilter(),
+		App:           app,
+		theme:         constants.DefaultTheme,
+		showDetails:   true,
+		showLogs:      true,
+		focusedPanel:  constants.DefaultFocusedPanel,
+		mainContent:   "", // Will be set by updateMainContent
+		logContent:    []string{constants.InitialLogMessage},
+		detailContent: constants.DefaultDetailContent,
+		namespace:     constants.DefaultNamespace,
+		pods:          []resources.PodInfo{},
+		selectedPod:   0,
+		// Pod logs
+		podLogs:      []string{},
+		maxLogLines:  constants.MaxLogLines,
+		logViewMode:  constants.DefaultLogViewMode,
+		tailMode:     true, // Start in tail mode by default
+		seenLogLines: make(map[string]bool),
+		// Error handling
+		errorDisplay: components.NewErrorDisplayComponent("dark"),
+		maxRetries:   constants.DefaultRetryAttempts,
 	}
 
-	// Set up navigation callbacks
-	tui.setupNavigationCallbacks()
 
-	// Set up theme change listener
-	tui.styleManager.AddThemeChangeListener(func() {
-		logging.Info(tui.Logger, "Theme changed, updating components")
-		// Components will automatically pick up new theme on next render
-	})
+	// Initialize main content
+	tui.updateMainContent()
 
 	return tui
 }
 
-// Init implements tea.Model interface - called once at startup
-func (t *TUI) Init() tea.Cmd {
-	logging.Debug(t.Logger, "TUI Init() called")
+// SetKubeconfig sets the kubeconfig path and returns a command to initialize the connection
+func (t *TUI) SetKubeconfig(kubeconfigPath string) tea.Cmd {
+	if kubeconfigPath == "" {
+		// Try default location
+		home, err := os.UserHomeDir()
+		if err == nil {
+			kubeconfigPath = filepath.Join(home, constants.KubeConfigDir, constants.KubeConfigFile)
+		}
+	}
 
-	// Return a batch of initial commands
 	return tea.Batch(
-		// Get initial terminal size
-		tea.WindowSize(),
-		// Initial setup command
+		// First send connecting message
 		func() tea.Msg {
-			return messages.InitMsg{}
+			return messages.ConnectingMsg{KubeconfigPath: kubeconfigPath}
 		},
+		// Then initialize the client
+		t.InitializeK8sClient(kubeconfigPath),
 	)
 }
 
-// Update implements tea.Model interface - handles messages and updates state
-func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Track message for performance optimization
-	t.messageHandler.TrackMessage(msg)
-
-	// Debug logging with rate limiting for high-frequency messages
-	if !t.messageHandler.IsHighFrequency(msg) {
-		logging.Debug(t.Logger, "TUI Update() received message: %T", msg)
-	}
-
-	// Check if this message should be batched
-	if t.messageHandler.ShouldBatch(msg) {
-		t.messageHandler.AddToBatch(msg)
-		// Process batch if it's getting large
-		if len(t.messageHandler.ProcessBatch()) >= 5 {
-			return t.processBatchedMessages()
-		}
-		return t, nil
-	}
-
-	// Process critical and high-priority messages first
-	priority := t.messageHandler.GetMessagePriority(msg)
-	if priority == messages.PriorityCritical {
-		return t.handleCriticalMessage(msg)
-	}
-
-	// Handle regular messages
+// Init implements tea.Model
+func (t *TUI) Init() tea.Cmd {
 	var cmds []tea.Cmd
 
-	// Process window size changes with helper function
-	if handled, cmd := t.handleWindowSizeMessage(msg); handled {
-		if cmd != nil {
-			cmds = append(cmds, cmd)
+	// Basic initialization commands
+	cmds = append(cmds,
+		tea.WindowSize(),
+		tea.Tick(constants.InitialTickDelay, func(t time.Time) tea.Msg {
+			return messages.InitMsg{}
+		}),
+	)
+
+	// If kubeconfig is provided, initialize the connection
+	if t.KubeconfigPath != "" {
+		cmds = append(cmds, t.SetKubeconfig(t.KubeconfigPath))
+	} else {
+		// Try default kubeconfig location
+		home, err := os.UserHomeDir()
+		if err == nil {
+			defaultPath := filepath.Join(home, constants.KubeConfigDir, constants.KubeConfigFile)
+			if _, err := os.Stat(defaultPath); err == nil {
+				cmds = append(cmds, t.SetKubeconfig(defaultPath))
+			} else {
+				// No kubeconfig found - send message
+				cmds = append(cmds, func() tea.Msg {
+					return messages.NoKubeconfigMsg{
+						Message: "No kubeconfig found at ~/.kube/config",
+					}
+				})
+			}
+		} else {
+			// Couldn't get home dir - send message
+			cmds = append(cmds, func() tea.Msg {
+				return messages.NoKubeconfigMsg{
+					Message: "No kubeconfig specified",
+				}
+			})
 		}
-	} else if handled, cmd := t.handleKeyboardMessage(msg); handled {
-		// Handle keyboard input
-		return t, cmd
-	} else if handled, cmd := t.handleApplicationMessage(msg); handled {
-		// Handle application state messages
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-	} else if handled, cmd := t.handleNavigationSystemMessage(msg); handled {
-		// Handle navigation system messages
-		return t, cmd
 	}
 
-	// Update components if initialized
-	if t.componentsInitialized {
-		componentCmds := t.updateComponents(msg)
-		cmds = append(cmds, componentCmds...)
-	}
-
-	// Return with batched commands
-	if len(cmds) > 0 {
-		return t, tea.Batch(cmds...)
-	}
-	return t, nil
+	return tea.Batch(cmds...)
 }
 
-// handleCriticalMessage handles critical priority messages that must be processed immediately
-func (t *TUI) handleCriticalMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
+// Update implements tea.Model
+func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.QuitMsg:
-		logging.Info(t.Logger, "Quit message received")
-		return t, tea.Quit
 
-	case messages.ErrorMsg:
-		t.SetError(msg.Err)
-		logging.Error(t.Logger, "Critical error occurred: %v", msg.Err)
-		return t, nil
+	case tea.WindowSizeMsg:
+		t.width = msg.Width
+		t.height = msg.Height
+		t.ready = true
+		logging.Debug(t.Logger, "Window size: %dx%d", t.width, t.height)
 
-	default:
-		// Shouldn't happen but handle gracefully
-		logging.Warn(t.Logger, "Unknown critical message type: %T", msg)
-		return t, nil
-	}
-}
-
-// handleWindowSizeMessage handles window resize messages
-func (t *TUI) handleWindowSizeMessage(msg tea.Msg) (bool, tea.Cmd) {
-	windowMsg, ok := msg.(tea.WindowSizeMsg)
-	if !ok {
-		return false, nil
-	}
-
-	// CRITICAL: This is our first valid sizing info - mark as ready
-	if !t.isReady {
-		t.isReady = true
-		logging.Debug(t.Logger, "TUI marked ready after receiving WindowSizeMsg")
-	}
-
-	// Ensure minimum terminal size to prevent layout issues
-	width, height := windowMsg.Width, windowMsg.Height
-	minWidth, minHeight := 60, 15 // Absolute minimum for basic functionality
-
-	if width < minWidth {
-		width = minWidth
-	}
-	if height < minHeight {
-		height = minHeight
-	}
-
-	t.SetDimensions(width, height)
-
-	// Initialize components ONLY after we're ready with valid dimensions
-	if !t.componentsInitialized && t.isReady {
-		t.testLayoutManagerOnly(width, height)
-		t.componentsInitialized = true
-	} else if t.componentsInitialized {
-		// Update existing layout with new dimensions
-		if t.layoutManager != nil {
-			t.layoutManager.UpdateDimensions(width, height)
-			t.updateAllComponentDimensions()
+	case tea.KeyMsg:
+		// Special handling for help mode
+		if t.showHelp {
+			if msg.String() == "?" || msg.String() == "esc" {
+				t.showHelp = false
+				return t, nil
+			}
+			return t, nil
 		}
-	}
 
-	// Update help component dimensions
-	if t.helpComponent != nil {
-		t.helpComponent.SetDimensions(width, height)
-	}
+		// Special handling for error modal
+		if t.showErrorModal {
+			return t.handleErrorModalKeys(msg)
+		}
 
-	logging.Debug(t.Logger, "Window resized to %dx%d (requested: %dx%d)", width, height, windowMsg.Width, windowMsg.Height)
-	return true, nil
-}
+		// Special handling for project modal
+		if t.showProjectModal {
+			return t.handleProjectModalKeys(msg)
+		}
 
-// handleKeyboardMessage handles keyboard input messages
-func (t *TUI) handleKeyboardMessage(msg tea.Msg) (bool, tea.Cmd) {
-	keyMsg, ok := msg.(tea.KeyMsg)
-	if !ok {
-		return false, nil
-	}
+		// Normal key handling
+		switch msg.String() {
+		case "ctrl+c", "q":
+			return t, tea.Quit
 
-	_, cmd := t.handleKeyInputWithNavigation(keyMsg)
-	return true, cmd
-}
+		case "esc":
+			// Close error modal if open
+			if t.showErrorModal {
+				t.showErrorModal = false
+				return t, nil
+			}
+			return t, nil
 
-// handleApplicationMessage handles application state messages
-func (t *TUI) handleApplicationMessage(msg tea.Msg) (bool, tea.Cmd) {
-	switch msg := msg.(type) {
+		case "r":
+			// Manual retry/reconnect
+			if !t.connected && !t.connecting {
+				return t, t.InitializeK8sClient(t.KubeconfigPath)
+			}
+			// Refresh resources if connected
+			if t.connected {
+				switch t.ActiveTab {
+				case 0: // Pods
+					return t, t.loadPods()
+				case 5: // BuildConfigs
+					t.loadingBuildConfigs = true
+					t.buildConfigs = []resources.BuildConfigInfo{}
+					t.updateMainContent()
+					return t, t.loadBuildConfigs()
+				case 6: // ImageStreams
+					t.loadingImageStreams = true
+					t.imageStreams = []resources.ImageStreamInfo{}
+					t.updateMainContent()
+					return t, t.loadImageStreams()
+				case 7: // Routes
+					t.loadingRoutes = true
+					t.routes = []resources.RouteInfo{}
+					t.updateMainContent()
+					return t, t.loadRoutes()
+				}
+			}
+			return t, nil
+
+		case "ctrl+p":
+			// Open project switching modal
+			if t.connected {
+				return t, t.openProjectModal()
+			}
+			return t, nil
+
+		case "?":
+			t.showHelp = true
+			return t, nil
+
+		case "tab":
+			t.focusedPanel = (t.focusedPanel + 1) % constants.PanelCount
+			return t, nil
+
+		case "shift+tab":
+			t.focusedPanel = (t.focusedPanel + 2) % constants.PanelCount
+			return t, nil
+
+		case "d":
+			t.showDetails = !t.showDetails
+			return t, nil
+
+		case "L":
+			t.showLogs = !t.showLogs
+			return t, nil
+
+		case "e":
+			// Show error modal if there are errors
+			if t.errorDisplay.HasErrors() {
+				t.showErrorModal = true
+			}
+			return t, nil
+
+		case "h":
+			if t.focusedPanel == 0 { // Only navigate tabs when in main panel
+				t.PrevTab()
+				return t, t.handleTabSwitch()
+			}
+			return t, nil
+
+		case "l":
+			if t.focusedPanel == 2 { // Toggle log view when in log panel
+				if t.logViewMode == constants.DefaultLogViewMode {
+					t.logViewMode = constants.PodLogViewMode
+					// Auto-load pod logs if not loaded and we have a selected pod
+					if len(t.podLogs) == 0 && len(t.pods) > 0 && t.selectedPod < len(t.pods) {
+						t.clearPodLogs() // This sets loadingLogs = true
+						return t, tea.Batch(t.loadPodLogs(), t.startPodLogRefreshTimer())
+					}
+					// Start log refresh timer even if logs are already loaded
+					return t, t.startPodLogRefreshTimer()
+				} else {
+					t.logViewMode = constants.DefaultLogViewMode
+				}
+			} else if t.focusedPanel == 0 { // Navigate tabs when in main panel
+				t.NextTab()
+				return t, t.handleTabSwitch()
+			}
+			return t, nil
+
+		case "left":
+			t.PrevTab()
+			return t, t.handleTabSwitch()
+
+		case "right":
+			t.NextTab()
+			return t, t.handleTabSwitch()
+
+		case "1":
+			t.focusedPanel = 0 // Focus main panel
+			return t, nil
+
+		case "2":
+			if t.showDetails {
+				t.focusedPanel = 1 // Focus details panel
+			}
+			return t, nil
+
+		case "3":
+			if t.showLogs {
+				t.focusedPanel = 2 // Focus logs panel
+			}
+			return t, nil
+
+		case "t":
+			// Toggle theme
+			if t.theme == "dark" {
+				t.theme = "light"
+			} else {
+				t.theme = "dark"
+			}
+			return t, nil
+
+		// "r" case is already handled above for retry/refresh
+
+		case "j":
+			if t.focusedPanel == 0 {
+				// Handle navigation based on current tab
+				switch t.ActiveTab {
+				case models.TabPods:
+					if len(t.pods) > 0 {
+						t.selectedPod = (t.selectedPod + 1) % len(t.pods)
+						t.updatePodDisplay()
+						// Clear logs and load logs for newly selected pod
+						t.clearPodLogs()
+						if t.logViewMode == constants.PodLogViewMode {
+							return t, tea.Batch(t.loadPodLogs(), t.startPodLogRefreshTimer())
+						}
+						return t, t.loadPodLogs()
+					}
+				case models.TabBuildConfigs:
+					if len(t.buildConfigs) > 0 {
+						t.selectedBuildConfig = (t.selectedBuildConfig + 1) % len(t.buildConfigs)
+						t.updateBuildConfigDisplay()
+					}
+				case models.TabImageStreams:
+					if len(t.imageStreams) > 0 {
+						t.selectedImageStream = (t.selectedImageStream + 1) % len(t.imageStreams)
+						t.updateImageStreamDisplay()
+					}
+				case models.TabRoutes:
+					if len(t.routes) > 0 {
+						t.selectedRoute = (t.selectedRoute + 1) % len(t.routes)
+						t.updateRouteDisplay()
+					}
+				}
+			} else if t.focusedPanel == 0 && t.showLogs {
+				// Move focus down to logs panel
+				t.focusedPanel = 2
+			} else if t.focusedPanel == 1 && t.showLogs {
+				// Move focus from details to logs
+				t.focusedPanel = 2
+			} else if t.focusedPanel == 2 && t.logViewMode == "pod" && len(t.podLogs) > 0 {
+				// Scroll down in pod logs - improved bounds checking
+				maxScroll := t.getMaxLogScrollOffset()
+				if t.logScrollOffset < maxScroll {
+					t.logScrollOffset += 1
+					t.userScrolled = true
+					t.tailMode = false // Disable tail mode when manually scrolling
+				} else {
+					// If at bottom and trying to scroll down, enable tail mode
+					t.tailMode = true
+					t.userScrolled = false
+				}
+			}
+			return t, nil
+
+		case "k":
+			if t.focusedPanel == 0 {
+				// Handle navigation based on current tab
+				switch t.ActiveTab {
+				case models.TabPods:
+					if len(t.pods) > 0 {
+						t.selectedPod = t.selectedPod - 1
+						if t.selectedPod < 0 {
+							t.selectedPod = len(t.pods) - 1
+						}
+						t.updatePodDisplay()
+						// Clear logs and load logs for newly selected pod
+						t.clearPodLogs()
+						if t.logViewMode == constants.PodLogViewMode {
+							return t, tea.Batch(t.loadPodLogs(), t.startPodLogRefreshTimer())
+						}
+						return t, t.loadPodLogs()
+					}
+				case models.TabBuildConfigs:
+					if len(t.buildConfigs) > 0 {
+						t.selectedBuildConfig = t.selectedBuildConfig - 1
+						if t.selectedBuildConfig < 0 {
+							t.selectedBuildConfig = len(t.buildConfigs) - 1
+						}
+						t.updateBuildConfigDisplay()
+					}
+				case models.TabImageStreams:
+					if len(t.imageStreams) > 0 {
+						t.selectedImageStream = t.selectedImageStream - 1
+						if t.selectedImageStream < 0 {
+							t.selectedImageStream = len(t.imageStreams) - 1
+						}
+						t.updateImageStreamDisplay()
+					}
+				case models.TabRoutes:
+					if len(t.routes) > 0 {
+						t.selectedRoute = t.selectedRoute - 1
+						if t.selectedRoute < 0 {
+							t.selectedRoute = len(t.routes) - 1
+						}
+						t.updateRouteDisplay()
+					}
+				}
+			} else if t.focusedPanel == 2 && t.logViewMode == "pod" && len(t.podLogs) > 0 {
+				// Scroll up in pod logs - improved bounds checking
+				if t.logScrollOffset > 0 {
+					t.logScrollOffset -= 1
+					t.userScrolled = true
+					t.tailMode = false // Disable tail mode when manually scrolling up
+				}
+				// Stay in log panel even at the top
+			} else if t.focusedPanel == 2 {
+				// Stay in log panel for app logs too
+				// Don't change focus - explicitly do nothing
+				_ = 0 // Explicitly do nothing
+			}
+			return t, nil
+
+		case "pgup":
+			if t.focusedPanel == 2 && t.logViewMode == "pod" && len(t.podLogs) > 0 {
+				// Page up in pod logs
+				pageSize := t.getLogPageSize()
+				t.logScrollOffset = max(0, t.logScrollOffset-pageSize)
+				t.userScrolled = true
+				t.tailMode = false // Disable tail mode when paging up
+			}
+			return t, nil
+
+		case "pgdn":
+			if t.focusedPanel == 2 && t.logViewMode == "pod" && len(t.podLogs) > 0 {
+				// Page down in pod logs
+				pageSize := t.getLogPageSize()
+				maxScroll := t.getMaxLogScrollOffset()
+				newOffset := min(maxScroll, t.logScrollOffset+pageSize)
+				t.logScrollOffset = newOffset
+				t.userScrolled = true
+				// If we reached the bottom, enable tail mode
+				if t.logScrollOffset >= maxScroll {
+					t.tailMode = true
+					t.userScrolled = false
+				} else {
+					t.tailMode = false
+				}
+			}
+			return t, nil
+
+		case "home":
+			if t.focusedPanel == 2 && t.logViewMode == "pod" && len(t.podLogs) > 0 {
+				// Go to top of pod logs
+				t.logScrollOffset = 0
+				t.userScrolled = true
+				t.tailMode = false // Disable tail mode when going to top
+			}
+			return t, nil
+
+		case "end":
+			if t.focusedPanel == 2 && t.logViewMode == "pod" && len(t.podLogs) > 0 {
+				// Go to bottom of pod logs and enable tail mode
+				t.logScrollOffset = t.getMaxLogScrollOffset()
+				t.userScrolled = false
+				t.tailMode = true // Enable tail mode when going to bottom
+			}
+			return t, nil
+
+		case "shift+t", "T":
+			if t.focusedPanel == 2 && t.logViewMode == "pod" {
+				// Toggle tail mode
+				t.tailMode = !t.tailMode
+				if t.tailMode {
+					// If enabling tail mode, scroll to bottom
+					t.logScrollOffset = t.getMaxLogScrollOffset()
+					t.userScrolled = false
+				}
+			}
+			return t, nil
+
+		case "down":
+			// Panel navigation
+			if t.focusedPanel == 0 && t.showLogs {
+				t.focusedPanel = 2
+			} else if t.focusedPanel == 1 && t.showLogs {
+				t.focusedPanel = 2
+			}
+			return t, nil
+
+		case "up":
+			// Panel navigation
+			if t.focusedPanel == 2 {
+				t.focusedPanel = 0
+			}
+			return t, nil
+		}
+
 	case messages.InitMsg:
 		t.ClearLoading()
 		t.State = models.StateMain
-		// Initialize layout with default size if no WindowSizeMsg received yet
-		if t.Width == 0 || t.Height == 0 && !t.componentsInitialized {
-			t.SetDimensions(80, 24) // Default terminal size
-			t.testLayoutManagerOnly(80, 24)
-			t.componentsInitialized = true
-		}
+		// Don't overwrite log entries from Init()
+		// Just update main content for current tab
+		t.updateMainContent()
 		logging.Info(t.Logger, "Application initialized successfully")
-		return true, nil
 
-	case messages.LoadingMsg:
-		if msg.Loading {
-			t.SetLoading(msg.Message)
+	case messages.ConnectionSuccess:
+		t.connected = true
+		t.connecting = false
+		t.connectionErr = nil
+		t.context = msg.Context
+		t.namespace = msg.Namespace
+
+		// Reset retry counters on successful connection
+		if t.retryCount > 0 {
+			t.logContent = append(t.logContent, fmt.Sprintf("✨ Connection restored after %d retries", t.retryCount))
+			t.retryCount = 0
 		} else {
-			t.ClearLoading()
+			t.logContent = append(t.logContent, fmt.Sprintf("✅ Connected to %s", msg.Context))
 		}
-		return true, nil
+		t.retryInProgress = false
 
-	case messages.StatusMsg:
-		logging.Info(t.Logger, "Status: %s", msg.Message)
-		return true, nil
+		// Initialize project manager after successful connection
+		t.initializeProjectManager()
 
-	case messages.ConnectedMsg:
-		logging.Info(t.Logger, "Connected to cluster: %s, namespace: %s", msg.ClusterName, msg.Namespace)
-		return true, nil
+		// Load cluster version information and pods
+		return t, tea.Batch(
+			t.loadClusterInfo(),
+			t.loadPods(),
+			t.startPodRefreshTimer(),
+			t.startPodLogRefreshTimer(),
+			t.startSpinnerAnimation(),
+		)
 
-	case messages.DisconnectedMsg:
-		logging.Info(t.Logger, "Disconnected from cluster")
-		return true, nil
+	case messages.ConnectionError:
+		t.connected = false
+		t.connecting = false
+		t.connectionErr = msg.Err
+		t.logContent = append(t.logContent, fmt.Sprintf("❌ Connection failed: %v", msg.Err))
+		t.updatePodDisplay()
 
-	default:
-		return false, nil
+	case messages.PodsLoaded:
+		// Store the previously selected pod name to preserve selection during refresh
+		var previouslySelectedPodName string
+		if len(t.pods) > 0 && t.selectedPod < len(t.pods) {
+			previouslySelectedPodName = t.pods[t.selectedPod].Name
+		}
+
+		t.pods = msg.Pods
+		t.loadingPods = false
+
+		// Try to preserve the selected pod after refresh
+		newSelectedPod := 0
+		if previouslySelectedPodName != "" {
+			for i, pod := range msg.Pods {
+				if pod.Name == previouslySelectedPodName {
+					newSelectedPod = i
+					break
+				}
+			}
+		}
+		t.selectedPod = newSelectedPod
+
+		// Only clear pod logs if we switched to a different pod or there's no previous selection
+		if previouslySelectedPodName == "" || (len(msg.Pods) > 0 && newSelectedPod < len(msg.Pods) && msg.Pods[newSelectedPod].Name != previouslySelectedPodName) {
+			t.podLogs = []string{}
+			t.logScrollOffset = 0
+			t.loadingLogs = false
+		}
+
+		t.updatePodDisplay()
+		t.logContent = append(t.logContent, fmt.Sprintf("Loaded %d pods from namespace %s", len(msg.Pods), t.namespace))
+
+	case messages.LoadPodsError:
+		t.loadingPods = false
+		t.logContent = append(t.logContent, fmt.Sprintf("❌ Failed to load pods: %v", msg.Err))
+		t.updatePodDisplay()
+
+	// OpenShift resource message handlers
+	case messages.BuildConfigsLoaded:
+		t.buildConfigs = msg.BuildConfigs
+		t.loadingBuildConfigs = false
+		t.updateMainContent()
+
+	case messages.BuildConfigsLoadError:
+		t.buildConfigs = []resources.BuildConfigInfo{}
+		t.loadingBuildConfigs = false
+		t.logContent = append(t.logContent, fmt.Sprintf("❌ Failed to load BuildConfigs: %v", msg.Err))
+		t.updateMainContent()
+
+	case messages.ImageStreamsLoaded:
+		t.imageStreams = msg.ImageStreams
+		t.loadingImageStreams = false
+		t.updateMainContent()
+
+	case messages.ImageStreamsLoadError:
+		t.imageStreams = []resources.ImageStreamInfo{}
+		t.loadingImageStreams = false
+		t.logContent = append(t.logContent, fmt.Sprintf("❌ Failed to load ImageStreams: %v", msg.Err))
+		t.updateMainContent()
+
+	case messages.RoutesLoaded:
+		t.routes = msg.Routes
+		t.loadingRoutes = false
+		t.updateMainContent()
+
+	case messages.RoutesLoadError:
+		t.routes = []resources.RouteInfo{}
+		t.loadingRoutes = false
+		t.logContent = append(t.logContent, fmt.Sprintf("❌ Failed to load Routes: %v", msg.Err))
+		t.updateMainContent()
+
+	case messages.RefreshPods:
+		// Automatically refresh pods and set up next refresh
+		if t.connected && t.ActiveTab == 0 {
+			return t, tea.Batch(t.loadPods(), t.startPodRefreshTimer())
+		}
+		return t, t.startPodRefreshTimer()
+
+	case messages.RefreshPodLogs:
+		// Automatically refresh pod logs and set up next refresh
+		if t.connected && t.logViewMode == constants.PodLogViewMode && len(t.pods) > 0 && t.selectedPod < len(t.pods) {
+			return t, tea.Batch(t.loadPodLogsInternal(true), t.startPodLogRefreshTimer())
+		}
+		return t, t.startPodLogRefreshTimer()
+
+	case messages.NoKubeconfigMsg:
+		t.logContent = append(t.logContent, fmt.Sprintf("⚠️  %s", msg.Message))
+		t.logContent = append(t.logContent, "💡 To connect: Run 'oc login' or use --kubeconfig flag")
+		t.updateMainContent()
+
+	case messages.ConnectingMsg:
+		t.connecting = true
+		t.logContent = append(t.logContent, fmt.Sprintf("Found kubeconfig at: %s", msg.KubeconfigPath))
+		t.logContent = append(t.logContent, "🔄 Connecting to cluster... (you should see spinner in status bar)")
+		// Start spinner animation immediately
+		return t, t.startSpinnerAnimation()
+
+	case messages.ClusterInfoLoaded:
+		t.clusterVersion = msg.Version
+		// Only log if we have a real version (not error messages)
+		if msg.Version != "" && !strings.Contains(msg.Version, "restricted") && !strings.Contains(msg.Version, "not available") {
+			t.logContent = append(t.logContent, fmt.Sprintf("📊 Cluster version: %s", msg.Version))
+		}
+
+	case messages.ClusterInfoError:
+		t.logContent = append(t.logContent, fmt.Sprintf("⚠️ Failed to load cluster info: %v", msg.Err))
+
+	case ProjectListLoadedMsg:
+		t.loadingProjects = false
+		t.projectList = msg.Projects
+		t.selectedProject = 0
+		// Find current project index
+		for i, proj := range t.projectList {
+			if t.currentProject != nil && proj.Name == t.currentProject.Name {
+				t.selectedProject = i
+				break
+			}
+		}
+
+	case ProjectSwitchedMsg:
+		t.showProjectModal = false
+		t.switchingProject = false
+		t.projectError = "" // Clear any errors on successful switch
+		t.currentProject = &msg.Project
+		t.namespace = msg.Project.Name
+		t.logContent = append(t.logContent, fmt.Sprintf("Switched to %s '%s'", msg.Project.Type, msg.Project.Name))
+		// Clear pod logs when switching projects
+		t.clearPodLogs()
+		// Update main content to ensure tabs are visible
+		t.updateMainContent()
+		// Reload pods for the new project
+		if t.connected {
+			return t, t.loadPods()
+		}
+
+	case ProjectErrorMsg:
+		t.loadingProjects = false
+		t.switchingProject = false
+		t.projectError = msg.Error
+
+		// Create user-friendly error for project issues
+		projectError := errors.NewUserFriendlyError(
+			"Project Error",
+			msg.Error,
+			errors.ErrorSeverityWarning,
+			errors.ErrorCategoryProject,
+			nil,
+		)
+		t.errorDisplay.AddError(projectError)
+		t.logContent = append(t.logContent, fmt.Sprintf("Project error: %s", msg.Error))
+		// Keep modal open to show error
+
+	case messages.SpinnerTick:
+		// Continue spinner animation if we have active loading operations
+		if t.connecting || t.loadingPods || t.loadingProjects || t.switchingProject {
+			return t, t.startSpinnerAnimation()
+		}
+
+	case AutoRetryMsg:
+		// Automatic retry for connection errors
+		if !t.connected && !t.connecting && t.retryCount <= t.maxRetries {
+			t.logContent = append(t.logContent, fmt.Sprintf("🔄 Attempting reconnection (attempt %d/%d)...", t.retryCount, t.maxRetries))
+			return t, t.InitializeK8sClient(t.KubeconfigPath)
+		}
+
+	case RetrySuccessMsg:
+		// Reset retry counter on successful connection
+		t.retryCount = 0
+		t.retryInProgress = false
+		t.logContent = append(t.logContent, "✨ Connection restored successfully")
+
+	case ManualRetryMsg:
+		// Manual retry triggered by user
+		t.retryInProgress = true
+		if !t.connected {
+			t.logContent = append(t.logContent, "🔄 Manual reconnection attempt...")
+			return t, t.InitializeK8sClient(t.KubeconfigPath)
+		}
+
+	case PodLogsLoaded:
+		// Pod logs successfully loaded (initial load)
+		t.loadingLogs = false
+		t.podLogs = msg.Logs
+
+		// Extract and store the timestamp from the last log line for future streaming
+		if len(t.podLogs) > 0 {
+			lastLog := t.podLogs[len(t.podLogs)-1]
+			t.lastLogTime = t.extractTimestampFromLogLine(lastLog)
+		}
+
+		// Limit log lines to prevent memory issues
+		if len(t.podLogs) > t.maxLogLines {
+			t.podLogs = t.podLogs[len(t.podLogs)-t.maxLogLines:] // Keep last N lines
+		}
+		// Auto-scroll to bottom on initial load
+		t.userScrolled = false
+		t.tailMode = true
+		t.logScrollOffset = t.getMaxLogScrollOffset()
+		t.logContent = append(t.logContent, fmt.Sprintf("📋 Loaded %d log lines from %s", len(msg.Logs), msg.PodName))
+
+	case PodLogsRefreshed:
+		// Pod logs refreshed with new content (streaming)
+		if len(msg.Logs) > 0 {
+			// Append new logs to existing logs
+			t.podLogs = append(t.podLogs, msg.Logs...)
+
+			// Update timestamp from the last new log
+			lastLog := msg.Logs[len(msg.Logs)-1]
+			t.lastLogTime = t.extractTimestampFromLogLine(lastLog)
+
+			// Limit total log lines to prevent memory issues
+			if len(t.podLogs) > t.maxLogLines {
+				t.podLogs = t.podLogs[len(t.podLogs)-t.maxLogLines:] // Keep last N lines
+			}
+
+			// Auto-scroll only if in tail mode
+			if t.tailMode {
+				t.logScrollOffset = t.getMaxLogScrollOffset()
+			}
+
+			t.logContent = append(t.logContent, fmt.Sprintf("📋 Added %d new log lines from %s", len(msg.Logs), msg.PodName))
+		}
+
+	case PodLogsError:
+		// Pod logs loading failed
+		t.loadingLogs = false
+		t.podLogs = []string{fmt.Sprintf("Failed to load logs: %v", msg.Err)}
+		t.logScrollOffset = 0
+		// Create user-friendly error
+		userError := errors.MapKubernetesError(msg.Err)
+		t.errorDisplay.AddError(userError)
+		t.logContent = append(t.logContent, fmt.Sprintf("❌ Failed to load logs from %s: %s", msg.PodName, userError.GetDisplayMessage()))
 	}
+
+	return t, nil
 }
 
-// handleNavigationSystemMessage handles navigation system messages
-func (t *TUI) handleNavigationSystemMessage(msg tea.Msg) (bool, tea.Cmd) {
-	switch msg := msg.(type) {
-	case navigation.NavigationMsg:
-		_, cmd := t.handleNavigationMessage(msg)
-		return true, cmd
-
-	case navigation.ModeChangeMsg:
-		_, cmd := t.handleModeChange(msg)
-		return true, cmd
-
-	case navigation.SearchMsg:
-		_, cmd := t.handleSearchMessage(msg)
-		return true, cmd
-
-	case navigation.CommandMsg:
-		_, cmd := t.handleCommandMessage(msg)
-		return true, cmd
-
-	default:
-		return false, nil
+// View implements tea.Model
+func (t *TUI) View() string {
+	// Don't render until we have dimensions
+	if !t.ready || t.width == 0 || t.height == 0 {
+		return constants.InitializingMessage
 	}
+
+	// Show help overlay if active
+	if t.showHelp {
+		return t.renderHelp()
+	}
+
+	// Show project modal if active
+	if t.showProjectModal {
+		return t.renderProjectModal()
+	}
+
+	// Render main interface
+	return t.renderMain()
 }
 
-// updateComponents updates all components with the message and collects commands
-func (t *TUI) updateComponents(msg tea.Msg) []tea.Cmd {
-	var cmds []tea.Cmd
+// renderMain renders the main interface using direct rendering
+func (t *TUI) renderMain() string {
+	var sections []string
 
-	// Update components in priority order
-	// Log pane first as it might need to log other component updates
-	if t.logPane != nil {
-		var cmd tea.Cmd
-		t.logPane, cmd = t.logPane.Update(msg)
-		if cmd != nil {
-			cmds = append(cmds, cmd)
+	// Header (1-2 lines based on height)
+	headerHeight := 2
+	if t.height < constants.SingleLineHeaderHeightThreshold {
+		headerHeight = 1
+	}
+	sections = append(sections, t.renderHeader(headerHeight))
+
+	// Tabs (1 line)
+	sections = append(sections, t.renderTabs())
+
+	// Calculate remaining height strictly
+	// Fixed elements: header + tabs + status bar
+	fixedHeight := headerHeight + 1 + 1 // header + tabs + status
+	remainingHeight := t.height - fixedHeight
+
+	// Main content area - ensure we always render content if we have any space
+	if remainingHeight > 0 {
+		sections = append(sections, t.renderContent(remainingHeight))
+	}
+
+	// Status bar (1 line)
+	sections = append(sections, t.renderStatusBar())
+
+	baseView := lipgloss.JoinVertical(lipgloss.Left, sections...)
+
+	// Ensure output doesn't exceed terminal height
+	lines := strings.Count(baseView, "\n") + 1
+	if lines > t.height {
+		// Truncate to fit terminal
+		allLines := strings.Split(baseView, "\n")
+		if len(allLines) > t.height {
+			baseView = strings.Join(allLines[:t.height], "\n")
 		}
 	}
 
-	// Content pane - main interaction area
-	if t.contentPane != nil {
-		var cmd tea.Cmd
-		t.contentPane, cmd = t.contentPane.Update(msg)
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
+	// Overlay error modal if showing
+	if t.showErrorModal {
+		t.errorDisplay.SetDimensions(t.width, t.height)
+		errorModal := t.errorDisplay.RenderModal()
+
+		// Center the modal on screen using lipgloss.Place
+		return lipgloss.Place(t.width, t.height, lipgloss.Center, lipgloss.Center, errorModal)
 	}
 
-	// Detail pane - secondary interaction area
-	if t.detailPane != nil {
-		var cmd tea.Cmd
-		t.detailPane, cmd = t.detailPane.Update(msg)
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
+	// Show help modal
+	if t.showHelp {
+		return t.renderHelp()
 	}
 
-	// Header, status bar, and tabs don't have Update methods
-	// They are updated through direct property changes in updateComponentsContent
+	// Show project modal
+	if t.showProjectModal {
+		return t.renderProjectModal()
+	}
 
-	return cmds
+	return baseView
 }
 
-// processBatchedMessages processes accumulated batched messages
-func (t *TUI) processBatchedMessages() (tea.Model, tea.Cmd) {
-	messages := t.messageHandler.ProcessBatch()
-	if len(messages) == 0 {
-		return t, nil
+// renderHeader renders a themed header
+func (t *TUI) renderHeader(height int) string {
+	primaryColor, errorColor := t.getThemeColors()
+	headerStyle := lipgloss.NewStyle().
+		Width(t.width).
+		Align(lipgloss.Center).
+		Foreground(primaryColor).
+		Bold(true)
+
+	if height == 1 {
+		// Single line header - show connection status and project inline
+		title := fmt.Sprintf("🚀 LazyOC v%s", t.Version)
+		var status string
+		if t.connecting {
+			status = " - " + constants.ConnectingStatus
+		} else if t.connected {
+			projectInfo := t.getProjectDisplayInfo()
+			status = fmt.Sprintf(" - ● %s (%s)", t.context, projectInfo)
+		} else {
+			status = " - ○ Disconnected"
+		}
+		return headerStyle.Render(title + status)
 	}
 
-	var cmds []tea.Cmd
+	// Two line header
+	line1 := headerStyle.Render(fmt.Sprintf("🚀 LazyOC v%s", t.Version))
 
-	// Process each batched message
-	for _, msg := range messages {
-		// These should all be low-priority messages
-		if handled, cmd := t.handleApplicationMessage(msg); handled {
-			if cmd != nil {
-				cmds = append(cmds, cmd)
+	// Connection status
+	var statusText string
+	var statusColor lipgloss.Color
+
+	if t.connecting {
+		statusText = constants.ConnectingStatus
+		statusColor = primaryColor
+	} else if t.connected {
+		projectInfo := t.getProjectDisplayInfo()
+		statusText = fmt.Sprintf("● Connected to %s (%s)", t.context, projectInfo)
+		statusColor = lipgloss.Color("2") // green
+	} else {
+		statusText = constants.NotConnectedMessage
+		statusColor = errorColor
+	}
+
+	line2 := lipgloss.NewStyle().
+		Width(t.width).
+		Align(lipgloss.Center).
+		Foreground(statusColor).
+		Render(statusText)
+
+	return lipgloss.JoinVertical(lipgloss.Left, line1, line2)
+}
+
+// renderTabs renders the tab bar
+func (t *TUI) renderTabs() string {
+	tabs := constants.ResourceTabs
+	var tabViews []string
+
+	for i, tab := range tabs {
+		style := lipgloss.NewStyle().Padding(0, 1)
+		if i == int(t.ActiveTab) {
+			style = style.
+				Foreground(lipgloss.Color("15")).
+				Background(lipgloss.Color("12")).
+				Bold(true)
+		} else {
+			style = style.Foreground(lipgloss.Color("244")) // Brighter gray for inactive tabs
+		}
+		tabViews = append(tabViews, style.Render(tab))
+	}
+
+	tabBar := lipgloss.JoinHorizontal(lipgloss.Top, tabViews...)
+	return lipgloss.NewStyle().
+		Width(t.width).
+		Align(lipgloss.Center).
+		Render(tabBar)
+}
+
+// Constants for visual overhead
+const (
+	borderOverhead    = 2 // top + bottom border
+	paddingOverhead   = 2 // top + bottom padding
+	logHeaderOverhead = 2 // header line + separator line
+)
+
+// renderContent renders the main content area
+func (t *TUI) renderContent(availableHeight int) string {
+	// Calculate dimensions
+	mainWidth := t.width
+	if t.showDetails {
+		mainWidth = int(float64(t.width) * constants.MainPanelWidthRatio)
+	}
+
+	// Calculate log panel's total overhead
+	logPanelTotalOverhead := borderOverhead + paddingOverhead + logHeaderOverhead
+
+	logHeight := 0
+	maxLogContentLines := 0
+	if t.showLogs && availableHeight > constants.MinMainContentLines {
+		// Reserve at least 10 lines for main content and detail panel
+		minMainContentHeight := constants.MinMainContentLines
+
+		// Calculate maximum allowed log height
+		maxAllowedLogHeight := availableHeight - minMainContentHeight
+
+		// Target log height is 1/3 of available or 15 lines, whichever is smaller
+		targetLogHeight := min(int(float64(availableHeight)*constants.LogHeightRatio), constants.DefaultLogHeight)
+
+		// Apply constraints
+		logHeight = min(targetLogHeight, maxAllowedLogHeight)
+
+		// Ensure minimum log height includes overhead
+		minLogHeight := logPanelTotalOverhead + constants.MinLogContentLines // At least 2 lines of content
+		if logHeight < minLogHeight {
+			logHeight = 0 // Don't show logs if we can't meet minimum
+		}
+
+		// Calculate actual visible lines for log content
+		if logHeight > 0 {
+			maxLogContentLines = logHeight - logPanelTotalOverhead
+			if maxLogContentLines < 1 {
+				maxLogContentLines = 1
 			}
 		}
 	}
 
-	// Update components once with the last message
-	if t.componentsInitialized && len(messages) > 0 {
-		componentCmds := t.updateComponents(messages[len(messages)-1])
-		cmds = append(cmds, componentCmds...)
+	mainHeight := availableHeight - logHeight
+
+	// Main panel with theming
+	primaryColor, _ := t.getThemeColors()
+	borderColor := lipgloss.Color("240") // gray
+	if t.focusedPanel == 0 {
+		borderColor = primaryColor
 	}
 
-	if len(cmds) > 0 {
-		return t, tea.Batch(cmds...)
+	mainStyle := lipgloss.NewStyle().
+		Width(mainWidth - 2).
+		Height(mainHeight - 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Padding(1)
+
+	mainPanel := mainStyle.Render(t.mainContent)
+
+	// Detail panel
+	var detailPanel string
+	if t.showDetails {
+		detailWidth := t.width - mainWidth
+		detailBorderColor := lipgloss.Color("240") // Default gray
+		if t.focusedPanel == 1 {
+			detailBorderColor = lipgloss.Color("12") // Blue when focused
+		}
+
+		detailStyle := lipgloss.NewStyle().
+			Width(detailWidth - 2).
+			Height(mainHeight - 2).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(detailBorderColor).
+			Padding(1)
+
+		detailPanel = detailStyle.Render(t.detailContent)
 	}
-	return t, nil
+
+	// Combine main and detail panels
+	var topSection string
+	if t.showDetails {
+		topSection = lipgloss.JoinHorizontal(lipgloss.Top, mainPanel, detailPanel)
+	} else {
+		topSection = mainPanel
+	}
+
+	// Log panel
+	if t.showLogs && logHeight > 0 {
+		logBorderColor := lipgloss.Color("240") // Default gray
+		if t.focusedPanel == 2 {
+			logBorderColor = lipgloss.Color("12") // Blue when focused
+		}
+
+		logStyle := lipgloss.NewStyle().
+			Width(t.width - 2).
+			Height(logHeight - 2).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(logBorderColor).
+			Padding(1)
+
+		// Show logs based on current log view mode
+		var logText string
+		var logHeader string
+		if t.logViewMode == "pod" {
+			// Pod logs mode
+			if t.loadingLogs {
+				logText = "🔄 Loading pod logs..."
+				logHeader = "Pod Logs (Loading...)"
+			} else if len(t.podLogs) > 0 {
+				// Calculate visible lines strictly based on maxLogContentLines
+				visibleLines := maxLogContentLines
+				if visibleLines < 1 {
+					visibleLines = 1
+				}
+
+				start := t.logScrollOffset
+				end := start + visibleLines
+				if end > len(t.podLogs) {
+					end = len(t.podLogs)
+				}
+				if start >= len(t.podLogs) {
+					start = max(0, len(t.podLogs)-visibleLines)
+					end = len(t.podLogs)
+				}
+
+				visibleLogs := t.podLogs[start:end]
+
+				// Apply coloring to each log line and count actual rendered lines
+				// Account for both newlines and wrapped lines
+				coloredLogs := []string{}
+				totalLines := 0
+				logWidth := t.width - constants.LogWidthPadding // Account for borders and padding
+
+				for _, line := range visibleLogs {
+					colored := t.colorizePodLog(line)
+
+					// Count how many actual lines this log entry will render as
+					// This includes both explicit newlines and wrapped lines
+					lineCount := 0
+					for _, subline := range strings.Split(colored, "\n") {
+						// Calculate wrapped lines for each subline
+						sublineLen := len(subline)
+						if sublineLen == 0 {
+							lineCount++
+						} else {
+							lineCount += (sublineLen + logWidth - 1) / logWidth
+						}
+					}
+
+					// Only add if we have room
+					if totalLines+lineCount <= maxLogContentLines {
+						coloredLogs = append(coloredLogs, colored)
+						totalLines += lineCount
+					} else if totalLines < maxLogContentLines {
+						// Just skip partially visible entries to avoid complexity
+						break
+					} else {
+						break
+					}
+				}
+				logText = strings.Join(coloredLogs, "\n")
+
+				if len(t.pods) > 0 && t.selectedPod < len(t.pods) {
+					tailIndicator := ""
+					if t.tailMode {
+						tailIndicator = " [TAIL]"
+					}
+					logHeader = fmt.Sprintf("Pod Logs: %s%s", t.pods[t.selectedPod].Name, tailIndicator)
+				} else {
+					logHeader = "Pod Logs"
+				}
+			} else {
+				// Show message when no pod logs are available
+				if len(t.pods) > 0 && t.selectedPod < len(t.pods) {
+					selectedPodName := t.pods[t.selectedPod].Name
+					logText = fmt.Sprintf("📋 No logs loaded for pod '%s'", selectedPodName)
+					logHeader = fmt.Sprintf("Pod Logs: %s (Not loaded)", selectedPodName)
+				} else {
+					logText = "📋 No pod selected"
+					logHeader = "Pod Logs (No pod selected)"
+				}
+			}
+		} else {
+			// App logs mode
+			// Get recent logs but account for multiline entries
+			startIdx := max(0, len(t.logContent)-constants.LastNAppLogEntries) // Start with last 100 entries
+			recentLogs := t.logContent[startIdx:]
+
+			// Apply coloring and count actual rendered lines
+			// Account for both newlines and wrapped lines
+			coloredAppLogs := []string{}
+			totalLines := 0
+			logWidth := t.width - 6 // Account for borders and padding
+
+			for _, line := range recentLogs {
+				colored := t.colorizeAppLog(line)
+
+				// Count how many actual lines this log entry will render as
+				// This includes both explicit newlines and wrapped lines
+				lineCount := 0
+				for _, subline := range strings.Split(colored, "\n") {
+					// Calculate wrapped lines for each subline
+					sublineLen := len(subline)
+					if sublineLen == 0 {
+						lineCount++
+					} else {
+						lineCount += (sublineLen + logWidth - 1) / logWidth
+					}
+				}
+
+				// Only add if we have room
+				if totalLines+lineCount <= maxLogContentLines {
+					coloredAppLogs = append(coloredAppLogs, colored)
+					totalLines += lineCount
+				} else if totalLines < maxLogContentLines {
+					// Just skip partially visible entries to avoid complexity
+					break
+				} else {
+					break
+				}
+			}
+			logText = strings.Join(coloredAppLogs, "\n")
+			logHeader = "App Logs"
+		}
+
+		// Color the header based on log type with brighter colors
+		headerStyle := lipgloss.NewStyle().Bold(true)
+		if t.logViewMode == "pod" {
+			headerStyle = headerStyle.Foreground(lipgloss.Color("207")) // Bright magenta for pod logs
+		} else {
+			headerStyle = headerStyle.Foreground(lipgloss.Color("51")) // Bright cyan for app logs
+		}
+
+		coloredHeader := headerStyle.Render(logHeader)
+
+		separatorLength := len(logHeader)
+		separator := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(strings.Repeat("─", separatorLength))
+
+		fullLogText := fmt.Sprintf("%s\n%s\n%s", coloredHeader, separator, logText)
+
+		logPanel := logStyle.Render(fullLogText)
+
+		return lipgloss.JoinVertical(lipgloss.Left, topSection, logPanel)
+	}
+
+	return topSection
 }
 
-// handleKeyInput processes keyboard input and returns updated model and commands
-func (t *TUI) handleKeyInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Global keybindings that work in any state
-	switch msg.String() {
-	case "ctrl+c", "q":
-		logging.Info(t.Logger, "User requested quit")
-		return t, tea.Quit
+// renderStatusBar renders the status bar with enhanced connection information
+func (t *TUI) renderStatusBar() string {
+	// Style hints with different colors
+	hintsStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("242"))         // Dimmer gray
+	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Bold(true) // White bold
 
-	case "ctrl+d":
-		// Toggle debug mode
-		t.Debug = !t.Debug
-		t.Logger = logging.SetupLogger(t.Debug)
-		logging.Info(t.Logger, "Debug mode toggled: %v", t.Debug)
-		return t, nil
-
-	case "ctrl+t":
-		// Toggle theme between light and dark
-		t.styleManager.ToggleTheme()
-		logging.Info(t.Logger, "Theme toggled to: %s", t.styleManager.GetTheme().Name)
-		return t, nil
+	// Add error indicator to hints if there are errors
+	errorHint := ""
+	if t.errorDisplay.HasErrors() {
+		errorHint = fmt.Sprintf("%s errors %s ", keyStyle.Render("e"), hintsStyle.Render("•"))
 	}
 
-	// State-specific keybindings
-	switch t.State {
-	case models.StateMain:
-		return t.handleMainStateKeys(msg)
-	case models.StateHelp:
-		return t.handleHelpStateKeys(msg)
-	case models.StateError:
-		return t.handleErrorStateKeys(msg)
-	case models.StateLoading:
-		// No input handling during loading
-		return t, nil
+	hints := fmt.Sprintf("%s%s help %s %s switch %s %s project %s %s retry %s %s details %s %s logs %s %s quit",
+		errorHint,
+		keyStyle.Render("?"), hintsStyle.Render("•"),
+		keyStyle.Render("tab"), hintsStyle.Render("•"),
+		keyStyle.Render("ctrl+p"), hintsStyle.Render("•"),
+		keyStyle.Render("r"), hintsStyle.Render("•"),
+		keyStyle.Render("d"), hintsStyle.Render("•"),
+		keyStyle.Render("L"), hintsStyle.Render("•"),
+		keyStyle.Render("q"))
+
+	// Enhanced left section with connection status
+	left := t.renderConnectionStatus()
+
+	statusStyle := lipgloss.NewStyle().
+		Width(t.width).
+		Background(lipgloss.Color("236")). // Darker gray background
+		Foreground(lipgloss.Color("15"))   // White text
+
+	// Enhanced middle section with project and cluster info
+	middle := t.renderClusterInfo()
+
+	// Calculate spacing for three-column layout
+	leftWidth := lipgloss.Width(left)
+	middleWidth := lipgloss.Width(middle)
+	hintsWidth := lipgloss.Width(hints)
+
+	// Distribute remaining space
+	totalContentWidth := leftWidth + middleWidth + hintsWidth
+	remainingSpace := t.width - totalContentWidth
+
+	var status string
+	if remainingSpace < 2 || t.width < constants.CompactStatusWidthThreshold {
+		// Compact layout for narrow screens
+		status = t.renderCompactStatus(left, middle, hints)
+	} else {
+		// Three-column layout with full information
+		leftSpacing := remainingSpace / 2
+		rightSpacing := remainingSpace - leftSpacing
+		if leftSpacing < 1 {
+			leftSpacing = 1
+		}
+		if rightSpacing < 1 {
+			rightSpacing = 1
+		}
+		status = left + strings.Repeat(" ", leftSpacing) + middle + strings.Repeat(" ", rightSpacing) + hints
 	}
 
-	return t, nil
+	return statusStyle.Render(status)
 }
 
-// handleMainStateKeys handles keyboard input in the main application state
-func (t *TUI) handleMainStateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "?":
-		t.ToggleHelp()
-		return t, nil
+// renderConnectionStatus returns the connection status indicator
+func (t *TUI) renderConnectionStatus() string {
+	panels := constants.PanelNames
 
-	case "tab", "l":
-		t.NextTab()
-		logging.Debug(t.Logger, "Switched to tab: %s", t.GetTabName(t.ActiveTab))
-		return t, nil
+	// Focus indicator (existing functionality)
+	focusIndicator := "◆"
+	if t.focusedPanel >= 0 && t.focusedPanel < len(panels) {
+		focusIndicator = fmt.Sprintf("◆ %s", panels[t.focusedPanel])
+	}
 
-	case "shift+tab", "h":
-		t.PrevTab()
-		logging.Debug(t.Logger, "Switched to tab: %s", t.GetTabName(t.ActiveTab))
-		return t, nil
+	focusStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("12")). // Blue for focused panel
+		Bold(true)
 
-	case "r", "f5":
-		// Trigger refresh
-		return t, func() tea.Msg {
-			return messages.RefreshMsg{}
+	// Connection status indicator
+	var statusIcon, statusText string
+	var statusColor lipgloss.Color
+
+	if t.connecting {
+		statusIcon = t.getLoadingSpinner()
+		statusText = "Connecting"
+		statusColor = lipgloss.Color("11") // Yellow
+	} else if t.connected {
+		// Show refresh status when loading pods
+		if t.loadingPods {
+			statusIcon = t.getLoadingSpinner()
+			statusText = "Refreshing"
+			statusColor = lipgloss.Color("11") // Yellow for refreshing
+		} else {
+			statusIcon = "✅"
+			statusText = "Connected"
+			statusColor = lipgloss.Color("10") // Green
+		}
+	} else if t.connectionErr != nil {
+		statusIcon = "❌"
+		statusText = "Failed"
+		statusColor = lipgloss.Color("9") // Red
+	} else {
+		statusIcon = "⚪"
+		statusText = "Disconnected"
+		statusColor = lipgloss.Color("8") // Gray
+	}
+
+	connectionStyle := lipgloss.NewStyle().
+		Foreground(statusColor).
+		Bold(true)
+
+	connectionInfo := connectionStyle.Render(fmt.Sprintf("%s %s", statusIcon, statusText))
+
+	// Add error indicator if there are errors
+	errorIndicator := ""
+	if t.errorDisplay.HasErrors() {
+		latestError := t.errorDisplay.GetLatestError()
+		if latestError != nil {
+			errorIcon := latestError.GetIcon()
+			errorIndicator = fmt.Sprintf(" • %s", errorIcon)
 		}
 	}
 
-	return t, nil
+	return fmt.Sprintf("%s • %s%s", focusStyle.Render(focusIndicator), connectionInfo, errorIndicator)
 }
 
-// handleHelpStateKeys handles keyboard input in the help overlay state
-func (t *TUI) handleHelpStateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "?", "esc":
-		t.ToggleHelp()
-		return t, nil
+// renderClusterInfo returns cluster and project information
+func (t *TUI) renderClusterInfo() string {
+	if !t.connected {
+		return ""
 	}
-	return t, nil
-}
-
-// handleErrorStateKeys handles keyboard input in the error state
-func (t *TUI) handleErrorStateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc", "enter":
-		t.ClearError()
-		return t, nil
-	}
-	return t, nil
-}
-
-// View implements tea.Model interface - renders the current state
-// This method must be PURE - no state mutations or side effects allowed
-func (t *TUI) View() string {
-	// CRITICAL: Never render until we receive WindowSizeMsg (prevents header issues)
-	if !t.isReady {
-		return "Initializing LazyOC... (Press q to quit)"
-	}
-
-	// Handle zero dimensions with simple fallback (no state mutation)
-	if t.Width == 0 || t.Height == 0 {
-		return "Initializing LazyOC... (Press q to quit)"
-	}
-
-	switch t.State {
-	case models.StateLoading:
-		return t.renderLoading()
-	case models.StateError:
-		return t.renderError()
-	case models.StateHelp:
-		return t.renderHelp()
-	case models.StateMain:
-		return t.renderMain()
-	default:
-		// Fallback for unknown state (no state mutation)
-		return "Unknown state - Press q to quit"
-	}
-}
-
-// renderLoading renders the loading state
-func (t *TUI) renderLoading() string {
-	theme := t.styleManager.GetTheme()
-	style := styles.CreateBaseStyle(theme).
-		Width(t.Width).
-		Height(t.Height).
-		Align(lipgloss.Center, lipgloss.Center)
-
-	titleStyle := styles.CreatePrimaryStyle(theme)
-	content := titleStyle.Render("🚀 "+t.LoadingMessage) + "\n\n" +
-		"Loading LazyOC v" + t.Version + "..."
-
-	return style.Render(content)
-}
-
-// renderError renders the error state
-func (t *TUI) renderError() string {
-	theme := t.styleManager.GetTheme()
-	style := styles.CreateBaseStyle(theme).
-		Width(t.Width).
-		Height(t.Height).
-		Align(lipgloss.Center, lipgloss.Center)
-
-	errorStyle := styles.CreateStatusStyle(theme, "error")
-
-	errorMsg := "An error occurred"
-	if t.LastError != nil {
-		errorMsg = t.LastError.Error()
-
-		// Show additional context for AppError
-		if appErr, ok := t.LastError.(*errors.AppError); ok {
-			errorMsg = fmt.Sprintf("%s\n\nType: %s", errorMsg, appErr.GetTypeString())
-		}
-	}
-
-	content := errorStyle.Render("❌ Error") + "\n\n" +
-		errorMsg + "\n\n" +
-		styles.CreateMutedStyle(theme).Render("Press ESC or Enter to continue")
-
-	return style.Render(content)
-}
-
-// renderHelp renders the help overlay using the navigation system
-func (t *TUI) renderHelp() string {
-	if t.helpComponent != nil && t.navController != nil {
-		// Update help component dimensions
-		t.helpComponent.SetDimensions(t.Width, t.Height)
-
-		// Render using the navigation registry
-		return t.helpComponent.Render(t.navController.GetRegistry())
-	}
-
-	// Fallback to simple help if navigation system isn't available
-	dialogStyles := t.styleManager.GetDialogStyles()
-
-	helpText := `
-📖 LazyOC Help - Navigation System Unavailable
-
-Basic Keys:
-  q, Ctrl+C    Quit application
-  ?            Toggle help
-  Tab          Switch tabs
-  Ctrl+T       Toggle theme (light/dark)
-  
-Press ? or ESC to close help
-`
-
-	style := dialogStyles.Container.
-		Width(t.Width).
-		Height(t.Height).
-		Align(lipgloss.Center, lipgloss.Center)
-
-	return style.Render(helpText)
-}
-
-// renderMain renders the main application interface with defensive nil checks
-func (t *TUI) renderMain() string {
-	// Try to use initialized components first, fall back to simple rendering
-	if t.layoutManager != nil && t.header != nil && t.tabs != nil && t.contentPane != nil && t.detailPane != nil && t.logPane != nil && t.statusBar != nil {
-		return t.renderWithComponents()
-	}
-
-	// Fallback to simple rendering if components aren't ready
-	return t.renderSimple()
-}
-
-// renderWithComponents renders using the initialized layout components
-func (t *TUI) renderWithComponents() string {
-	// Update component content BEFORE rendering to avoid recursion
-	t.updateComponentsContent()
 
 	var parts []string
-	var usedHeight int
 
-	// Header - measure dynamically
-	if t.header != nil {
-		headerView := t.header.Render()
-		parts = append(parts, headerView)
-		usedHeight += lipgloss.Height(headerView)
-	}
-
-	// Tabs - measure dynamically
-	if t.tabs != nil {
-		tabsView := t.tabs.Render()
-		parts = append(parts, tabsView)
-		usedHeight += lipgloss.Height(tabsView)
-	}
-
-	// Status bar - render first to measure
-	var statusView string
-	if t.statusBar != nil {
-		statusView = t.statusBar.Render()
-	} else {
-		// Fallback status
-		statusView = lipgloss.NewStyle().
-			Width(t.Width).
-			Foreground(lipgloss.Color("8")).
-			Background(lipgloss.Color("0")).
-			Render(fmt.Sprintf("Ready • %s • Debug: %v", t.GetTabName(t.ActiveTab), t.Debug))
-	}
-	usedHeight += lipgloss.Height(statusView)
-
-	// Calculate remaining height for main area DYNAMICALLY
-	remainingHeight := t.Height - usedHeight
-	if remainingHeight < 3 {
-		remainingHeight = 3 // Minimum content height
-	}
-
-	// Main content area with calculated height
-	mainArea := t.renderMainAreaWithHeight(remainingHeight)
-	parts = append(parts, mainArea)
-
-	// Add status bar last
-	parts = append(parts, statusView)
-
-	return lipgloss.JoinVertical(lipgloss.Left, parts...)
-}
-
-// renderMainAreaWithHeight renders the main content area with specified height
-func (t *TUI) renderMainAreaWithHeight(availableHeight int) string {
-	var rows []string
-
-	// Top row: content pane and detail pane side by side
-	var topRow []string
-
-	// Content pane (always present) - calculate height for log pane space
-	logHeight := 0
-	if t.logPane != nil && t.layoutManager.LogPaneVisible {
-		logHeight = t.logPane.GetEffectiveHeight() + 1 // +1 for spacing
-	}
-
-	contentHeight := availableHeight - logHeight
-	if contentHeight < 3 {
-		contentHeight = 3
-	}
-
-	// Update content pane height dynamically
-	if t.contentPane != nil {
-		t.contentPane.SetDimensions(t.contentPane.Width, contentHeight)
-		topRow = append(topRow, t.contentPane.Render())
-	}
-
-	// Detail pane (if visible)
-	if t.detailPane != nil && t.layoutManager.DetailPaneVisible {
-		t.detailPane.SetDimensions(t.detailPane.Width, contentHeight)
-		topRow = append(topRow, t.detailPane.Render())
-	}
-
-	if len(topRow) > 0 {
-		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, topRow...))
-	}
-
-	// Bottom row: log pane (if visible)
-	if t.logPane != nil && t.layoutManager.LogPaneVisible {
-		logContent := t.logPane.Render()
-		if logContent != "" {
-			rows = append(rows, logContent)
+	// Project/Namespace info (enhanced from existing getProjectDisplayInfo)
+	if t.currentProject != nil {
+		var icon string
+		if t.currentProject.Type == projects.ProjectTypeOpenShiftProject {
+			icon = "🎯"
+		} else {
+			icon = "📦"
 		}
+
+		displayName := t.currentProject.Name
+		if t.currentProject.DisplayName != "" && t.currentProject.DisplayName != t.currentProject.Name {
+			displayName = t.currentProject.DisplayName
+		}
+
+		parts = append(parts, fmt.Sprintf("%s %s", icon, displayName))
+	} else if t.namespace != "" {
+		parts = append(parts, fmt.Sprintf("📦 %s", t.namespace))
 	}
 
-	if len(rows) == 0 {
-		// Fallback if no components are ready
-		return "No components ready"
+	// Cluster version info (only show if we have actual version, not error messages)
+	if t.clusterVersion != "" && !strings.Contains(t.clusterVersion, "restricted") && !strings.Contains(t.clusterVersion, "not available") {
+		parts = append(parts, fmt.Sprintf("⚙️ %s", t.clusterVersion))
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+	// Loading indicators for ongoing operations (project loading only - pod loading shows in connection status)
+	if t.loadingProjects {
+		parts = append(parts, fmt.Sprintf("%s Loading projects", t.getLoadingSpinner()))
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+
+	clusterStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("14")). // Cyan for cluster info
+		Bold(true)
+
+	return clusterStyle.Render(strings.Join(parts, " • "))
+}
+
+// renderCompactStatus renders a compact status for narrow screens
+func (t *TUI) renderCompactStatus(left, middle, hints string) string {
+	// In compact mode, prioritize connection status and essential hints
+	compactHints := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("242")).
+		Render("? help • tab switch • q quit")
+
+	availableWidth := t.width - lipgloss.Width(left) - lipgloss.Width(compactHints) - 2
+
+	if availableWidth > 10 && middle != "" {
+		// Include truncated cluster info if there's space
+		if lipgloss.Width(middle) > availableWidth {
+			middle = middle[:availableWidth-3] + "..."
+		}
+		return left + " " + middle + strings.Repeat(" ", t.width-lipgloss.Width(left)-lipgloss.Width(middle)-lipgloss.Width(compactHints)-2) + compactHints
+	}
+
+	// Just connection status and minimal hints
+	spacing := t.width - lipgloss.Width(left) - lipgloss.Width(compactHints)
+	if spacing < 1 {
+		spacing = 1
+	}
+	return left + strings.Repeat(" ", spacing) + compactHints
+}
+
+// getLoadingSpinner returns an animated loading spinner based on current time
+func (t *TUI) getLoadingSpinner() string {
+	spinners := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	// Use time to create animation effect
+	index := (time.Now().UnixMilli() / 100) % int64(len(spinners))
+	return spinners[index]
+}
+
+// renderHelp renders a simple help overlay
+func (t *TUI) renderHelp() string {
+	helpText := `📖 LazyOC Help
+
+Navigation:
+  tab        Next panel
+  shift+tab  Previous panel
+  j/k        Move down/up in pod list OR scroll logs
+  h/l        Previous/Next tab (in main panel)
+  arrow keys Navigate tabs/list
+  1/2/3      Jump to main/detail/log panel
+  
+Log Scrolling (when in log panel):
+  j/k        Scroll up/down line by line
+  PgUp/PgDn  Scroll up/down page by page
+  Home/End   Jump to top/bottom of logs
+  T          Toggle tail mode (auto-scroll to new logs)
+  
+Commands:
+  ?          Toggle help  
+  l          Toggle app/pod logs (when in log panel) OR navigate tabs
+  ctrl+p     Switch project/namespace
+  d          Toggle details panel
+  L          Toggle log panel (shift+l)
+  r          Retry connection / Refresh
+  e          Show error details (when errors exist)
+  t          Toggle theme
+  q          Quit
+  
+Press ? or ESC to close`
+
+	// Simple centered help box with better styling
+	helpStyle := lipgloss.NewStyle().
+		Width(constants.HelpModalWidth).
+		Height(constants.HelpModalHeight). // Increased height for additional log scrolling help
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("12")).
+		Background(lipgloss.Color("235")).
+		Padding(1, 2).
+		Align(lipgloss.Left)
+
+	help := helpStyle.Render(helpText)
+
+	// Center in screen
+	return lipgloss.Place(
+		t.width,
+		t.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		help,
+	)
 }
 
 
-// renderSimple provides simple fallback rendering when components aren't ready
-func (t *TUI) renderSimple() string {
-	theme := t.styleManager.GetTheme()
-	headerStyles := t.styleManager.GetHeaderStyles()
-	panelStyles := t.styleManager.GetPanelStyles(false)
-	statusBarStyles := t.styleManager.GetStatusBarStyles()
+// updateMainContent updates the main content based on the active tab
+func (t *TUI) updateMainContent() {
+	tabName := t.GetTabName(t.ActiveTab)
+	if !t.connected {
+		t.mainContent = fmt.Sprintf(`📦 %s
 
-	header := headerStyles.Title.
-		Width(t.Width).
-		Align(lipgloss.Center).
-		Render("🚀 LazyOC v" + t.Version)
+❌ Not connected to any cluster
 
-	tabs := styles.CreateBaseStyle(theme).
-		Width(t.Width).
-		Align(lipgloss.Center).
-		Render("[ Pods ] [ Services ] [ Deployments ] [ ConfigMaps ] [ Secrets ]")
+To connect to a cluster:
+1. Run 'oc login <cluster-url>' in your terminal
+2. Or start LazyOC with: lazyoc --kubeconfig /path/to/config
 
-	contentHeight := t.Height - 4 // Account for header, tabs, status
-	if contentHeight < 1 {
-		contentHeight = 1
-	}
-
-	content := panelStyles.Border.
-		Width(t.Width).
-		Height(contentHeight).
-		Padding(1).
-		Render(fmt.Sprintf("📦 %s Resources\n\nNo cluster connected yet.\n\nUse Tab/Shift+Tab or h/l to navigate tabs\nPress ? for help\nPress Ctrl+T to toggle theme\nPress q to quit", t.GetTabName(t.ActiveTab)))
-
-	status := statusBarStyles.Container.
-		Width(t.Width).
-		Render(fmt.Sprintf("Ready • %s • Debug: %v • Theme: %s", t.GetTabName(t.ActiveTab), t.Debug, theme.Name))
-
-	return lipgloss.JoinVertical(lipgloss.Left, header, tabs, content, status)
-}
-
-
-
-
-
-// safeInitializeLayout safely initializes or updates the layout components with error handling
-
-// updateComponentsContent safely updates component content and state (renamed to avoid recursion)
-func (t *TUI) updateComponentsContent() {
-	// Early return if essential components aren't ready
-	if t.layoutManager == nil {
+Press 'q' to quit`, tabName)
 		return
 	}
 
-	if t.header != nil {
-		// Update header with current state - placeholder for now
-		t.header.SetClusterInfo("", "default", false)
-	}
-
-	if t.tabs != nil {
-		// Sync tab state with app state
-		activeTabID := t.GetTabName(t.ActiveTab)
-		t.tabs.SetActiveTabByID(strings.ToLower(activeTabID))
-	}
-
-	if t.contentPane != nil {
-		// Update content based on active tab
-		activeTabName := t.GetTabName(t.ActiveTab)
-		placeholder := fmt.Sprintf("📦 %s Resources\n\nNo cluster connected yet.\n\nUse Tab/Shift+Tab or h/l to navigate tabs\nPress ? for help", activeTabName)
-		t.contentPane.SetContent(placeholder)
-		t.contentPane.SetTitle(activeTabName)
-
-		// Set focus state
-		t.contentPane.SetFocus(t.layoutManager.GetFocus() == components.PanelMain)
-	}
-
-	if t.detailPane != nil {
-		// Update detail pane visibility
-		t.detailPane.SetVisible(t.layoutManager.DetailPaneVisible)
-		t.detailPane.SetFocus(t.layoutManager.GetFocus() == components.PanelDetail)
-	}
-
-	if t.logPane != nil {
-		// Update log pane visibility
-		t.logPane.SetVisible(t.layoutManager.LogPaneVisible)
-		t.logPane.SetFocus(t.layoutManager.GetFocus() == components.PanelLog)
-	}
-
-	if t.statusBar != nil {
-		// Update status bar with current state
-		t.statusBar.SetActivePanel(string(rune('0' + int(t.layoutManager.GetFocus()))))
-		t.statusBar.UpdateTimestamp()
+	switch t.ActiveTab {
+	case 0: // Pods tab
+		t.updatePodDisplay()
+	case 5: // BuildConfigs tab
+		t.updateBuildConfigDisplay()
+	case 6: // ImageStreams tab
+		t.updateImageStreamDisplay()
+	case 7: // Routes tab
+		t.updateRouteDisplay()
+	default:
+		t.mainContent = fmt.Sprintf("📦 %s Resources\n\n%s\n\nUse h/l or arrow keys to navigate tabs\nPress ? for help", tabName, constants.ComingSoonMessage)
 	}
 }
 
-// testLayoutManagerOnly initializes layout manager + header for testing
-func (t *TUI) testLayoutManagerOnly(width, height int) {
-	defer func() {
-		if r := recover(); r != nil {
-			logging.Error(t.Logger, "Component initialization panic: %v", r)
+// getThemeColors returns primary and error colors based on current theme
+func (t *TUI) getThemeColors() (lipgloss.Color, lipgloss.Color) {
+	if t.theme == "light" {
+		return lipgloss.Color("4"), lipgloss.Color("1") // dark blue, dark red
+	}
+	return lipgloss.Color("12"), lipgloss.Color("9") // blue, red
+}
+
+// Helper function
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// K8s Integration Methods
+
+// InitializeK8sClient initializes the Kubernetes client with the given kubeconfig path
+func (t *TUI) InitializeK8sClient(kubeconfigPath string) tea.Cmd {
+	return func() tea.Msg {
+
+		logging.Info(t.Logger, "🔄 Starting K8s client initialization with kubeconfig: %s", kubeconfigPath)
+
+		// Create auth provider
+		logging.Info(t.Logger, "📝 Creating auth provider")
+		t.authProvider = auth.NewKubeconfigProvider(kubeconfigPath)
+
+		// Authenticate with shorter timeout to avoid hanging
+		logging.Info(t.Logger, "🔐 Starting authentication (timeout: 5s)")
+		ctx, cancel := context.WithTimeout(context.Background(), constants.AuthenticationTimeout)
+		defer cancel()
+
+		config, err := t.authProvider.Authenticate(ctx)
+		if err != nil {
+			logging.Error(t.Logger, "❌ Authentication failed: %v", err)
+			return messages.ConnectionError{Err: fmt.Errorf("authentication failed: %w", err)}
 		}
-	}()
+		logging.Info(t.Logger, "✅ Authentication successful")
 
-	// Initialize layout manager if not exists
-	if t.layoutManager == nil {
-		t.layoutManager = components.NewLayoutManager(width, height)
-		logging.Debug(t.Logger, "Layout manager initialized: %dx%d", width, height)
-	} else {
-		t.layoutManager.UpdateDimensions(width, height)
-		logging.Debug(t.Logger, "Layout manager updated: %dx%d", width, height)
-	}
+		// Create clientset directly (no need for duplicate client factory)
+		logging.Info(t.Logger, "🔧 Creating Kubernetes clientset")
+		clientset, err := kubernetes.NewForConfig(config)
+		if err != nil {
+			logging.Error(t.Logger, "❌ Clientset creation failed: %v", err)
+			return messages.ConnectionError{Err: fmt.Errorf("clientset creation failed: %w", err)}
+		}
+		logging.Info(t.Logger, "✅ Clientset created successfully")
 
-	// Test header component
-	if t.header == nil {
-		headerDims := t.layoutManager.GetPanelDimensions(components.PanelHeader)
-		t.header = components.NewHeaderComponent(headerDims.Width, headerDims.Height, t.Version)
-		logging.Debug(t.Logger, "Header component initialized: %dx%d", headerDims.Width, headerDims.Height)
-	} else {
-		headerDims := t.layoutManager.GetPanelDimensions(components.PanelHeader)
-		t.header.SetDimensions(headerDims.Width, headerDims.Height)
-		logging.Debug(t.Logger, "Header component updated: %dx%d", headerDims.Width, headerDims.Height)
-	}
+		// Create a simple client factory for backward compatibility
+		logging.Info(t.Logger, "🏭 Setting up client factory")
+		k8sClient := k8s.NewClientFactory()
+		k8sClient.SetClientset(clientset)
+		k8sClient.SetConfig(config)
+		
+		// Initialize OpenShift detection and clients
+		logging.Info(t.Logger, "🔍 Initializing OpenShift clients if available")
+		err = k8sClient.InitializeOpenShiftAfterSetup()
+		if err != nil {
+			logging.Warn(t.Logger, "OpenShift client initialization failed (might be regular K8s): %v", err)
+		} else {
+			logging.Info(t.Logger, "✅ OpenShift clients initialized successfully")
+		}
 
-	// Test tabs component
-	if t.tabs == nil {
-		tabsDims := t.layoutManager.GetPanelDimensions(components.PanelTabs)
-		t.tabs = components.CreateKubernetesTabComponent(tabsDims.Width, tabsDims.Height)
-		logging.Debug(t.Logger, "Tabs component initialized: %dx%d", tabsDims.Width, tabsDims.Height)
-	} else {
-		tabsDims := t.layoutManager.GetPanelDimensions(components.PanelTabs)
-		t.tabs.SetDimensions(tabsDims.Width, tabsDims.Height)
-		logging.Debug(t.Logger, "Tabs component updated: %dx%d", tabsDims.Width, tabsDims.Height)
-	}
+		// Create resource client
+		logging.Info(t.Logger, "📦 Getting namespace and context info")
+		namespace := t.authProvider.GetNamespace()
+		clusterContext := t.authProvider.GetContext()
+		logging.Info(t.Logger, "📍 Namespace: %s, Context: %s", namespace, clusterContext)
 
-	// Test content pane component (likely culprit - has viewport)
-	if t.contentPane == nil {
-		contentDims := t.layoutManager.GetPanelDimensions(components.PanelMain)
-		t.contentPane = components.NewContentPane(contentDims.Width, contentDims.Height)
-		t.contentPane.SetTitle("Resources")
-		logging.Debug(t.Logger, "Content pane initialized: %dx%d", contentDims.Width, contentDims.Height)
-	} else {
-		contentDims := t.layoutManager.GetPanelDimensions(components.PanelMain)
-		t.contentPane.SetDimensions(contentDims.Width, contentDims.Height)
-		logging.Debug(t.Logger, "Content pane updated: %dx%d", contentDims.Width, contentDims.Height)
-	}
+		logging.Info(t.Logger, "🔗 Creating project-aware resource client")
 
-	// Test detail pane component
-	if t.detailPane == nil {
-		detailDims := t.layoutManager.GetPanelDimensions(components.PanelDetail)
-		t.detailPane = components.NewDetailPane(detailDims.Width, detailDims.Height)
-		logging.Debug(t.Logger, "Detail pane initialized: %dx%d", detailDims.Width, detailDims.Height)
-	} else {
-		detailDims := t.layoutManager.GetPanelDimensions(components.PanelDetail)
-		t.detailPane.SetDimensions(detailDims.Width, detailDims.Height)
-		logging.Debug(t.Logger, "Detail pane updated: %dx%d", detailDims.Width, detailDims.Height)
-	}
+		// Create resource client with project manager if possible
+		var resourceClient resources.ResourceClient
 
-	// Test log pane component (potential culprit - might have viewport or complex init)
-	if t.logPane == nil {
-		logDims := t.layoutManager.GetPanelDimensions(components.PanelLog)
-		t.logPane = components.NewLogPane(logDims.Width, logDims.Height)
+		// Create project manager factory
+		projectFactory, err := projects.NewProjectManagerFactory(clientset, config, kubeconfigPath)
+		if err != nil {
+			logging.Warn(t.Logger, "⚠️ Failed to create project manager factory, falling back to namespace-only mode: %v", err)
+			// Fallback to basic resource client without project manager
+			resourceClient = resources.NewK8sResourceClientWithConfig(clientset, config, namespace)
+		} else {
+			// Create project manager with auto-detection
+			projectManager, err := projectFactory.CreateAutoDetectManager(context.Background())
+			if err != nil {
+				logging.Warn(t.Logger, "⚠️ Failed to create project manager, falling back to namespace-only mode: %v", err)
+				// Fallback to basic resource client without project manager
+				resourceClient = resources.NewK8sResourceClientWithConfig(clientset, config, namespace)
+			} else {
+				logging.Info(t.Logger, "✅ Project manager created successfully")
+				// Create resource client with project manager integration
+				resourceClient = resources.NewK8sResourceClientWithProjectManagerAndConfig(clientset, config, namespace, projectManager)
+			}
+		}
 
-		// Add log entries AFTER dimensions are set
-		// (Don't add them here during initialization)
-		logging.Debug(t.Logger, "Log pane initialized: %dx%d", logDims.Width, logDims.Height)
-	} else {
-		logDims := t.layoutManager.GetPanelDimensions(components.PanelLog)
-		t.logPane.SetDimensions(logDims.Width, logDims.Height)
-		logging.Debug(t.Logger, "Log pane updated: %dx%d", logDims.Width, logDims.Height)
-	}
+		// Connection monitor is not currently used - dead code
+		// connMonitor := monitor.NewK8sConnectionMonitor(t.authProvider, resourceClient)
+		var connMonitor monitor.ConnectionMonitor = nil
 
-	// Add status bar component to complete the layout
-	if t.statusBar == nil {
-		statusDims := t.layoutManager.GetPanelDimensions(components.PanelStatusBar)
-		t.statusBar = components.NewStatusBarComponent(statusDims.Width, statusDims.Height)
-		t.statusBar.SetStatus("Ready", components.StatusInfo)
-		t.statusBar.SetKeyHints(components.CreateDefaultKeyHints())
-		logging.Debug(t.Logger, "Status bar initialized: %dx%d", statusDims.Width, statusDims.Height)
-	} else {
-		statusDims := t.layoutManager.GetPanelDimensions(components.PanelStatusBar)
-		t.statusBar.SetDimensions(statusDims.Width, statusDims.Height)
-		logging.Debug(t.Logger, "Status bar updated: %dx%d", statusDims.Width, statusDims.Height)
-	}
+		// Test connection with a separate, shorter timeout
+		logging.Info(t.Logger, "🧪 Testing connection (timeout: 3s)")
+		testCtx, testCancel := context.WithTimeout(context.Background(), constants.ConnectionTestTimeout)
+		defer testCancel()
 
-	// Add some initial log entries after proper initialization
-	if t.logPane != nil && t.logPane.Ready {
-		t.logPane.Info("LazyOC application started", "tui")
-		t.logPane.Debug("Layout system initialized", "layout")
-		t.logPane.Debug("All components initialized successfully", "tui")
-		t.logPane.Info("Kubernetes TUI ready for cluster connection", "app")
-		t.logPane.Warn("No cluster connected - connect to view resources", "cluster")
+		err = resourceClient.TestConnection(testCtx)
+		if err != nil {
+			logging.Error(t.Logger, "❌ Connection test failed: %v", err)
+			return messages.ConnectionError{Err: fmt.Errorf("connection test failed: %w", err)}
+		}
+		logging.Info(t.Logger, "✅ Connection test successful")
+
+		// Store everything in the success message
+		logging.Info(t.Logger, "💾 Storing connection components")
+		t.k8sClient = k8sClient
+		t.resourceClient = resourceClient
+		t.connMonitor = connMonitor
+
+		logging.Info(t.Logger, "🎉 K8s client initialization complete!")
+		return messages.ConnectionSuccess{
+			Context:   clusterContext,
+			Namespace: namespace,
+		}
 	}
 }
 
-// updateAllComponentDimensions updates dimensions for all initialized components
-func (t *TUI) updateAllComponentDimensions() {
-	if t.layoutManager == nil {
+// loadPods fetches pods from the current namespace
+func (t *TUI) loadPods() tea.Cmd {
+	return func() tea.Msg {
+		if !t.connected || t.resourceClient == nil {
+			return messages.LoadPodsError{Err: fmt.Errorf("not connected to cluster")}
+		}
+
+		t.loadingPods = true
+
+		ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultOperationTimeout)
+		defer cancel()
+
+		opts := resources.ListOptions{
+			Namespace: t.namespace,
+		}
+
+		podList, err := t.resourceClient.ListPods(ctx, opts)
+		if err != nil {
+			t.loadingPods = false
+			return messages.LoadPodsError{Err: err}
+		}
+
+		t.loadingPods = false
+		return messages.PodsLoaded{Pods: podList.Items}
+	}
+}
+
+// startPodRefreshTimer returns a command that sets up automatic pod refresh
+func (t *TUI) startPodRefreshTimer() tea.Cmd {
+	return tea.Tick(constants.PodRefreshInterval, func(time.Time) tea.Msg {
+		return messages.RefreshPods{}
+	})
+}
+
+// startPodLogRefreshTimer returns a command that sets up automatic pod log refresh
+func (t *TUI) startPodLogRefreshTimer() tea.Cmd {
+	return tea.Tick(constants.PodLogRefreshInterval, func(time.Time) tea.Msg {
+		return messages.RefreshPodLogs{}
+	})
+}
+
+// startSpinnerAnimation returns a command that triggers spinner animation updates
+func (t *TUI) startSpinnerAnimation() tea.Cmd {
+	return tea.Tick(constants.SpinnerAnimationInterval, func(time.Time) tea.Msg {
+		return messages.SpinnerTick{}
+	})
+}
+
+// loadClusterInfo fetches cluster version and server information
+func (t *TUI) loadClusterInfo() tea.Cmd {
+	return func() tea.Msg {
+		// Debug: Always send this message first
+		return messages.ClusterInfoLoaded{
+			Version:    "OpenShift (version API restricted)",
+			ServerInfo: map[string]interface{}{"debug": "cluster info called"},
+		}
+	}
+}
+
+// clearPodLogs clears the current pod logs and sets loading state
+func (t *TUI) clearPodLogs() {
+	t.podLogs = []string{}
+	t.logScrollOffset = 0
+	t.loadingLogs = true
+	t.userScrolled = false                 // Reset scroll tracking
+	t.lastLogTime = ""                     // Reset timestamp tracking
+	t.tailMode = true                      // Reset to tail mode
+	t.seenLogLines = make(map[string]bool) // Clear seen logs map
+}
+
+// loadPodLogs fetches logs from the currently selected pod
+func (t *TUI) loadPodLogs() tea.Cmd {
+	return t.loadPodLogsInternal(false)
+}
+
+// loadPodLogsInternal fetches logs with option for streaming (append mode)
+func (t *TUI) loadPodLogsInternal(isRefresh bool) tea.Cmd {
+	return func() tea.Msg {
+		if !t.connected || t.resourceClient == nil || len(t.pods) == 0 || t.selectedPod >= len(t.pods) {
+			return PodLogsError{Err: fmt.Errorf("no pod selected or not connected"), PodName: ""}
+		}
+
+		selectedPod := t.pods[t.selectedPod]
+		ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultOperationTimeout)
+		defer cancel()
+
+		// Get current project/namespace
+		namespace := t.resourceClient.GetCurrentProject()
+		if namespace == "" {
+			namespace = t.namespace
+		}
+
+		// Use first container if available
+		containerName := ""
+		if len(selectedPod.ContainerInfo) > 0 {
+			containerName = selectedPod.ContainerInfo[0].Name
+		}
+
+		// Set up log options based on whether this is initial load or refresh
+		var logOpts resources.LogOptions
+		if isRefresh && t.lastLogTime != "" {
+			// For refresh, get logs since last timestamp using SinceSeconds
+			// Parse last timestamp to calculate seconds ago
+			sinceSeconds := int64(30) // Default to 30 seconds if parsing fails
+			if lastTime, err := t.parseLogTimestamp(t.lastLogTime); err == nil {
+				secondsAgo := int64(time.Since(lastTime).Seconds())
+				if secondsAgo > 0 {
+					sinceSeconds = secondsAgo + 1 // Add 1 second buffer to avoid duplicates
+				}
+			}
+
+			logOpts = resources.LogOptions{
+				SinceSeconds: &sinceSeconds,
+				Timestamps:   true,
+			}
+		} else {
+			// Initial load - get last 100 lines
+			tailLines := int64(constants.DefaultPodLogTailLines)
+			logOpts = resources.LogOptions{
+				TailLines:  &tailLines,
+				Timestamps: true,
+			}
+		}
+
+		// Fetch logs
+		logsStr, err := t.resourceClient.GetPodLogs(ctx, namespace, selectedPod.Name, containerName, logOpts)
+		if err != nil {
+			return PodLogsError{Err: err, PodName: selectedPod.Name}
+		}
+
+		// Split logs into lines and deduplicate
+		var logLines []string
+		if logsStr != "" {
+			lines := strings.Split(strings.TrimSpace(logsStr), "\n")
+			for _, line := range lines {
+				if line != "" {
+					// For refresh mode, check for duplicates
+					if isRefresh {
+						if !t.seenLogLines[line] {
+							logLines = append(logLines, line)
+							t.seenLogLines[line] = true
+						}
+					} else {
+						// For initial load, accept all lines and mark as seen
+						logLines = append(logLines, line)
+						t.seenLogLines[line] = true
+					}
+				}
+			}
+		}
+
+		// Return appropriate message based on load type
+		if isRefresh {
+			return PodLogsRefreshed{Logs: logLines, PodName: selectedPod.Name}
+		} else {
+			if len(logLines) == 0 {
+				logLines = []string{constants.NoLogsAvailableMessage}
+			}
+			return PodLogsLoaded{Logs: logLines, PodName: selectedPod.Name}
+		}
+	}
+}
+
+// parseLogTimestamp parses a timestamp from a log line
+func (t *TUI) parseLogTimestamp(timestamp string) (time.Time, error) {
+	// Common Kubernetes log timestamp formats
+	layouts := []string{
+		"2006-01-02T15:04:05.999999999Z07:00", // RFC3339 with nanoseconds
+		"2006-01-02T15:04:05.999999Z07:00",    // RFC3339 with microseconds
+		"2006-01-02T15:04:05.999Z07:00",       // RFC3339 with milliseconds
+		"2006-01-02T15:04:05Z07:00",           // RFC3339 basic
+		"2006-01-02 15:04:05.999999999",       // Space-separated with nanoseconds
+		"2006-01-02 15:04:05.999999",          // Space-separated with microseconds
+		"2006-01-02 15:04:05.999",             // Space-separated with milliseconds
+		"2006-01-02 15:04:05",                 // Space-separated basic
+	}
+
+	for _, layout := range layouts {
+		if parsed, err := time.Parse(layout, timestamp); err == nil {
+			return parsed, nil
+		}
+	}
+
+	return time.Time{}, fmt.Errorf("unable to parse timestamp: %s", timestamp)
+}
+
+// extractTimestampFromLogLine extracts timestamp from a log line
+func (t *TUI) extractTimestampFromLogLine(logLine string) string {
+	// Use the same pattern as in colorizePodLog
+	timestampPattern := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[\.\d]*[Z]?[+-]?\d{0,2}:?\d{0,2}`)
+	matches := timestampPattern.FindString(logLine)
+	return matches
+}
+
+// updatePodDisplay updates the main content with pod information
+func (t *TUI) updatePodDisplay() {
+	if !t.connected {
+		t.mainContent = `📦 Pods
+
+❌ Not connected to any cluster
+
+To connect to a cluster:
+1. Run 'oc login <cluster-url>' in your terminal
+2. Or start LazyOC with: lazyoc --kubeconfig /path/to/config
+
+Press 'q' to quit`
 		return
 	}
 
-	// Update header
-	if t.header != nil {
-		headerDims := t.layoutManager.GetPanelDimensions(components.PanelHeader)
-		t.header.SetDimensions(headerDims.Width, headerDims.Height)
-		logging.Debug(t.Logger, "Header dimensions updated: %dx%d", headerDims.Width, headerDims.Height)
+	if t.loadingPods {
+		t.mainContent = constants.LoadingPodsMessage
+		return
 	}
 
-	// Update tabs
-	if t.tabs != nil {
-		tabsDims := t.layoutManager.GetPanelDimensions(components.PanelTabs)
-		t.tabs.SetDimensions(tabsDims.Width, tabsDims.Height)
-		logging.Debug(t.Logger, "Tabs dimensions updated: %dx%d", tabsDims.Width, tabsDims.Height)
-	}
-
-	// Update content pane
-	if t.contentPane != nil {
-		contentDims := t.layoutManager.GetPanelDimensions(components.PanelMain)
-		t.contentPane.SetDimensions(contentDims.Width, contentDims.Height)
-		logging.Debug(t.Logger, "Content pane dimensions updated: %dx%d", contentDims.Width, contentDims.Height)
-	}
-
-	// Update detail pane
-	if t.detailPane != nil {
-		detailDims := t.layoutManager.GetPanelDimensions(components.PanelDetail)
-		t.detailPane.SetDimensions(detailDims.Width, detailDims.Height)
-		logging.Debug(t.Logger, "Detail pane dimensions updated: %dx%d", detailDims.Width, detailDims.Height)
-	}
-
-	// Update log pane
-	if t.logPane != nil {
-		logDims := t.layoutManager.GetPanelDimensions(components.PanelLog)
-		t.logPane.SetDimensions(logDims.Width, logDims.Height)
-		logging.Debug(t.Logger, "Log pane dimensions updated: %dx%d", logDims.Width, logDims.Height)
-	}
-
-	// Update status bar
-	if t.statusBar != nil {
-		statusDims := t.layoutManager.GetPanelDimensions(components.PanelStatusBar)
-		t.statusBar.SetDimensions(statusDims.Width, statusDims.Height)
-		logging.Debug(t.Logger, "Status bar dimensions updated: %dx%d", statusDims.Width, statusDims.Height)
-	}
-}
-
-// setupNavigationCallbacks sets up callbacks for navigation actions
-func (t *TUI) setupNavigationCallbacks() {
-	t.navController.SetCallback(navigation.ActionQuit, func() tea.Cmd {
-		logging.Info(t.Logger, "User requested quit via navigation")
-		return tea.Quit
-	})
-
-	t.navController.SetCallback(navigation.ActionToggleHelp, func() tea.Cmd {
-		t.ToggleHelp()
-		return nil
-	})
-
-	t.navController.SetCallback(navigation.ActionToggleDebug, func() tea.Cmd {
-		t.Debug = !t.Debug
-		t.Logger = logging.SetupLogger(t.Debug)
-		logging.Info(t.Logger, "Debug mode toggled: %v", t.Debug)
-		return nil
-	})
-
-	t.navController.SetCallback(navigation.ActionRefresh, func() tea.Cmd {
-		return func() tea.Msg {
-			return messages.RefreshMsg{}
+	if len(t.pods) == 0 {
+		// Use project-aware display for no pods message
+		if t.resourceClient != nil {
+			currentProject := t.resourceClient.GetCurrentProject()
+			if currentProject != "" {
+				t.mainContent = fmt.Sprintf("📦 Pods in %s\n\nNo pods found in this project.", currentProject)
+			} else {
+				t.mainContent = fmt.Sprintf("📦 Pods in %s\n\nNo pods found in this namespace.", t.namespace)
+			}
+		} else {
+			t.mainContent = fmt.Sprintf("📦 Pods in %s\n\nNo pods found in this namespace.", t.namespace)
 		}
+		return
+	}
+
+	// Build pod list display
+	var content strings.Builder
+
+	// Use project-aware display if resource client supports it
+	if t.resourceClient != nil {
+		currentProject := t.resourceClient.GetCurrentProject()
+		if currentProject != "" {
+			content.WriteString(fmt.Sprintf("📦 Pods in %s\n\n", currentProject))
+		} else {
+			content.WriteString(fmt.Sprintf("📦 Pods in %s\n\n", t.namespace))
+		}
+	} else {
+		content.WriteString(fmt.Sprintf("📦 Pods in %s\n\n", t.namespace))
+	}
+
+	// Header
+	content.WriteString("NAME                                    STATUS    READY   AGE\n")
+	content.WriteString("────────────────────────────────────    ──────    ─────   ───\n")
+
+	// Pod rows
+	for i, pod := range t.pods {
+		// Highlight selected pod
+		prefix := "  "
+		if i == t.selectedPod && t.focusedPanel == 0 {
+			prefix = "▶ "
+		}
+
+		// Truncate name if too long
+		name := pod.Name
+		if len(name) > constants.PodNameTruncateLength {
+			name = name[:constants.PodNameTruncateLengthCompact] + "..."
+		}
+
+		// Add status indicator with emoji
+		statusIndicator := t.getPodStatusIndicator(pod.Phase)
+
+		content.WriteString(fmt.Sprintf("%s%-38s  %s%-7s  %-5s   %s\n",
+			prefix, name, statusIndicator, pod.Phase, pod.Ready, pod.Age))
+	}
+
+	t.mainContent = content.String()
+
+	// Update detail pane with selected pod info
+	if t.selectedPod < len(t.pods) && t.selectedPod >= 0 {
+		t.updatePodDetails(t.pods[t.selectedPod])
+	}
+}
+
+// getPodStatusIndicator returns an emoji indicator for pod status
+func (t *TUI) getPodStatusIndicator(phase string) string {
+	switch phase {
+	case "Running":
+		return "✅"
+	case "Pending":
+		return "⏳"
+	case "Failed":
+		return "❌"
+	case "Succeeded":
+		return "✨"
+	case "Unknown":
+		return "❓"
+	default:
+		return "⚪"
+	}
+}
+
+// updatePodDetails updates the detail pane with pod information
+func (t *TUI) updatePodDetails(pod resources.PodInfo) {
+	var details strings.Builder
+	details.WriteString(fmt.Sprintf("📄 Pod Details: %s\n\n", pod.Name))
+
+	details.WriteString(fmt.Sprintf("Namespace:  %s\n", pod.Namespace))
+	details.WriteString(fmt.Sprintf("Status:     %s\n", pod.Phase))
+	details.WriteString(fmt.Sprintf("Ready:      %s\n", pod.Ready))
+	details.WriteString(fmt.Sprintf("Restarts:   %d\n", pod.Restarts))
+	details.WriteString(fmt.Sprintf("Age:        %s\n", pod.Age))
+	details.WriteString(fmt.Sprintf("Node:       %s\n", pod.Node))
+	details.WriteString(fmt.Sprintf("IP:         %s\n", pod.IP))
+
+	if len(pod.ContainerInfo) > 0 {
+		details.WriteString("\nContainers:\n")
+		for _, container := range pod.ContainerInfo {
+			status := "🟢"
+			if !container.Ready {
+				status = "🔴"
+			}
+			details.WriteString(fmt.Sprintf("  %s %s (%s)\n", status, container.Name, container.State))
+		}
+	}
+
+	t.detailContent = details.String()
+}
+
+// updateBuildConfigDetails updates the detail pane with BuildConfig information
+func (t *TUI) updateBuildConfigDetails(bc resources.BuildConfigInfo) {
+	var details strings.Builder
+	details.WriteString(fmt.Sprintf("🔨 BuildConfig Details: %s\n\n", bc.Name))
+
+	details.WriteString(fmt.Sprintf("Namespace:  %s\n", bc.Namespace))
+	details.WriteString(fmt.Sprintf("Status:     %s\n", bc.Status))
+	details.WriteString(fmt.Sprintf("Strategy:   %s\n", bc.Strategy))
+	details.WriteString(fmt.Sprintf("Age:        %s\n", bc.Age))
+	
+	// Source information
+	details.WriteString(fmt.Sprintf("\nSource:\n"))
+	details.WriteString(fmt.Sprintf("  Type:     %s\n", bc.Source.Type))
+	if bc.Source.Git != nil {
+		details.WriteString(fmt.Sprintf("  Git URI:  %s\n", bc.Source.Git.URI))
+		if bc.Source.Git.Ref != "" {
+			details.WriteString(fmt.Sprintf("  Git Ref:  %s\n", bc.Source.Git.Ref))
+		}
+	}
+	if bc.Source.ContextDir != "" {
+		details.WriteString(fmt.Sprintf("  Context:  %s\n", bc.Source.ContextDir))
+	}
+	
+	// Output information
+	details.WriteString(fmt.Sprintf("\nOutput:\n"))
+	details.WriteString(fmt.Sprintf("  To:       %s\n", bc.Output.To))
+	
+	// Build statistics  
+	details.WriteString(fmt.Sprintf("\nBuilds:\n"))
+	details.WriteString(fmt.Sprintf("  Success:  %d\n", bc.SuccessBuilds))  
+	details.WriteString(fmt.Sprintf("  Failed:   %d\n", bc.FailedBuilds))
+	
+	if bc.LastBuild != nil {
+		details.WriteString(fmt.Sprintf("\nLast Build:\n"))
+		details.WriteString(fmt.Sprintf("  Status:   %s\n", bc.LastBuild.Phase))
+		details.WriteString(fmt.Sprintf("  Duration: %s\n", bc.LastBuild.Duration))
+	}
+
+	t.detailContent = details.String()
+}
+
+// updateImageStreamDetails updates the detail pane with ImageStream information
+func (t *TUI) updateImageStreamDetails(is resources.ImageStreamInfo) {
+	var details strings.Builder
+	details.WriteString(fmt.Sprintf("🖼️ ImageStream Details: %s\n\n", is.Name))
+
+	details.WriteString(fmt.Sprintf("Namespace:    %s\n", is.Namespace))
+	details.WriteString(fmt.Sprintf("Status:       %s\n", is.Status))
+	details.WriteString(fmt.Sprintf("Age:          %s\n", is.Age))
+	details.WriteString(fmt.Sprintf("Repository:   %s\n", is.DockerImageRepository))
+	
+	if is.PublicDockerImageRepository != "" {
+		details.WriteString(fmt.Sprintf("Public Repo:  %s\n", is.PublicDockerImageRepository))
+	}
+	
+	// Tags information
+	details.WriteString(fmt.Sprintf("\nTags (%d):\n", len(is.Tags)))
+	if len(is.Tags) > 0 {
+		for _, tag := range is.Tags {
+			details.WriteString(fmt.Sprintf("  • %s", tag.Name))
+			if len(tag.Items) > 0 {
+				details.WriteString(fmt.Sprintf(" (%d images)", len(tag.Items)))
+			}
+			details.WriteString("\n")
+		}
+	} else {
+		details.WriteString("  No tags available\n")
+	}
+
+	t.detailContent = details.String()
+}
+
+// updateRouteDetails updates the detail pane with Route information  
+func (t *TUI) updateRouteDetails(route resources.RouteInfo) {
+	var details strings.Builder
+	details.WriteString(fmt.Sprintf("🛣️ Route Details: %s\n\n", route.Name))
+
+	details.WriteString(fmt.Sprintf("Namespace:    %s\n", route.Namespace))
+	details.WriteString(fmt.Sprintf("Status:       %s\n", route.Status))
+	details.WriteString(fmt.Sprintf("Host:         %s\n", route.Host))
+	details.WriteString(fmt.Sprintf("Age:          %s\n", route.Age))
+	
+	if route.Path != "" {
+		details.WriteString(fmt.Sprintf("Path:         %s\n", route.Path))
+	}
+	
+	// Service information
+	details.WriteString(fmt.Sprintf("\nTarget Service:\n"))
+	details.WriteString(fmt.Sprintf("  Name:       %s\n", route.Service.Name))
+	details.WriteString(fmt.Sprintf("  Kind:       %s\n", route.Service.Kind))
+	
+	if route.Port != nil {
+		details.WriteString(fmt.Sprintf("  Port:       %s\n", route.Port.TargetPort))
+	}
+	
+	// TLS information
+	if route.TLS != nil {
+		details.WriteString(fmt.Sprintf("\nTLS:\n"))
+		details.WriteString(fmt.Sprintf("  Termination: %s\n", route.TLS.Termination))
+		if route.TLS.InsecureEdgeTerminationPolicy != "" {
+			details.WriteString(fmt.Sprintf("  Insecure:    %s\n", route.TLS.InsecureEdgeTerminationPolicy))
+		}
+	} else {
+		details.WriteString(fmt.Sprintf("\nTLS:          None\n"))
+	}
+	
+	if route.WildcardPolicy != "" {
+		details.WriteString(fmt.Sprintf("Wildcard:     %s\n", route.WildcardPolicy))
+	}
+
+	t.detailContent = details.String()
+}
+
+// Project-related message types
+type ProjectListLoadedMsg struct {
+	Projects []projects.ProjectInfo
+}
+
+type ProjectSwitchedMsg struct {
+	Project projects.ProjectInfo
+}
+
+type ProjectErrorMsg struct {
+	Error string
+}
+
+// AutoRetryMsg is sent to trigger automatic retry
+type AutoRetryMsg struct{}
+
+// RetrySuccessMsg is sent when a retry succeeds
+type RetrySuccessMsg struct{}
+
+// ManualRetryMsg is sent when user manually triggers retry
+type ManualRetryMsg struct{}
+
+// PodLogsLoaded is sent when pod logs are successfully loaded
+type PodLogsLoaded struct {
+	Logs    []string
+	PodName string
+}
+
+// PodLogsRefreshed is sent when pod logs are refreshed with new content
+type PodLogsRefreshed struct {
+	Logs    []string
+	PodName string
+}
+
+// PodLogsError is sent when pod logs loading fails
+type PodLogsError struct {
+	Err     error
+	PodName string
+}
+
+// openProjectModal opens the project switching modal
+func (t *TUI) openProjectModal() tea.Cmd {
+	t.showProjectModal = true
+	t.loadingProjects = true
+	t.switchingProject = false
+	t.projectError = ""                                                                                   // Clear any previous errors
+	t.projectModalHeight = min(t.height-constants.ProjectModalMinHeight, constants.ProjectModalMaxHeight) // Leave space for borders and headers
+
+	return tea.Batch(
+		t.loadProjectList(),
+		t.getCurrentProject(),
+	)
+}
+
+// loadProjectList loads the list of available projects/namespaces
+func (t *TUI) loadProjectList() tea.Cmd {
+	return tea.Cmd(func() tea.Msg {
+		if t.projectManager == nil {
+			return ProjectErrorMsg{Error: "Project manager not initialized"}
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultOperationTimeout)
+		defer cancel()
+
+		projectList, err := t.projectManager.List(ctx, projects.ListOptions{
+			IncludeQuotas: false, // Don't load quotas for the list view
+			IncludeLimits: false,
+		})
+		if err != nil {
+			return ProjectErrorMsg{Error: fmt.Sprintf("Failed to load projects: %v", err)}
+		}
+
+		return ProjectListLoadedMsg{Projects: projectList}
 	})
 }
 
-// handleKeyInputWithNavigation processes keyboard input using the navigation system
-func (t *TUI) handleKeyInputWithNavigation(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Process the key through the navigation controller
-	cmds, handled := t.navController.ProcessKeyMsg(msg)
+// getCurrentProject loads the current project information
+func (t *TUI) getCurrentProject() tea.Cmd {
+	return tea.Cmd(func() tea.Msg {
+		if t.projectManager == nil {
+			return nil // No error, just skip
+		}
 
-	if handled {
-		// Navigation system handled the key
-		if len(cmds) > 0 {
-			return t, tea.Batch(cmds...)
+		ctx, cancel := context.WithTimeout(context.Background(), constants.AuthenticationTimeout)
+		defer cancel()
+
+		current, err := t.projectManager.GetCurrent(ctx)
+		if err == nil && current != nil {
+			t.currentProject = current
+		}
+
+		return nil // We handle current project setting in the loadProjectList response
+	})
+}
+
+// handleProjectModalKeys handles keyboard input when the project modal is open
+func (t *TUI) handleProjectModalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if t.loadingProjects || t.switchingProject {
+		// Only allow escape while loading or switching
+		if msg.String() == "esc" {
+			t.showProjectModal = false
+			t.loadingProjects = false
+			t.switchingProject = false
+			t.updateMainContent() // Ensure tabs are visible when modal closes
+			return t, nil
 		}
 		return t, nil
 	}
 
-	// Fall back to the original key handling for unhandled keys
-	return t.handleKeyInput(msg)
-}
+	switch msg.String() {
+	case "esc":
+		t.showProjectModal = false
+		t.updateMainContent() // Ensure tabs are visible when modal closes
+		return t, nil
 
-// handleNavigationMessage handles navigation-specific messages
-func (t *TUI) handleNavigationMessage(msg navigation.NavigationMsg) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd
-
-	// Update focus in layout manager
-	if t.layoutManager != nil {
-		t.layoutManager.SetFocus(msg.Panel)
-
-		// Update component focus states
-		if t.contentPane != nil {
-			t.contentPane.SetFocus(msg.Panel == components.PanelMain)
+	case "enter":
+		// Switch to selected project (prevent double-switching)
+		if !t.switchingProject && len(t.projectList) > 0 && t.selectedProject >= 0 && t.selectedProject < len(t.projectList) {
+			t.switchingProject = true
+			t.projectError = "" // Clear error when attempting a switch
+			return t, t.switchToProject(t.projectList[t.selectedProject])
 		}
-		if t.detailPane != nil {
-			t.detailPane.SetFocus(msg.Panel == components.PanelDetail)
+		return t, nil
+
+	case "j", "down":
+		if len(t.projectList) > 0 {
+			t.selectedProject = (t.selectedProject + 1) % len(t.projectList)
+			// Don't clear error - let user navigate while seeing the error
 		}
-		if t.logPane != nil {
-			t.logPane.SetFocus(msg.Panel == components.PanelLog)
+		return t, nil
+
+	case "k", "up":
+		if len(t.projectList) > 0 {
+			t.selectedProject = t.selectedProject - 1
+			if t.selectedProject < 0 {
+				t.selectedProject = len(t.projectList) - 1
+			}
+			// Don't clear error - let user navigate while seeing the error
 		}
-	}
+		return t, nil
 
-	// Route actions to appropriate components
-	switch msg.Panel {
-	case components.PanelMain:
-		if t.contentPane != nil {
-			cmds = append(cmds, t.routeActionToContentPane(msg.Action))
-		}
-	case components.PanelDetail:
-		if t.detailPane != nil {
-			cmds = append(cmds, t.routeActionToDetailPane(msg.Action))
-		}
-	case components.PanelLog:
-		if t.logPane != nil {
-			cmds = append(cmds, t.routeActionToLogPane(msg.Action))
-		}
-	}
-
-	// Handle tab navigation
-	switch msg.Action {
-	case navigation.ActionNextTab:
-		t.NextTab()
-		logging.Debug(t.Logger, "Navigation: Switched to tab: %s", t.GetTabName(t.ActiveTab))
-	case navigation.ActionPrevTab:
-		t.PrevTab()
-		logging.Debug(t.Logger, "Navigation: Switched to tab: %s", t.GetTabName(t.ActiveTab))
-	}
-
-	if len(cmds) > 0 {
-		return t, tea.Batch(cmds...)
-	}
-	return t, nil
-}
-
-// handleModeChange handles navigation mode changes
-func (t *TUI) handleModeChange(msg navigation.ModeChangeMsg) (tea.Model, tea.Cmd) {
-	logging.Debug(t.Logger, "Navigation mode changed: %s -> %s", msg.OldMode, msg.NewMode)
-
-	// Update help component with new mode
-	if t.helpComponent != nil {
-		t.helpComponent.SetCurrentMode(msg.NewMode)
-	}
-
-	// Update status bar to show current mode
-	if t.statusBar != nil {
-		modeIndicator := t.navController.GetRegistry().GetModeIndicator()
-		t.statusBar.SetActivePanel(modeIndicator)
+	case "r":
+		// Refresh project list and clear errors
+		t.loadingProjects = true
+		t.projectError = ""
+		return t, t.loadProjectList()
 	}
 
 	return t, nil
 }
 
-// handleSearchMessage handles search-related messages
-func (t *TUI) handleSearchMessage(msg navigation.SearchMsg) (tea.Model, tea.Cmd) {
-	if msg.Active {
-		// Search mode is active, update the search query
-		err := t.searchFilter.SetQuery(msg.Query)
+// switchToProject switches to the specified project
+func (t *TUI) switchToProject(project projects.ProjectInfo) tea.Cmd {
+	return tea.Cmd(func() tea.Msg {
+		if t.projectManager == nil {
+			return ProjectErrorMsg{Error: "Project manager not initialized"}
+		}
+
+		// Check if we're already on this project
+		if t.currentProject != nil && t.currentProject.Name == project.Name {
+			return ProjectSwitchedMsg{Project: project} // Just close modal, no actual switch needed
+		}
+
+		logging.Info(t.Logger, "🔄 Switching to %s: %s", project.Type, project.Name)
+
+		ctx, cancel := context.WithTimeout(context.Background(), constants.ClusterDetectionTimeout) // Increased timeout
+		defer cancel()
+
+		result, err := t.projectManager.SwitchTo(ctx, project.Name)
 		if err != nil {
-			logging.Error(t.Logger, "Invalid search query: %v", err)
-			if t.statusBar != nil {
-				t.statusBar.SetStatus(fmt.Sprintf("Invalid search pattern: %v", err), components.StatusError)
-			}
-			return t, nil
+			logging.Error(t.Logger, "❌ Failed to switch to %s '%s': %v", project.Type, project.Name, err)
+			return ProjectErrorMsg{Error: fmt.Sprintf("Failed to switch to %s '%s': %v", project.Type, project.Name, err)}
 		}
 
-		// Update status bar to show search mode
-		if t.statusBar != nil {
-			if msg.Query == "" {
-				t.statusBar.SetStatus("Search: ", components.StatusInfo)
-			} else {
-				t.statusBar.SetStatus(fmt.Sprintf("Search: %s", msg.Query), components.StatusInfo)
-			}
+		if !result.Success {
+			logging.Error(t.Logger, "❌ Project switch failed: %s", result.Message)
+			return ProjectErrorMsg{Error: result.Message}
 		}
-	} else if msg.Complete {
-		// Search completed, apply the filter
-		logging.Info(t.Logger, "Search executed: %s", msg.Query)
 
-		// Apply search filter to current resources
-		t.applySearchFilter()
+		logging.Info(t.Logger, "✅ Successfully switched to %s: %s", project.Type, project.Name)
 
-		// Update status bar to show search results
-		if t.statusBar != nil && t.searchFilter.IsActive() {
-			t.statusBar.SetStatus(fmt.Sprintf("Search: %s", msg.Query), components.StatusInfo)
+		// Return success with the project info
+		if result.ProjectInfo != nil {
+			return ProjectSwitchedMsg{Project: *result.ProjectInfo}
 		}
+		return ProjectSwitchedMsg{Project: project}
+	})
+}
+
+// renderProjectModal renders the project switching modal
+func (t *TUI) renderProjectModal() string {
+	modalWidth := min(t.width-constants.ProjectModalMinWidth, constants.ProjectModalMaxWidth)
+	modalHeight := t.projectModalHeight
+
+	// Create the modal box with error styling if needed
+	borderColor := lipgloss.Color("12") // Default blue
+	if t.projectError != "" {
+		borderColor = lipgloss.Color("9") // Red for errors
+	}
+
+	modalStyle := lipgloss.NewStyle().
+		Width(modalWidth).
+		Height(modalHeight).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Padding(1).
+		Align(lipgloss.Center)
+
+	var content strings.Builder
+
+	// Header
+	if t.currentProject != nil {
+		content.WriteString(fmt.Sprintf("Current %s: %s\n\n", t.currentProject.Type, t.currentProject.Name))
 	} else {
-		// Search cancelled
-		t.searchFilter.Clear()
-		t.applySearchFilter()
+		content.WriteString("Switch Project/Namespace\n\n")
+	}
 
-		// Clear search mode in status bar
-		if t.statusBar != nil {
-			t.statusBar.SetStatus("", components.StatusInfo)
+	// Show error prominently if there is one
+	if t.projectError != "" {
+		// Format error message for better display
+		errorMsg := t.projectError
+		maxErrorLen := modalWidth - 10 // Leave space for padding and borders
+
+		// Truncate very long errors and add ellipsis
+		if len(errorMsg) > maxErrorLen {
+			errorMsg = errorMsg[:maxErrorLen-3] + "..."
+		}
+
+		content.WriteString("❌ Switch Failed\n\n")
+		content.WriteString(fmt.Sprintf("%s\n\n", errorMsg))
+
+		// Still show project list even with error so user can try another project
+		if len(t.projectList) > 0 {
+			content.WriteString("Select a different project:\n\n")
 		}
 	}
 
-	return t, nil
+	if t.loadingProjects {
+		content.WriteString("Loading projects...")
+	} else if t.switchingProject {
+		selectedProject := ""
+		if len(t.projectList) > 0 && t.selectedProject >= 0 && t.selectedProject < len(t.projectList) {
+			selectedProject = t.projectList[t.selectedProject].Name
+		}
+		content.WriteString(fmt.Sprintf("Switching to: %s\n\nPlease wait...", selectedProject))
+	} else if len(t.projectList) == 0 && t.projectError == "" {
+		content.WriteString("No projects found")
+	} else if len(t.projectList) > 0 {
+		// List projects
+		maxItems := modalHeight - 6 // Account for header, footer, padding
+		startIdx := max(0, t.selectedProject-maxItems/2)
+		endIdx := min(len(t.projectList), startIdx+maxItems)
+
+		for i := startIdx; i < endIdx; i++ {
+			project := t.projectList[i]
+
+			prefix := "  "
+			if i == t.selectedProject {
+				prefix = "▶ "
+			}
+
+			// Show project type icon
+			typeIcon := "📦" // namespace
+			if project.Type == projects.ProjectTypeOpenShiftProject {
+				typeIcon = "🎯" // project
+			}
+
+			// Current project indicator
+			currentIndicator := ""
+			if t.currentProject != nil && project.Name == t.currentProject.Name {
+				currentIndicator = " (current)"
+			}
+
+			line := fmt.Sprintf("%s%s %s%s", prefix, typeIcon, project.Name, currentIndicator)
+			if project.DisplayName != "" && project.DisplayName != project.Name {
+				line += fmt.Sprintf(" - %s", project.DisplayName)
+			}
+
+			content.WriteString(line + "\n")
+		}
+
+		// Show scroll indicator if needed
+		if len(t.projectList) > maxItems {
+			content.WriteString(fmt.Sprintf("\n[%d/%d projects]", t.selectedProject+1, len(t.projectList)))
+		}
+	}
+
+	// Footer
+	content.WriteString("\n\n")
+	if t.loadingProjects {
+		content.WriteString("Press 'esc' to cancel")
+	} else if t.switchingProject {
+		content.WriteString("Switching project... • esc: cancel")
+	} else if t.projectError != "" {
+		content.WriteString("↑↓/j,k: select different • enter: try selected • r: refresh • esc: cancel")
+	} else {
+		content.WriteString("↑↓/j,k: navigate • enter: switch • r: refresh • esc: cancel")
+	}
+
+	modal := modalStyle.Render(content.String())
+
+	// Center the modal on screen
+	return lipgloss.Place(t.width, t.height, lipgloss.Center, lipgloss.Center, modal)
 }
 
-// applySearchFilter applies the search filter to current resources
-func (t *TUI) applySearchFilter() {
-	if t.contentPane == nil || t.App == nil {
+// initializeProjectManager initializes the project manager after K8s client is ready
+func (t *TUI) initializeProjectManager() {
+	if t.k8sClient == nil {
+		logging.Warn(t.Logger, "Cannot initialize project manager: K8s client not ready")
 		return
 	}
 
-	// TODO: Implement search filtering when resource data is available in the regular TUI
-	// For now, search is only implemented in the simplified TUI
+	config := t.k8sClient.GetConfig()
+	if config == nil {
+		logging.Error(t.Logger, "Failed to get K8s config for project manager: config is nil")
+		return
+	}
+
+	clientset := t.k8sClient.GetClientset()
+	if clientset == nil {
+		logging.Error(t.Logger, "Failed to get clientset for project manager: clientset is nil")
+		return
+	}
+
+	// Create project manager factory
+	factory, err := projects.NewProjectManagerFactory(clientset, config, t.KubeconfigPath)
+	if err != nil {
+		logging.Error(t.Logger, "Failed to create project manager factory: %v", err)
+		return
+	}
+
+	t.projectFactory = factory
+
+	// Create the appropriate project manager
+	ctx, cancel := context.WithTimeout(context.Background(), constants.AuthenticationTimeout)
+	defer cancel()
+
+	manager, err := factory.CreateAutoDetectManager(ctx)
+	if err != nil {
+		logging.Error(t.Logger, "Failed to create project manager: %v", err)
+		return
+	}
+
+	t.projectManager = manager
+	logging.Info(t.Logger, "✅ Project manager initialized for %s", manager.GetClusterType())
+
+	// Load current project info
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), constants.AuthenticationTimeout)
+		defer cancel()
+
+		current, err := manager.GetCurrent(ctx)
+		if err == nil && current != nil {
+			t.currentProject = current
+			logging.Info(t.Logger, "Current %s: %s", current.Type, current.Name)
+		}
+	}()
 }
 
-// handleCommandMessage handles command-related messages
-func (t *TUI) handleCommandMessage(msg navigation.CommandMsg) (tea.Model, tea.Cmd) {
-	if msg.Active {
-		// Command mode is active, show command prompt
-		if t.statusBar != nil {
-			if msg.Command == "" {
-				t.statusBar.SetStatus(":", components.StatusInfo)
-			} else {
-				t.statusBar.SetStatus(fmt.Sprintf(":%s", msg.Command), components.StatusInfo)
-			}
+// getProjectDisplayInfo returns formatted project context information for display
+func (t *TUI) getProjectDisplayInfo() string {
+	if t.currentProject == nil {
+		// Fallback to namespace info if project not loaded yet
+		if t.namespace != "" {
+			return fmt.Sprintf("namespace: %s", t.namespace)
 		}
-	} else if msg.Complete {
-		// Parse and execute the command
-		logging.Info(t.Logger, "Command executed: %s", msg.Command)
+		return "namespace: default"
+	}
 
-		cmd, err := commands.ParseCommand(msg.Command)
-		if err != nil {
-			logging.Error(t.Logger, "Invalid command: %v", err)
-			if t.statusBar != nil {
-				t.statusBar.SetStatus(fmt.Sprintf("Invalid command: %v", err), components.StatusError)
-			}
-			return t, nil
-		}
-
-		// Clear command mode in status bar
-		if t.statusBar != nil {
-			t.statusBar.SetStatus("", components.StatusInfo)
-		}
-
-		return t.executeCommand(cmd)
+	// Show project type icon and name (more compact format)
+	var icon string
+	if t.currentProject.Type == projects.ProjectTypeOpenShiftProject {
+		icon = "🎯"
 	} else {
-		// Command cancelled
-		if t.statusBar != nil {
-			t.statusBar.SetStatus("", components.StatusInfo)
+		icon = "📦"
+	}
+
+	// Use display name if available (OpenShift projects), otherwise use name
+	displayName := t.currentProject.Name
+	if t.currentProject.DisplayName != "" && t.currentProject.DisplayName != t.currentProject.Name {
+		displayName = t.currentProject.DisplayName
+	}
+
+	return fmt.Sprintf("%s %s", icon, displayName)
+}
+
+// handleErrorModalKeys handles keyboard input when error modal is open
+func (t *TUI) handleErrorModalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q":
+		// Close error modal
+		t.showErrorModal = false
+		return t, nil
+
+	case "up":
+		// Move selection up in recovery actions
+		t.errorDisplay.MoveSelection(-1)
+		return t, nil
+
+	case "down":
+		// Move selection down in recovery actions
+		t.errorDisplay.MoveSelection(1)
+		return t, nil
+
+	case "enter":
+		// Execute selected recovery action
+		action := t.errorDisplay.GetSelectedAction()
+		if action != nil {
+			return t, t.executeRecoveryAction(action)
 		}
+		return t, nil
+
+	case "c":
+		// Clear all errors
+		t.errorDisplay.ClearErrors()
+		t.showErrorModal = false
+		return t, nil
 	}
 
 	return t, nil
 }
 
-// executeCommand executes a parsed command
-func (t *TUI) executeCommand(cmd *commands.Command) (tea.Model, tea.Cmd) {
-	switch cmd.Type {
-	case commands.CommandTypeQuit:
-		logging.Info(t.Logger, "Quit command executed")
-		return t, tea.Quit
+// executeRecoveryAction executes the selected recovery action
+func (t *TUI) executeRecoveryAction(action *errors.RecoveryAction) tea.Cmd {
+	switch action.Name {
+	case "Retry Connection":
+		// Close modal and trigger reconnection
+		t.showErrorModal = false
+		if !t.connected && !t.connecting {
+			t.logContent = append(t.logContent, "🔄 Manual reconnection initiated...")
+			return t.InitializeK8sClient(t.KubeconfigPath)
+		}
 
-	case commands.CommandTypeHelp:
-		if len(cmd.Args) > 0 {
-			// Show help for specific command
-			if t.statusBar != nil {
-				t.statusBar.SetStatus(fmt.Sprintf("Help for: %s", strings.Join(cmd.Args, " ")), components.StatusInfo)
+	case "Refresh Resources":
+		// Close modal and refresh current resources
+		t.showErrorModal = false
+		if t.connected {
+			switch t.ActiveTab {
+			case 0: // Pods tab
+				return t.loadPods()
+			default:
+				return t.loadPods() // Default to pods for now
 			}
+		}
+
+	case "Refresh Projects":
+		// Close modal and refresh project list
+		t.showErrorModal = false
+		if t.projectManager != nil {
+			return t.loadProjectList()
+		}
+
+	case "Refresh Application":
+		// Close modal and perform full refresh
+		t.showErrorModal = false
+		t.errorDisplay.ClearErrors()
+		t.retryCount = 0
+		if t.connected {
+			return tea.Batch(
+				t.loadPods(),
+				t.loadProjectList(),
+			)
 		} else {
-			// Show general help
-			t.ToggleHelp()
-		}
-
-	case commands.CommandTypeRefresh:
-		logging.Info(t.Logger, "Refresh command executed")
-		return t, func() tea.Msg {
-			return messages.RefreshMsg{}
-		}
-
-	case commands.CommandTypeNamespace:
-		if cmd.Name != "" {
-			logging.Info(t.Logger, "Switching namespace to: %s", cmd.Name)
-			// TODO: Implement namespace switching
-			if t.statusBar != nil {
-				t.statusBar.SetStatus("Namespace switching not yet implemented", components.StatusWarning)
-			}
-		}
-
-	case commands.CommandTypeContext:
-		if cmd.Name != "" {
-			logging.Info(t.Logger, "Switching context to: %s", cmd.Name)
-			// TODO: Implement context switching
-			if t.statusBar != nil {
-				t.statusBar.SetStatus("Context switching not yet implemented", components.StatusWarning)
-			}
-		}
-
-	case commands.CommandTypeLogs:
-		logging.Info(t.Logger, "Logs command for pod: %s", cmd.Name)
-		// TODO: Implement log viewing
-		if t.statusBar != nil {
-			t.statusBar.SetStatus("Log viewing not yet implemented", components.StatusWarning)
-		}
-
-	case commands.CommandTypeDescribe:
-		logging.Info(t.Logger, "Describe command for %s/%s", cmd.Resource, cmd.Name)
-		// TODO: Implement resource description
-		if t.statusBar != nil {
-			t.statusBar.SetStatus("Resource description not yet implemented", components.StatusWarning)
-		}
-
-	case commands.CommandTypeDelete:
-		logging.Info(t.Logger, "Delete command for %s/%s", cmd.Resource, cmd.Name)
-		if t.statusBar != nil {
-			t.statusBar.SetStatus("Delete operation not yet implemented", components.StatusError)
-		}
-
-	case commands.CommandTypeExec:
-		logging.Info(t.Logger, "Exec command for pod: %s", cmd.Name)
-		if t.statusBar != nil {
-			t.statusBar.SetStatus("Exec operation not yet implemented", components.StatusError)
-		}
-
-	case commands.CommandTypeEdit:
-		logging.Info(t.Logger, "Edit command for %s/%s", cmd.Resource, cmd.Name)
-		if t.statusBar != nil {
-			t.statusBar.SetStatus("Edit operation not yet implemented", components.StatusError)
-		}
-
-	case commands.CommandTypeScale:
-		logging.Info(t.Logger, "Scale command for deployment: %s", cmd.Name)
-		if t.statusBar != nil {
-			t.statusBar.SetStatus("Scale operation not yet implemented", components.StatusError)
-		}
-
-	default:
-		if t.statusBar != nil {
-			t.statusBar.SetStatus(fmt.Sprintf("Unknown command: %s", cmd.RawInput), components.StatusError)
+			return t.InitializeK8sClient(t.KubeconfigPath)
 		}
 	}
 
-	return t, nil
-}
-
-// ToggleHelp toggles the help modal visibility
-func (t *TUI) ToggleHelp() {
-	if t.State == models.StateHelp {
-		// Return to main state
-		t.State = models.StateMain
-		logging.Debug(t.Logger, "Help modal closed")
-	} else if t.State == models.StateMain {
-		// Show help
-		t.State = models.StateHelp
-		logging.Debug(t.Logger, "Help modal opened")
-	}
-}
-
-// routeActionToContentPane routes navigation actions to the content pane
-func (t *TUI) routeActionToContentPane(action navigation.KeyAction) tea.Cmd {
-	// Create a mock KeyMsg to pass to the content pane
-	// This is a bridge between the navigation system and component updates
-	var keyStr string
-
-	switch action {
-	case navigation.ActionMoveUp:
-		keyStr = "up"
-	case navigation.ActionMoveDown:
-		keyStr = "down"
-	case navigation.ActionMoveLeft:
-		keyStr = "left"
-	case navigation.ActionMoveRight:
-		keyStr = "right"
-	case navigation.ActionPageUp:
-		keyStr = "pageup"
-	case navigation.ActionPageDown:
-		keyStr = "pagedown"
-	case navigation.ActionGoToTop:
-		keyStr = "home"
-	case navigation.ActionGoToBottom:
-		keyStr = "end"
-	case navigation.ActionSelect:
-		keyStr = "enter"
-	default:
-		return nil
-	}
-
-	return func() tea.Msg {
-		// This creates a message that the content pane can handle
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(keyStr)}
-	}
-}
-
-// routeActionToDetailPane routes navigation actions to the detail pane
-func (t *TUI) routeActionToDetailPane(action navigation.KeyAction) tea.Cmd {
-	// Similar routing for detail pane actions
-	switch action {
-	case navigation.ActionToggleCollapse:
-		if t.detailPane != nil {
-			t.detailPane.ToggleCollapse()
-		}
-	case navigation.ActionToggleVisible:
-		if t.detailPane != nil {
-			t.detailPane.Toggle()
-		}
-	}
+	// Close modal by default
+	t.showErrorModal = false
 	return nil
 }
 
-// routeActionToLogPane routes navigation actions to the log pane
-func (t *TUI) routeActionToLogPane(action navigation.KeyAction) tea.Cmd {
-	switch action {
-	case navigation.ActionClearLogs:
-		if t.logPane != nil {
-			t.logPane.ClearLogs()
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// getMaxLogScrollOffset returns the maximum scroll offset for logs
+func (t *TUI) getMaxLogScrollOffset() int {
+	if len(t.podLogs) == 0 {
+		return 0
+	}
+
+	visibleLines := t.getLogPageSize()
+	maxScroll := len(t.podLogs) - visibleLines
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	return maxScroll
+}
+
+// getLogPageSize returns the number of visible log lines per page
+func (t *TUI) getLogPageSize() int {
+	if !t.showLogs {
+		return 10 // fallback
+	}
+
+	// Calculate log panel height similar to renderContent
+	availableHeight := t.height - 4 // header + tabs + status + margins
+	logHeight := availableHeight / 3
+	if logHeight < 5 {
+		logHeight = 5
+	}
+
+	// Account for border and padding
+	visibleLines := logHeight - 4
+	if visibleLines < 1 {
+		visibleLines = 1
+	}
+	return visibleLines
+}
+
+// Log coloring helper functions
+
+// colorizeAppLog applies color to app log messages based on content
+func (t *TUI) colorizeAppLog(logLine string) string {
+	// Define brighter, more readable color styles
+	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true) // Bright red + bold
+	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))             // Orange
+	successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46"))           // Bright green
+	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("81"))              // Bright blue
+
+	// Apply colors based on content patterns
+	switch {
+	case strings.Contains(logLine, "❌") || strings.Contains(logLine, "Failed") || strings.Contains(logLine, "Error"):
+		return errorStyle.Render(logLine)
+	case strings.Contains(logLine, "⟳") || strings.Contains(logLine, "retry") || strings.Contains(logLine, "Retry"):
+		return warnStyle.Render(logLine)
+	case strings.Contains(logLine, "✓") || strings.Contains(logLine, "Connected") || strings.Contains(logLine, "Loaded") || strings.Contains(logLine, "Switched"):
+		return successStyle.Render(logLine)
+	case strings.Contains(logLine, "🔄") || strings.Contains(logLine, "●") || strings.Contains(logLine, "Loading"):
+		return infoStyle.Render(logLine)
+	default:
+		return logLine // No coloring for neutral messages
+	}
+}
+
+// colorizePodLog applies color to pod log lines based on log level patterns
+func (t *TUI) colorizePodLog(logLine string) string {
+	// Define brighter, more readable color styles
+	timestampStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("246"))        // Brighter gray
+	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true) // Bright red + bold
+	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))             // Orange/yellow
+	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46"))              // Bright green
+	debugStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("81"))             // Bright blue
+	noticeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("51"))            // Cyan for notice
+
+	// Improved log level patterns - more comprehensive
+	errorPattern := regexp.MustCompile(`(?i)\b(error|fatal|err|panic|exception|fail|critical)\b`)
+	warnPattern := regexp.MustCompile(`(?i)\b(warn|warning|deprecated|caution)\b`)
+	infoPattern := regexp.MustCompile(`(?i)\b(info|information|starting|started|listening)\b`)
+	debugPattern := regexp.MustCompile(`(?i)\b(debug|trace|verbose)\b`)
+	noticePattern := regexp.MustCompile(`(?i)\b(notice|configured|loaded|compiled)\b`)
+
+	// More flexible timestamp pattern
+	timestampPattern := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[\.\d]*`)
+
+	// Simple approach - color the entire line based on content
+	switch {
+	case errorPattern.MatchString(logLine):
+		return errorStyle.Render(logLine)
+	case warnPattern.MatchString(logLine):
+		return warnStyle.Render(logLine)
+	case infoPattern.MatchString(logLine):
+		return infoStyle.Render(logLine)
+	case debugPattern.MatchString(logLine):
+		return debugStyle.Render(logLine)
+	case noticePattern.MatchString(logLine):
+		return noticeStyle.Render(logLine)
+	case timestampPattern.MatchString(logLine):
+		// If it's mainly a timestamp line, color it with timestamp style
+		return timestampStyle.Render(logLine)
+	default:
+		return logLine // Default color for unmatched content
+	}
+}
+
+// OpenShift resource display functions
+
+func (t *TUI) updateBuildConfigDisplay() {
+	if t.loadingBuildConfigs {
+		t.mainContent = "🔨 BuildConfigs\n\nLoading BuildConfigs..."
+		return
+	}
+
+	if len(t.buildConfigs) == 0 {
+		t.mainContent = "🔨 BuildConfigs\n\nNo BuildConfigs found in current namespace.\n\nPress 'r' to refresh"
+		return
+	}
+
+	var content strings.Builder
+	content.WriteString("🔨 BuildConfigs\n\n")
+
+	// Header
+	header := fmt.Sprintf("%-30s %-20s %-15s %-10s %s", "NAME", "SOURCE", "STRATEGY", "BUILDS", "AGE")
+	content.WriteString(lipgloss.NewStyle().Bold(true).Render(header))
+	content.WriteString("\n")
+	content.WriteString(strings.Repeat("-", 90))
+	content.WriteString("\n")
+
+	// BuildConfig rows
+	for i, bc := range t.buildConfigs {
+		style := lipgloss.NewStyle()
+		if i == t.selectedBuildConfig {
+			style = style.Background(lipgloss.Color("8")).Foreground(lipgloss.Color("15"))
 		}
-	case navigation.ActionToggleAutoscroll:
-		if t.logPane != nil {
-			t.logPane.ToggleAutoScroll()
+
+		sourceType := "Unknown"
+		if bc.Source.Git != nil {
+			sourceType = "Git"
 		}
-	case navigation.ActionTogglePause:
-		if t.logPane != nil {
-			t.logPane.TogglePause()
+
+		buildsInfo := fmt.Sprintf("%d/%d", bc.SuccessBuilds, bc.SuccessBuilds+bc.FailedBuilds)
+
+		row := fmt.Sprintf("%-30s %-20s %-15s %-10s %s",
+			truncateString(bc.Name, 30),
+			truncateString(sourceType, 20),
+			truncateString(bc.Strategy, 15),
+			buildsInfo,
+			bc.Age,
+		)
+
+		content.WriteString(style.Render(row))
+		content.WriteString("\n")
+	}
+
+	// Instructions
+	content.WriteString("\nUse j/k or ↑↓ to navigate • Press 'enter' to trigger build • Press 'r' to refresh")
+
+	t.mainContent = content.String()
+	
+	// Update detail panel with selected BuildConfig info
+	if t.selectedBuildConfig < len(t.buildConfigs) && t.selectedBuildConfig >= 0 {
+		t.updateBuildConfigDetails(t.buildConfigs[t.selectedBuildConfig])
+	}
+}
+
+func (t *TUI) updateImageStreamDisplay() {
+	if t.loadingImageStreams {
+		t.mainContent = "🖼️ ImageStreams\n\nLoading ImageStreams..."
+		return
+	}
+
+	if len(t.imageStreams) == 0 {
+		t.mainContent = "🖼️ ImageStreams\n\nNo ImageStreams found in current namespace.\n\nPress 'r' to refresh"
+		return
+	}
+
+	var content strings.Builder
+	content.WriteString("🖼️ ImageStreams\n\n")
+
+	// Header
+	header := fmt.Sprintf("%-35s %-40s %-8s %s", "NAME", "DOCKER REPOSITORY", "TAGS", "AGE")
+	content.WriteString(lipgloss.NewStyle().Bold(true).Render(header))
+	content.WriteString("\n")
+	content.WriteString(strings.Repeat("-", 95))
+	content.WriteString("\n")
+
+	// ImageStream rows
+	for i, is := range t.imageStreams {
+		style := lipgloss.NewStyle()
+		if i == t.selectedImageStream {
+			style = style.Background(lipgloss.Color("8")).Foreground(lipgloss.Color("15"))
+		}
+
+		tagCount := len(is.Tags)
+		repo := truncateString(is.DockerImageRepository, 40)
+
+		row := fmt.Sprintf("%-35s %-40s %-8d %s",
+			truncateString(is.Name, 35),
+			repo,
+			tagCount,
+			is.Age,
+		)
+
+		content.WriteString(style.Render(row))
+		content.WriteString("\n")
+	}
+
+	// Instructions
+	content.WriteString("\nUse j/k or ↑↓ to navigate • Press 'enter' for tag details • Press 'r' to refresh")
+
+	t.mainContent = content.String()
+	
+	// Update detail panel with selected ImageStream info
+	if t.selectedImageStream < len(t.imageStreams) && t.selectedImageStream >= 0 {
+		t.updateImageStreamDetails(t.imageStreams[t.selectedImageStream])
+	}
+}
+
+func (t *TUI) updateRouteDisplay() {
+	if t.loadingRoutes {
+		t.mainContent = "🛣️ Routes\n\nLoading Routes..."
+		return
+	}
+
+	if len(t.routes) == 0 {
+		t.mainContent = "🛣️ Routes\n\nNo Routes found in current namespace.\n\nPress 'r' to refresh"
+		return
+	}
+
+	var content strings.Builder
+	content.WriteString("🛣️ Routes\n\n")
+
+	// Header
+	header := fmt.Sprintf("%-25s %-40s %-20s %-8s %s", "NAME", "HOST", "SERVICE", "TLS", "AGE")
+	content.WriteString(lipgloss.NewStyle().Bold(true).Render(header))
+	content.WriteString("\n")
+	content.WriteString(strings.Repeat("-", 100))
+	content.WriteString("\n")
+
+	// Route rows
+	for i, route := range t.routes {
+		style := lipgloss.NewStyle()
+		if i == t.selectedRoute {
+			style = style.Background(lipgloss.Color("8")).Foreground(lipgloss.Color("15"))
+		}
+
+		tlsStatus := "None"
+		if route.TLS != nil {
+			tlsStatus = route.TLS.Termination
+		}
+
+		row := fmt.Sprintf("%-25s %-40s %-20s %-8s %s",
+			truncateString(route.Name, 25),
+			truncateString(route.Host, 40),
+			truncateString(route.Service.Name, 20),
+			tlsStatus,
+			route.Age,
+		)
+
+		content.WriteString(style.Render(row))
+		content.WriteString("\n")
+	}
+
+	// Instructions
+	content.WriteString("\nUse j/k or ↑↓ to navigate • Press 'enter' for details • Press 'r' to refresh")
+
+	t.mainContent = content.String()
+	
+	// Update detail panel with selected Route info
+	if t.selectedRoute < len(t.routes) && t.selectedRoute >= 0 {
+		t.updateRouteDetails(t.routes[t.selectedRoute])
+	}
+}
+
+// Helper function to truncate strings
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
+
+// handleTabSwitch handles tab switching and auto-loading
+func (t *TUI) handleTabSwitch() tea.Cmd {
+	t.updateMainContent()
+	
+	// Auto-load data for OpenShift tabs if needed
+	if t.connected {
+		switch t.ActiveTab {
+		case 5: // BuildConfigs
+			if len(t.buildConfigs) == 0 && !t.loadingBuildConfigs {
+				t.loadingBuildConfigs = true
+				return t.loadBuildConfigs()
+			}
+		case 6: // ImageStreams
+			if len(t.imageStreams) == 0 && !t.loadingImageStreams {
+				t.loadingImageStreams = true
+				return t.loadImageStreams()
+			}
+		case 7: // Routes
+			if len(t.routes) == 0 && !t.loadingRoutes {
+				t.loadingRoutes = true
+				return t.loadRoutes()
+			}
 		}
 	}
+	
 	return nil
+}
+
+// OpenShift resource loading functions
+
+func (t *TUI) loadBuildConfigs() tea.Cmd {
+	return tea.Cmd(func() tea.Msg {
+		// Check if we have an OpenShift client
+		osClient, ok := t.k8sClient.(k8s.OpenShiftClient)
+		if !ok || !osClient.IsOpenShift() {
+			return messages.BuildConfigsLoadError{Err: fmt.Errorf("not connected to an OpenShift cluster")}
+		}
+
+		// Create a resource client for OpenShift
+		resourceClient := resources.NewOpenShiftResourceClient(osClient)
+		
+		// Load BuildConfigs
+		listOpts := resources.ListOptions{
+			Namespace: t.namespace,
+		}
+		
+		buildConfigList, err := resourceClient.ListBuildConfigs(context.Background(), listOpts)
+		if err != nil {
+			return messages.BuildConfigsLoadError{Err: err}
+		}
+		
+		return messages.BuildConfigsLoaded{BuildConfigs: buildConfigList.Items}
+	})
+}
+
+func (t *TUI) loadImageStreams() tea.Cmd {
+	return tea.Cmd(func() tea.Msg {
+		// Check if we have an OpenShift client
+		osClient, ok := t.k8sClient.(k8s.OpenShiftClient)
+		if !ok || !osClient.IsOpenShift() {
+			return messages.ImageStreamsLoadError{Err: fmt.Errorf("not connected to an OpenShift cluster")}
+		}
+
+		// Create a resource client for OpenShift
+		resourceClient := resources.NewOpenShiftResourceClient(osClient)
+		
+		// Load ImageStreams
+		listOpts := resources.ListOptions{
+			Namespace: t.namespace,
+		}
+		
+		imageStreamList, err := resourceClient.ListImageStreams(context.Background(), listOpts)
+		if err != nil {
+			return messages.ImageStreamsLoadError{Err: err}
+		}
+		
+		return messages.ImageStreamsLoaded{ImageStreams: imageStreamList.Items}
+	})
+}
+
+func (t *TUI) loadRoutes() tea.Cmd {
+	return tea.Cmd(func() tea.Msg {
+		// Check if we have an OpenShift client
+		osClient, ok := t.k8sClient.(k8s.OpenShiftClient)
+		if !ok || !osClient.IsOpenShift() {
+			return messages.RoutesLoadError{Err: fmt.Errorf("not connected to an OpenShift cluster")}
+		}
+
+		// Create a resource client for OpenShift
+		resourceClient := resources.NewOpenShiftResourceClient(osClient)
+		
+		// Load Routes
+		listOpts := resources.ListOptions{
+			Namespace: t.namespace,
+		}
+		
+		routeList, err := resourceClient.ListRoutes(context.Background(), listOpts)
+		if err != nil {
+			return messages.RoutesLoadError{Err: err}
+		}
+		
+		return messages.RoutesLoaded{Routes: routeList.Items}
+	})
 }

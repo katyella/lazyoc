@@ -42,6 +42,10 @@ const (
 	TabDeployments
 	TabConfigMaps
 	TabSecrets
+	// OpenShift-specific tabs
+	TabBuildConfigs
+	TabImageStreams
+	TabRoutes
 )
 
 // App represents the main application model
@@ -159,34 +163,40 @@ func (a *App) GetStatusMessage() string {
 
 // NextTab switches to the next resource tab
 func (a *App) NextTab() {
-	switch a.ActiveTab {
-	case TabPods:
-		a.ActiveTab = TabServices
-	case TabServices:
-		a.ActiveTab = TabDeployments
-	case TabDeployments:
-		a.ActiveTab = TabConfigMaps
-	case TabConfigMaps:
-		a.ActiveTab = TabSecrets
-	case TabSecrets:
-		a.ActiveTab = TabPods
+	// Get all available tabs in order (matching constants.ResourceTabs)
+	tabs := []TabType{
+		TabPods, TabServices, TabDeployments, TabConfigMaps, TabSecrets,
+		TabBuildConfigs, TabImageStreams, TabRoutes,
 	}
+	
+	// Find current tab index and move to next
+	for i, tab := range tabs {
+		if tab == a.ActiveTab {
+			a.ActiveTab = tabs[(i+1)%len(tabs)]
+			return
+		}
+	}
+	// Fallback to first tab if current tab not found
+	a.ActiveTab = TabPods
 }
 
 // PrevTab switches to the previous resource tab
 func (a *App) PrevTab() {
-	switch a.ActiveTab {
-	case TabPods:
-		a.ActiveTab = TabSecrets
-	case TabServices:
-		a.ActiveTab = TabPods
-	case TabDeployments:
-		a.ActiveTab = TabServices
-	case TabConfigMaps:
-		a.ActiveTab = TabDeployments
-	case TabSecrets:
-		a.ActiveTab = TabConfigMaps
+	// Get all available tabs in order (matching constants.ResourceTabs)
+	tabs := []TabType{
+		TabPods, TabServices, TabDeployments, TabConfigMaps, TabSecrets,
+		TabBuildConfigs, TabImageStreams, TabRoutes,
 	}
+	
+	// Find current tab index and move to previous
+	for i, tab := range tabs {
+		if tab == a.ActiveTab {
+			a.ActiveTab = tabs[(i-1+len(tabs))%len(tabs)]
+			return
+		}
+	}
+	// Fallback to first tab if current tab not found
+	a.ActiveTab = TabPods
 }
 
 // GetTabName returns the display name for a tab
@@ -202,6 +212,13 @@ func (a *App) GetTabName(tab TabType) string {
 		return "ConfigMaps"
 	case TabSecrets:
 		return "Secrets"
+	// OpenShift-specific tabs
+	case TabBuildConfigs:
+		return "BuildConfigs"
+	case TabImageStreams:
+		return "ImageStreams"
+	case TabRoutes:
+		return "Routes"
 	default:
 		return "Unknown"
 	}
