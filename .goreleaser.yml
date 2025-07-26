@@ -74,34 +74,34 @@ changelog:
     - title: Others
       order: 999
 
-# Homebrew formula
-brews:
-  - name: lazyoc
-    homepage: "https://github.com/katyella/lazyoc"
-    description: "A lazy terminal UI for OpenShift/Kubernetes clusters"
-    license: "Apache-2.0"
-    repository:
-      owner: katyella
-      name: homebrew-tap
-    directory: Formula
-    commit_author:
-      name: goreleaserbot
-      email: bot@goreleaser.com
-    commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
-    install: |
-      bin.install "lazyoc"
-    test: |
-      system "#{bin}/lazyoc --version"
+# Homebrew formula (disabled until repository is created)
+# brews:
+#   - name: lazyoc
+#     homepage: "https://github.com/katyella/lazyoc"
+#     description: "A lazy terminal UI for OpenShift/Kubernetes clusters"
+#     license: "Apache-2.0"
+#     repository:
+#       owner: katyella
+#       name: homebrew-tap
+#     directory: Formula
+#     commit_author:
+#       name: goreleaserbot
+#       email: bot@goreleaser.com
+#     commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
+#     install: |
+#       bin.install "lazyoc"
+#     test: |
+#       system "#{bin}/lazyoc --version"
 
-# Windows Scoop
-scoops:
-  - name: lazyoc
-    homepage: "https://github.com/katyella/lazyoc"
-    description: "A lazy terminal UI for OpenShift/Kubernetes clusters"
-    license: "Apache-2.0"
-    repository:
-      owner: katyella
-      name: scoop-bucket
+# Windows Scoop (disabled until repository is created)
+# scoops:
+#   - name: lazyoc
+#     homepage: "https://github.com/katyella/lazyoc"
+#     description: "A lazy terminal UI for OpenShift/Kubernetes clusters"
+#     license: "Apache-2.0"
+#     repository:
+#       owner: katyella
+#       name: scoop-bucket
 
 release:
   github:
@@ -116,22 +116,31 @@ release:
     
     ### Installation
     
-    #### macOS (Homebrew)
+    #### From Source
     ```bash
-    brew install mattwojtowicz/tap/lazyoc
+    go install github.com/katyella/lazyoc/cmd/lazyoc@latest
     ```
     
-    #### Linux/macOS (Manual)
+    #### Manual Installation
+    
+    Download the appropriate binary from the assets below and extract:
+    
+    **Linux (x86_64)**
     ```bash
-    # Download and extract the appropriate binary from the assets below
     curl -L https://github.com/katyella/lazyoc/releases/download/{{ .Tag }}/lazyoc_{{ .Version }}_Linux_x86_64.tar.gz | tar xz
     sudo mv lazyoc /usr/local/bin/
     ```
     
-    #### Windows (Scoop)
-    ```powershell
-    scoop bucket add katyella https://github.com/katyella/scoop-bucket
-    scoop install lazyoc
+    **macOS (x86_64)**
+    ```bash
+    curl -L https://github.com/katyella/lazyoc/releases/download/{{ .Tag }}/lazyoc_{{ .Version }}_Darwin_x86_64.tar.gz | tar xz
+    sudo mv lazyoc /usr/local/bin/
+    ```
+    
+    **macOS (ARM64)**
+    ```bash
+    curl -L https://github.com/katyella/lazyoc/releases/download/{{ .Tag }}/lazyoc_{{ .Version }}_Darwin_arm64.tar.gz | tar xz
+    sudo mv lazyoc /usr/local/bin/
     ```
   footer: |
     **Full Changelog**: https://github.com/katyella/lazyoc/compare/{{ .PreviousTag }}...{{ .Tag }}
