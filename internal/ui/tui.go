@@ -60,6 +60,12 @@ type TUI struct {
 	deployments        []resources.DeploymentInfo
 	selectedDeployment int
 	loadingDeployments bool
+	configMaps        []resources.ConfigMapInfo
+	selectedConfigMap int
+	loadingConfigMaps bool
+	secrets        []resources.SecretInfo
+	selectedSecret int
+	loadingSecrets bool
 
 	// OpenShift resource data
 	buildConfigs      []resources.BuildConfigInfo
@@ -291,6 +297,16 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					t.deployments = []resources.DeploymentInfo{}
 					t.updateMainContent()
 					return t, t.loadDeployments()
+				case 3: // ConfigMaps
+					t.loadingConfigMaps = true
+					t.configMaps = []resources.ConfigMapInfo{}
+					t.updateMainContent()
+					return t, t.loadConfigMaps()
+				case 4: // Secrets
+					t.loadingSecrets = true
+					t.secrets = []resources.SecretInfo{}
+					t.updateMainContent()
+					return t, t.loadSecrets()
 				case 5: // BuildConfigs
 					t.loadingBuildConfigs = true
 					t.buildConfigs = []resources.BuildConfigInfo{}
@@ -431,6 +447,16 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						t.selectedDeployment = (t.selectedDeployment + 1) % len(t.deployments)
 						t.updateDeploymentDisplay()
 					}
+				case models.TabConfigMaps:
+					if len(t.configMaps) > 0 {
+						t.selectedConfigMap = (t.selectedConfigMap + 1) % len(t.configMaps)
+						t.updateConfigMapDisplay()
+					}
+				case models.TabSecrets:
+					if len(t.secrets) > 0 {
+						t.selectedSecret = (t.selectedSecret + 1) % len(t.secrets)
+						t.updateSecretDisplay()
+					}
 				case models.TabBuildConfigs:
 					if len(t.buildConfigs) > 0 {
 						t.selectedBuildConfig = (t.selectedBuildConfig + 1) % len(t.buildConfigs)
@@ -501,6 +527,22 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							t.selectedDeployment = len(t.deployments) - 1
 						}
 						t.updateDeploymentDisplay()
+					}
+				case models.TabConfigMaps:
+					if len(t.configMaps) > 0 {
+						t.selectedConfigMap = t.selectedConfigMap - 1
+						if t.selectedConfigMap < 0 {
+							t.selectedConfigMap = len(t.configMaps) - 1
+						}
+						t.updateConfigMapDisplay()
+					}
+				case models.TabSecrets:
+					if len(t.secrets) > 0 {
+						t.selectedSecret = t.selectedSecret - 1
+						if t.selectedSecret < 0 {
+							t.selectedSecret = len(t.secrets) - 1
+						}
+						t.updateSecretDisplay()
 					}
 				case models.TabBuildConfigs:
 					if len(t.buildConfigs) > 0 {
@@ -748,6 +790,56 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.loadingDeployments = false
 		t.logContent = append(t.logContent, fmt.Sprintf("❌ Failed to load deployments: %v", msg.Err))
 		t.updateDeploymentDisplay()
+	case messages.ConfigMapsLoaded:
+		// Store the previously selected configmap name to preserve selection during refresh
+		var previouslySelectedConfigMapName string
+		if len(t.configMaps) > 0 && t.selectedConfigMap < len(t.configMaps) {
+			previouslySelectedConfigMapName = t.configMaps[t.selectedConfigMap].Name
+		}
+		t.configMaps = msg.ConfigMaps
+		t.loadingConfigMaps = false
+		// Try to preserve the selected configmap after refresh
+		newSelectedConfigMap := 0
+		if previouslySelectedConfigMapName != "" {
+			for i, cm := range msg.ConfigMaps {
+				if cm.Name == previouslySelectedConfigMapName {
+					newSelectedConfigMap = i
+					break
+				}
+			}
+		}
+		t.selectedConfigMap = newSelectedConfigMap
+		t.updateConfigMapDisplay()
+		t.logContent = append(t.logContent, fmt.Sprintf("Loaded %d configmaps from namespace %s", len(msg.ConfigMaps), t.namespace))
+	case messages.ConfigMapsLoadError:
+		t.loadingConfigMaps = false
+		t.logContent = append(t.logContent, fmt.Sprintf("❌ Failed to load configmaps: %v", msg.Err))
+		t.updateConfigMapDisplay()
+	case messages.SecretsLoaded:
+		// Store the previously selected secret name to preserve selection during refresh
+		var previouslySelectedSecretName string
+		if len(t.secrets) > 0 && t.selectedSecret < len(t.secrets) {
+			previouslySelectedSecretName = t.secrets[t.selectedSecret].Name
+		}
+		t.secrets = msg.Secrets
+		t.loadingSecrets = false
+		// Try to preserve the selected secret after refresh
+		newSelectedSecret := 0
+		if previouslySelectedSecretName != "" {
+			for i, secret := range msg.Secrets {
+				if secret.Name == previouslySelectedSecretName {
+					newSelectedSecret = i
+					break
+				}
+			}
+		}
+		t.selectedSecret = newSelectedSecret
+		t.updateSecretDisplay()
+		t.logContent = append(t.logContent, fmt.Sprintf("Loaded %d secrets from namespace %s", len(msg.Secrets), t.namespace))
+	case messages.SecretsLoadError:
+		t.loadingSecrets = false
+		t.logContent = append(t.logContent, fmt.Sprintf("❌ Failed to load secrets: %v", msg.Err))
+		t.updateSecretDisplay()
 
 	// OpenShift resource message handlers
 	case messages.BuildConfigsLoaded:
@@ -1645,6 +1737,10 @@ Press 'q' to quit`, tabName)
 		t.updateServiceDisplay()
 	case 2: // Deployments tab
 		t.updateDeploymentDisplay()
+	case 3: // ConfigMaps tab
+		t.updateConfigMapDisplay()
+	case 4: // Secrets tab
+		t.updateSecretDisplay()
 	case 5: // BuildConfigs tab
 		t.updateBuildConfigDisplay()
 	case 6: // ImageStreams tab
@@ -1859,6 +1955,60 @@ func (t *TUI) loadDeployments() tea.Cmd {
 
 		t.loadingDeployments = false
 		return messages.DeploymentsLoaded{Deployments: deploymentList.Items}
+	}
+}
+
+// loadConfigMaps loads configmaps from the resource client
+func (t *TUI) loadConfigMaps() tea.Cmd {
+	return func() tea.Msg {
+		if !t.connected || t.resourceClient == nil {
+			return messages.ConfigMapsLoadError{Err: fmt.Errorf("not connected to cluster")}
+		}
+
+		t.loadingConfigMaps = true
+
+		ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultOperationTimeout)
+		defer cancel()
+
+		opts := resources.ListOptions{
+			Namespace: t.namespace,
+		}
+
+		configMapList, err := t.resourceClient.ListConfigMaps(ctx, opts)
+		if err != nil {
+			t.loadingConfigMaps = false
+			return messages.ConfigMapsLoadError{Err: err}
+		}
+
+		t.loadingConfigMaps = false
+		return messages.ConfigMapsLoaded{ConfigMaps: configMapList.Items}
+	}
+}
+
+// loadSecrets loads secrets from the resource client
+func (t *TUI) loadSecrets() tea.Cmd {
+	return func() tea.Msg {
+		if !t.connected || t.resourceClient == nil {
+			return messages.SecretsLoadError{Err: fmt.Errorf("not connected to cluster")}
+		}
+
+		t.loadingSecrets = true
+
+		ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultOperationTimeout)
+		defer cancel()
+
+		opts := resources.ListOptions{
+			Namespace: t.namespace,
+		}
+
+		secretList, err := t.resourceClient.ListSecrets(ctx, opts)
+		if err != nil {
+			t.loadingSecrets = false
+			return messages.SecretsLoadError{Err: err}
+		}
+
+		t.loadingSecrets = false
+		return messages.SecretsLoaded{Secrets: secretList.Items}
 	}
 }
 
@@ -2321,6 +2471,78 @@ func (t *TUI) updateDeploymentDetails(deploy resources.DeploymentInfo) {
 	// Condition information
 	if deploy.Condition != "" {
 		details.WriteString(fmt.Sprintf("\nCondition:    %s\n", deploy.Condition))
+	}
+
+	t.detailContent = details.String()
+}
+
+// updateConfigMapDetails updates the detail pane with ConfigMap information
+func (t *TUI) updateConfigMapDetails(cm resources.ConfigMapInfo) {
+	var details strings.Builder
+	details.WriteString(fmt.Sprintf("⚙️ ConfigMap Details: %s\n\n", cm.Name))
+
+	details.WriteString(fmt.Sprintf("Namespace:    %s\n", cm.Namespace))
+	details.WriteString(fmt.Sprintf("Status:       %s\n", cm.Status))
+	details.WriteString(fmt.Sprintf("Data Count:   %d\n", cm.DataCount))
+	details.WriteString(fmt.Sprintf("Age:          %s\n", cm.Age))
+	
+	// Labels information
+	if len(cm.Labels) > 0 {
+		details.WriteString(fmt.Sprintf("\nLabels:\n"))
+		for key, value := range cm.Labels {
+			details.WriteString(fmt.Sprintf("  %s: %s\n", key, value))
+		}
+	}
+	
+	// Annotations information
+	if len(cm.Annotations) > 0 {
+		details.WriteString(fmt.Sprintf("\nAnnotations:\n"))
+		for key, value := range cm.Annotations {
+			// Truncate long annotation values
+			if len(value) > 60 {
+				value = value[:57] + "..."
+			}
+			details.WriteString(fmt.Sprintf("  %s: %s\n", key, value))
+		}
+	}
+
+	t.detailContent = details.String()
+}
+
+// updateSecretDetails updates the detail pane with Secret information
+func (t *TUI) updateSecretDetails(secret resources.SecretInfo) {
+	var details strings.Builder
+	details.WriteString(fmt.Sprintf("🔐 Secret Details: %s\n\n", secret.Name))
+
+	details.WriteString(fmt.Sprintf("Namespace:    %s\n", secret.Namespace))
+	details.WriteString(fmt.Sprintf("Status:       %s\n", secret.Status))
+	details.WriteString(fmt.Sprintf("Type:         %s\n", secret.Type))
+	details.WriteString(fmt.Sprintf("Data Count:   %d\n", secret.DataCount))
+	details.WriteString(fmt.Sprintf("Age:          %s\n", secret.Age))
+	
+	// Security notice for secrets
+	details.WriteString(fmt.Sprintf("\n🔒 Security:\n"))
+	details.WriteString(fmt.Sprintf("  Secret data is protected and not displayed\n"))
+	details.WriteString(fmt.Sprintf("  for security reasons.\n"))
+	
+	// Labels information
+	if len(secret.Labels) > 0 {
+		details.WriteString(fmt.Sprintf("\nLabels:\n"))
+		for key, value := range secret.Labels {
+			details.WriteString(fmt.Sprintf("  %s: %s\n", key, value))
+		}
+	}
+	
+	// Annotations information (non-sensitive)
+	if len(secret.Annotations) > 0 {
+		details.WriteString(fmt.Sprintf("\nAnnotations:\n"))
+		for key, value := range secret.Annotations {
+			// Truncate long annotation values
+			if len(value) > 60 {
+				value = value[:57] + "..."
+			}
+			details.WriteString(fmt.Sprintf("  %s: %s\n", key, value))
+		}
 	}
 
 	t.detailContent = details.String()
@@ -3187,6 +3409,107 @@ func (t *TUI) updateDeploymentDisplay() {
 	}
 }
 
+// updateConfigMapDisplay updates the main content with configmap information
+func (t *TUI) updateConfigMapDisplay() {
+	if t.loadingConfigMaps {
+		t.mainContent = "⚙️ ConfigMaps\n\nLoading ConfigMaps..."
+		return
+	}
+
+	if len(t.configMaps) == 0 {
+		t.mainContent = "⚙️ ConfigMaps\n\nNo ConfigMaps found in current namespace.\n\nPress 'r' to refresh"
+		return
+	}
+
+	var content strings.Builder
+	content.WriteString("⚙️ ConfigMaps\n\n")
+
+	// Header
+	header := fmt.Sprintf("%-30s %-10s %s", "NAME", "DATA", "AGE")
+	content.WriteString(lipgloss.NewStyle().Bold(true).Render(header))
+	content.WriteString("\n")
+	content.WriteString(strings.Repeat("-", 50))
+	content.WriteString("\n")
+
+	// ConfigMap rows
+	for i, cm := range t.configMaps {
+		style := lipgloss.NewStyle()
+		if i == t.selectedConfigMap {
+			style = style.Background(lipgloss.Color("8")).Foreground(lipgloss.Color("15"))
+		}
+
+		row := fmt.Sprintf("%-30s %-10d %s",
+			truncateString(cm.Name, 30),
+			cm.DataCount,
+			cm.Age,
+		)
+
+		content.WriteString(style.Render(row))
+		content.WriteString("\n")
+	}
+
+	// Instructions
+	content.WriteString("\nUse j/k or ↑↓ to navigate • Press 'enter' for details • Press 'r' to refresh")
+
+	t.mainContent = content.String()
+	
+	// Update detail panel with selected ConfigMap info
+	if t.selectedConfigMap < len(t.configMaps) && t.selectedConfigMap >= 0 {
+		t.updateConfigMapDetails(t.configMaps[t.selectedConfigMap])
+	}
+}
+
+// updateSecretDisplay updates the main content with secret information
+func (t *TUI) updateSecretDisplay() {
+	if t.loadingSecrets {
+		t.mainContent = "🔐 Secrets\n\nLoading Secrets..."
+		return
+	}
+
+	if len(t.secrets) == 0 {
+		t.mainContent = "🔐 Secrets\n\nNo Secrets found in current namespace.\n\nPress 'r' to refresh"
+		return
+	}
+
+	var content strings.Builder
+	content.WriteString("🔐 Secrets\n\n")
+
+	// Header
+	header := fmt.Sprintf("%-30s %-20s %-10s %s", "NAME", "TYPE", "DATA", "AGE")
+	content.WriteString(lipgloss.NewStyle().Bold(true).Render(header))
+	content.WriteString("\n")
+	content.WriteString(strings.Repeat("-", 70))
+	content.WriteString("\n")
+
+	// Secret rows
+	for i, secret := range t.secrets {
+		style := lipgloss.NewStyle()
+		if i == t.selectedSecret {
+			style = style.Background(lipgloss.Color("8")).Foreground(lipgloss.Color("15"))
+		}
+
+		row := fmt.Sprintf("%-30s %-20s %-10d %s",
+			truncateString(secret.Name, 30),
+			truncateString(secret.Type, 20),
+			secret.DataCount,
+			secret.Age,
+		)
+
+		content.WriteString(style.Render(row))
+		content.WriteString("\n")
+	}
+
+	// Instructions
+	content.WriteString("\nUse j/k or ↑↓ to navigate • Press 'enter' for details • Press 'r' to refresh")
+
+	t.mainContent = content.String()
+	
+	// Update detail panel with selected Secret info
+	if t.selectedSecret < len(t.secrets) && t.selectedSecret >= 0 {
+		t.updateSecretDetails(t.secrets[t.selectedSecret])
+	}
+}
+
 // Helper function to truncate strings
 func truncateString(s string, maxLen int) string {
 	if len(s) <= maxLen {
@@ -3211,6 +3534,16 @@ func (t *TUI) handleTabSwitch() tea.Cmd {
 			if len(t.deployments) == 0 && !t.loadingDeployments {
 				t.loadingDeployments = true
 				return t.loadDeployments()
+			}
+		case 3: // ConfigMaps
+			if len(t.configMaps) == 0 && !t.loadingConfigMaps {
+				t.loadingConfigMaps = true
+				return t.loadConfigMaps()
+			}
+		case 4: // Secrets
+			if len(t.secrets) == 0 && !t.loadingSecrets {
+				t.loadingSecrets = true
+				return t.loadSecrets()
 			}
 		case 5: // BuildConfigs
 			if len(t.buildConfigs) == 0 && !t.loadingBuildConfigs {

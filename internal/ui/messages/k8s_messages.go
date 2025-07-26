@@ -80,6 +80,26 @@ type DeploymentsLoadError struct {
 	Err error
 }
 
+// ConfigMapsLoaded is sent when ConfigMaps are successfully loaded
+type ConfigMapsLoaded struct {
+	ConfigMaps []resources.ConfigMapInfo
+}
+
+// ConfigMapsLoadError is sent when ConfigMap loading fails
+type ConfigMapsLoadError struct {
+	Err error
+}
+
+// SecretsLoaded is sent when Secrets are successfully loaded
+type SecretsLoaded struct {
+	Secrets []resources.SecretInfo
+}
+
+// SecretsLoadError is sent when Secret loading fails
+type SecretsLoadError struct {
+	Err error
+}
+
 // OpenShift-specific messages
 
 // BuildConfigsLoaded is sent when BuildConfigs are successfully loaded
