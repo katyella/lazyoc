@@ -2,10 +2,13 @@ package ui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
@@ -31,7 +34,6 @@ import (
 type TUI struct {
 	*models.App
 
-
 	// Kubernetes client integration
 	k8sClient      k8s.Client
 	resourceClient resources.ResourceClient
@@ -52,33 +54,33 @@ type TUI struct {
 	pods        []resources.PodInfo
 	selectedPod int
 	loadingPods bool
-	
+
 	// Kubernetes resource data
-	services        []resources.ServiceInfo
-	selectedService int
-	loadingServices bool
+	services           []resources.ServiceInfo
+	selectedService    int
+	loadingServices    bool
 	deployments        []resources.DeploymentInfo
 	selectedDeployment int
 	loadingDeployments bool
-	configMaps        []resources.ConfigMapInfo
-	selectedConfigMap int
-	loadingConfigMaps bool
-	secrets        []resources.SecretInfo
-	selectedSecret int
-	loadingSecrets bool
+	configMaps         []resources.ConfigMapInfo
+	selectedConfigMap  int
+	loadingConfigMaps  bool
+	secrets            []resources.SecretInfo
+	selectedSecret     int
+	loadingSecrets     bool
 
 	// OpenShift resource data
-	buildConfigs      []resources.BuildConfigInfo
+	buildConfigs        []resources.BuildConfigInfo
 	selectedBuildConfig int
 	loadingBuildConfigs bool
 
-	imageStreams      []resources.ImageStreamInfo
+	imageStreams        []resources.ImageStreamInfo
 	selectedImageStream int
 	loadingImageStreams bool
 
-	routes            []resources.RouteInfo
-	selectedRoute     int
-	loadingRoutes     bool
+	routes        []resources.RouteInfo
+	selectedRoute int
+	loadingRoutes bool
 
 	// Pod logs data
 	podLogs         []string
@@ -90,8 +92,13 @@ type TUI struct {
 	tailMode        bool            // True when auto-scrolling to new logs
 	seenLogLines    map[string]bool // Track seen log lines to prevent duplicates
 
-	// Log view mode: "app" or "pod"
+	// Log view mode: "app", "pod", or "service"
 	logViewMode string
+
+	// Service logs data
+	serviceLogs        []string
+	serviceLogPods     []resources.PodInfo
+	loadingServiceLogs bool
 
 	// Simple state instead of components
 	width        int
@@ -125,6 +132,14 @@ type TUI struct {
 	retryInProgress bool
 	retryCount      int
 	maxRetries      int
+
+	// Secret viewing modal
+	showSecretModal   bool
+	secretModalData   map[string]string
+	secretModalName   string
+	secretModalKeys   []string
+	selectedSecretKey int
+	secretMasked      bool
 
 	// Theme
 	theme string
@@ -163,7 +178,6 @@ func NewTUI(version string, debug bool) *TUI {
 		errorDisplay: components.NewErrorDisplayComponent("dark"),
 		maxRetries:   constants.DefaultRetryAttempts,
 	}
-
 
 	// Initialize main content
 	tui.updateMainContent()
@@ -244,6 +258,9 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.ready = true
 		logging.Debug(t.Logger, "Window size: %dx%d", t.width, t.height)
 
+	case tea.MouseMsg:
+		return t.handleMouseEvent(msg)
+
 	case tea.KeyMsg:
 		// Special handling for help mode
 		if t.showHelp {
@@ -262,6 +279,11 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Special handling for project modal
 		if t.showProjectModal {
 			return t.handleProjectModalKeys(msg)
+		}
+
+		// Special handling for secret modal
+		if t.showSecretModal {
+			return t.handleSecretModalKeys(msg)
 		}
 
 		// Normal key handling
@@ -350,7 +372,21 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return t, nil
 
 		case "L":
-			t.showLogs = !t.showLogs
+			// Handle different behavior based on current tab
+			if t.ActiveTab == 1 && len(t.services) > 0 { // Services tab
+				// Toggle service log mode or regular log mode
+				if t.logViewMode == "service" {
+					t.logViewMode = "app"
+					t.showLogs = !t.showLogs
+				} else {
+					t.logViewMode = "service"
+					t.showLogs = true
+					// Stream logs for the selected service
+					return t, t.streamServiceLogs()
+				}
+			} else {
+				t.showLogs = !t.showLogs
+			}
 			return t, nil
 
 		case "e":
@@ -657,6 +693,18 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				t.focusedPanel = 0
 			}
 			return t, nil
+
+		case "enter":
+			// Handle Enter key for different tabs
+			if t.focusedPanel == 0 {
+				switch t.ActiveTab {
+				case models.TabSecrets:
+					if len(t.secrets) > 0 && t.selectedSecret < len(t.secrets) {
+						return t, t.loadSecretData()
+					}
+				}
+			}
+			return t, nil
 		}
 
 	case messages.InitMsg:
@@ -875,6 +923,31 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.logContent = append(t.logContent, fmt.Sprintf("❌ Failed to load Routes: %v", msg.Err))
 		t.updateMainContent()
 
+	case messages.ServiceLogsLoaded:
+		t.serviceLogs = msg.Logs
+		t.serviceLogPods = msg.Pods
+		t.loadingServiceLogs = false
+		t.logContent = t.serviceLogs
+		t.logScrollOffset = 0 // Reset scroll to top
+		t.userScrolled = false
+
+	case messages.ServiceLogsLoadError:
+		t.serviceLogs = []string{}
+		t.serviceLogPods = []resources.PodInfo{}
+		t.loadingServiceLogs = false
+		t.logContent = append(t.logContent, fmt.Sprintf("❌ Failed to load service logs: %v", msg.Err))
+
+	case messages.SecretDataLoaded:
+		t.secretModalData = msg.Data
+		t.secretModalName = msg.SecretName
+		t.secretModalKeys = msg.Keys
+		t.selectedSecretKey = 0
+		t.secretMasked = true // Start with masked view for security
+		t.showSecretModal = true
+
+	case messages.SecretDataLoadError:
+		t.logContent = append(t.logContent, fmt.Sprintf("❌ Failed to load secret data: %v", msg.Err))
+
 	case messages.RefreshPods:
 		// Automatically refresh pods and set up next refresh
 		if t.connected && t.ActiveTab == 0 {
@@ -1056,6 +1129,11 @@ func (t *TUI) View() string {
 	// Show project modal if active
 	if t.showProjectModal {
 		return t.renderProjectModal()
+	}
+
+	// Show secret modal if active
+	if t.showSecretModal {
+		return t.renderSecretModal()
 	}
 
 	// Render main interface
@@ -1713,7 +1791,6 @@ Press ? or ESC to close`
 	)
 }
 
-
 // updateMainContent updates the main content based on the active tab
 func (t *TUI) updateMainContent() {
 	tabName := t.GetTabName(t.ActiveTab)
@@ -1806,7 +1883,7 @@ func (t *TUI) InitializeK8sClient(kubeconfigPath string) tea.Cmd {
 		k8sClient := k8s.NewClientFactory()
 		k8sClient.SetClientset(clientset)
 		k8sClient.SetConfig(config)
-		
+
 		// Initialize OpenShift detection and clients
 		logging.Info(t.Logger, "🔍 Initializing OpenShift clients if available")
 		err = k8sClient.InitializeOpenShiftAfterSetup()
@@ -1958,6 +2035,160 @@ func (t *TUI) loadDeployments() tea.Cmd {
 	}
 }
 
+// streamServiceLogs streams logs for all pods behind the selected service
+func (t *TUI) streamServiceLogs() tea.Cmd {
+	return func() tea.Msg {
+		if !t.connected || t.resourceClient == nil {
+			return messages.ServiceLogsLoadError{Err: fmt.Errorf("not connected to cluster")}
+		}
+
+		if len(t.services) == 0 || t.selectedService >= len(t.services) {
+			return messages.ServiceLogsLoadError{Err: fmt.Errorf("no service selected")}
+		}
+
+		selectedService := t.services[t.selectedService]
+
+		ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultOperationTimeout)
+		defer cancel()
+
+		// Get pods for the selected service
+		pods, err := t.resourceClient.GetPodsForService(ctx, t.namespace, selectedService.Name)
+		if err != nil {
+			return messages.ServiceLogsLoadError{Err: fmt.Errorf("failed to get pods for service %s: %w", selectedService.Name, err)}
+		}
+
+		if len(pods) == 0 {
+			return messages.ServiceLogsLoaded{
+				ServiceName: selectedService.Name,
+				Pods:        pods,
+				Logs:        []string{fmt.Sprintf("No pods found for service %s", selectedService.Name)},
+			}
+		}
+
+		// Start streaming logs for all pods concurrently
+		logChan := make(chan string, 100)
+		ctx2, cancel2 := context.WithCancel(context.Background())
+
+		// Start goroutines for each pod
+		for _, pod := range pods {
+			if len(pod.ContainerInfo) > 0 {
+				containerName := pod.ContainerInfo[0].Name
+				go func(podName, containerName string) {
+					opts := resources.LogOptions{
+						Follow:    true,
+						TailLines: func() *int64 { i := int64(50); return &i }(),
+					}
+
+					logStream, err := t.resourceClient.StreamPodLogs(ctx2, t.namespace, podName, containerName, opts)
+					if err != nil {
+						logChan <- fmt.Sprintf("[%s/%s] Error streaming logs: %v", podName, containerName, err)
+						return
+					}
+
+					for logLine := range logStream {
+						select {
+						case <-ctx2.Done():
+							return
+						case logChan <- fmt.Sprintf("[%s/%s] %s", podName, containerName, logLine):
+						}
+					}
+				}(pod.Name, containerName)
+			}
+		}
+
+		// Collect initial logs
+		var allLogs []string
+		timeout := time.After(2 * time.Second) // Wait up to 2 seconds for initial logs
+	CollectLoop:
+		for {
+			select {
+			case logLine := <-logChan:
+				allLogs = append(allLogs, logLine)
+				if len(allLogs) >= 100 { // Limit initial load
+					break CollectLoop
+				}
+			case <-timeout:
+				break CollectLoop
+			}
+		}
+
+		cancel2() // Stop streaming for now - we'll implement continuous streaming later
+
+		return messages.ServiceLogsLoaded{
+			ServiceName: selectedService.Name,
+			Pods:        pods,
+			Logs:        allLogs,
+		}
+	}
+}
+
+// loadServiceLogs loads logs for all pods behind the selected service
+func (t *TUI) loadServiceLogs() tea.Cmd {
+	return func() tea.Msg {
+		if !t.connected || t.resourceClient == nil {
+			return messages.ServiceLogsLoadError{Err: fmt.Errorf("not connected to cluster")}
+		}
+
+		if len(t.services) == 0 || t.selectedService >= len(t.services) {
+			return messages.ServiceLogsLoadError{Err: fmt.Errorf("no service selected")}
+		}
+
+		t.loadingServiceLogs = true
+		selectedService := t.services[t.selectedService]
+
+		ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultOperationTimeout)
+		defer cancel()
+
+		// Get pods for the selected service
+		pods, err := t.resourceClient.GetPodsForService(ctx, t.namespace, selectedService.Name)
+		if err != nil {
+			t.loadingServiceLogs = false
+			return messages.ServiceLogsLoadError{Err: fmt.Errorf("failed to get pods for service %s: %w", selectedService.Name, err)}
+		}
+
+		if len(pods) == 0 {
+			t.loadingServiceLogs = false
+			return messages.ServiceLogsLoaded{
+				ServiceName: selectedService.Name,
+				Pods:        pods,
+				Logs:        []string{fmt.Sprintf("No pods found for service %s", selectedService.Name)},
+			}
+		}
+
+		// Collect logs from all pods
+		var allLogs []string
+		for _, pod := range pods {
+			// Get logs from the first container of each pod
+			if len(pod.ContainerInfo) > 0 {
+				containerName := pod.ContainerInfo[0].Name
+				opts := resources.LogOptions{
+					TailLines: func() *int64 { i := int64(100); return &i }(),
+				}
+
+				logs, err := t.resourceClient.GetPodLogs(ctx, pod.Namespace, pod.Name, containerName, opts)
+				if err != nil {
+					allLogs = append(allLogs, fmt.Sprintf("[%s/%s] Error getting logs: %v", pod.Name, containerName, err))
+				} else {
+					// Split logs by lines and add pod name prefix
+					logLines := strings.Split(strings.TrimSpace(logs), "\n")
+					for _, line := range logLines {
+						if line != "" {
+							allLogs = append(allLogs, fmt.Sprintf("[%s/%s] %s", pod.Name, containerName, line))
+						}
+					}
+				}
+			}
+		}
+
+		t.loadingServiceLogs = false
+		return messages.ServiceLogsLoaded{
+			ServiceName: selectedService.Name,
+			Pods:        pods,
+			Logs:        allLogs,
+		}
+	}
+}
+
 // loadConfigMaps loads configmaps from the resource client
 func (t *TUI) loadConfigMaps() tea.Cmd {
 	return func() tea.Msg {
@@ -2009,6 +2240,42 @@ func (t *TUI) loadSecrets() tea.Cmd {
 
 		t.loadingSecrets = false
 		return messages.SecretsLoaded{Secrets: secretList.Items}
+	}
+}
+
+// loadSecretData loads the data for the selected secret
+func (t *TUI) loadSecretData() tea.Cmd {
+	return func() tea.Msg {
+		if !t.connected || t.resourceClient == nil {
+			return messages.SecretDataLoadError{Err: fmt.Errorf("not connected to cluster")}
+		}
+
+		if len(t.secrets) == 0 || t.selectedSecret >= len(t.secrets) {
+			return messages.SecretDataLoadError{Err: fmt.Errorf("no secret selected")}
+		}
+
+		selectedSecret := t.secrets[t.selectedSecret]
+
+		ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultOperationTimeout)
+		defer cancel()
+
+		// Get the actual secret data
+		secretData, err := t.resourceClient.GetSecretData(ctx, t.namespace, selectedSecret.Name)
+		if err != nil {
+			return messages.SecretDataLoadError{Err: fmt.Errorf("failed to get secret data %s: %w", selectedSecret.Name, err)}
+		}
+
+		// Get keys for navigation
+		var keys []string
+		for key := range secretData {
+			keys = append(keys, key)
+		}
+
+		return messages.SecretDataLoaded{
+			SecretName: selectedSecret.Name,
+			Data:       secretData,
+			Keys:       keys,
+		}
 	}
 }
 
@@ -2316,7 +2583,7 @@ func (t *TUI) updateBuildConfigDetails(bc resources.BuildConfigInfo) {
 	details.WriteString(fmt.Sprintf("Status:     %s\n", bc.Status))
 	details.WriteString(fmt.Sprintf("Strategy:   %s\n", bc.Strategy))
 	details.WriteString(fmt.Sprintf("Age:        %s\n", bc.Age))
-	
+
 	// Source information
 	details.WriteString(fmt.Sprintf("\nSource:\n"))
 	details.WriteString(fmt.Sprintf("  Type:     %s\n", bc.Source.Type))
@@ -2329,16 +2596,16 @@ func (t *TUI) updateBuildConfigDetails(bc resources.BuildConfigInfo) {
 	if bc.Source.ContextDir != "" {
 		details.WriteString(fmt.Sprintf("  Context:  %s\n", bc.Source.ContextDir))
 	}
-	
+
 	// Output information
 	details.WriteString(fmt.Sprintf("\nOutput:\n"))
 	details.WriteString(fmt.Sprintf("  To:       %s\n", bc.Output.To))
-	
-	// Build statistics  
+
+	// Build statistics
 	details.WriteString(fmt.Sprintf("\nBuilds:\n"))
-	details.WriteString(fmt.Sprintf("  Success:  %d\n", bc.SuccessBuilds))  
+	details.WriteString(fmt.Sprintf("  Success:  %d\n", bc.SuccessBuilds))
 	details.WriteString(fmt.Sprintf("  Failed:   %d\n", bc.FailedBuilds))
-	
+
 	if bc.LastBuild != nil {
 		details.WriteString(fmt.Sprintf("\nLast Build:\n"))
 		details.WriteString(fmt.Sprintf("  Status:   %s\n", bc.LastBuild.Phase))
@@ -2357,11 +2624,11 @@ func (t *TUI) updateImageStreamDetails(is resources.ImageStreamInfo) {
 	details.WriteString(fmt.Sprintf("Status:       %s\n", is.Status))
 	details.WriteString(fmt.Sprintf("Age:          %s\n", is.Age))
 	details.WriteString(fmt.Sprintf("Repository:   %s\n", is.DockerImageRepository))
-	
+
 	if is.PublicDockerImageRepository != "" {
 		details.WriteString(fmt.Sprintf("Public Repo:  %s\n", is.PublicDockerImageRepository))
 	}
-	
+
 	// Tags information
 	details.WriteString(fmt.Sprintf("\nTags (%d):\n", len(is.Tags)))
 	if len(is.Tags) > 0 {
@@ -2379,7 +2646,7 @@ func (t *TUI) updateImageStreamDetails(is resources.ImageStreamInfo) {
 	t.detailContent = details.String()
 }
 
-// updateRouteDetails updates the detail pane with Route information  
+// updateRouteDetails updates the detail pane with Route information
 func (t *TUI) updateRouteDetails(route resources.RouteInfo) {
 	var details strings.Builder
 	details.WriteString(fmt.Sprintf("🛣️ Route Details: %s\n\n", route.Name))
@@ -2388,20 +2655,20 @@ func (t *TUI) updateRouteDetails(route resources.RouteInfo) {
 	details.WriteString(fmt.Sprintf("Status:       %s\n", route.Status))
 	details.WriteString(fmt.Sprintf("Host:         %s\n", route.Host))
 	details.WriteString(fmt.Sprintf("Age:          %s\n", route.Age))
-	
+
 	if route.Path != "" {
 		details.WriteString(fmt.Sprintf("Path:         %s\n", route.Path))
 	}
-	
+
 	// Service information
 	details.WriteString(fmt.Sprintf("\nTarget Service:\n"))
 	details.WriteString(fmt.Sprintf("  Name:       %s\n", route.Service.Name))
 	details.WriteString(fmt.Sprintf("  Kind:       %s\n", route.Service.Kind))
-	
+
 	if route.Port != nil {
 		details.WriteString(fmt.Sprintf("  Port:       %s\n", route.Port.TargetPort))
 	}
-	
+
 	// TLS information
 	if route.TLS != nil {
 		details.WriteString(fmt.Sprintf("\nTLS:\n"))
@@ -2412,7 +2679,7 @@ func (t *TUI) updateRouteDetails(route resources.RouteInfo) {
 	} else {
 		details.WriteString(fmt.Sprintf("\nTLS:          None\n"))
 	}
-	
+
 	if route.WildcardPolicy != "" {
 		details.WriteString(fmt.Sprintf("Wildcard:     %s\n", route.WildcardPolicy))
 	}
@@ -2430,11 +2697,11 @@ func (t *TUI) updateServiceDetails(svc resources.ServiceInfo) {
 	details.WriteString(fmt.Sprintf("Type:         %s\n", svc.Type))
 	details.WriteString(fmt.Sprintf("Cluster IP:   %s\n", svc.ClusterIP))
 	details.WriteString(fmt.Sprintf("Age:          %s\n", svc.Age))
-	
+
 	if len(svc.ExternalIPs) > 0 {
 		details.WriteString(fmt.Sprintf("External IPs: %s\n", strings.Join(svc.ExternalIPs, ", ")))
 	}
-	
+
 	// Ports information
 	if len(svc.Ports) > 0 {
 		details.WriteString(fmt.Sprintf("\nPorts:\n"))
@@ -2442,7 +2709,7 @@ func (t *TUI) updateServiceDetails(svc resources.ServiceInfo) {
 			details.WriteString(fmt.Sprintf("  • %s\n", port))
 		}
 	}
-	
+
 	// Selector information
 	if svc.Selector != "" {
 		details.WriteString(fmt.Sprintf("\nSelector:     %s\n", svc.Selector))
@@ -2460,14 +2727,14 @@ func (t *TUI) updateDeploymentDetails(deploy resources.DeploymentInfo) {
 	details.WriteString(fmt.Sprintf("Status:       %s\n", deploy.Status))
 	details.WriteString(fmt.Sprintf("Strategy:     %s\n", deploy.Strategy))
 	details.WriteString(fmt.Sprintf("Age:          %s\n", deploy.Age))
-	
+
 	// Replica information
 	details.WriteString(fmt.Sprintf("\nReplicas:\n"))
 	details.WriteString(fmt.Sprintf("  Desired:    %d\n", deploy.Replicas))
 	details.WriteString(fmt.Sprintf("  Ready:      %d\n", deploy.ReadyReplicas))
 	details.WriteString(fmt.Sprintf("  Updated:    %d\n", deploy.UpdatedReplicas))
 	details.WriteString(fmt.Sprintf("  Available:  %d\n", deploy.AvailableReplicas))
-	
+
 	// Condition information
 	if deploy.Condition != "" {
 		details.WriteString(fmt.Sprintf("\nCondition:    %s\n", deploy.Condition))
@@ -2485,7 +2752,7 @@ func (t *TUI) updateConfigMapDetails(cm resources.ConfigMapInfo) {
 	details.WriteString(fmt.Sprintf("Status:       %s\n", cm.Status))
 	details.WriteString(fmt.Sprintf("Data Count:   %d\n", cm.DataCount))
 	details.WriteString(fmt.Sprintf("Age:          %s\n", cm.Age))
-	
+
 	// Labels information
 	if len(cm.Labels) > 0 {
 		details.WriteString(fmt.Sprintf("\nLabels:\n"))
@@ -2493,7 +2760,7 @@ func (t *TUI) updateConfigMapDetails(cm resources.ConfigMapInfo) {
 			details.WriteString(fmt.Sprintf("  %s: %s\n", key, value))
 		}
 	}
-	
+
 	// Annotations information
 	if len(cm.Annotations) > 0 {
 		details.WriteString(fmt.Sprintf("\nAnnotations:\n"))
@@ -2519,12 +2786,12 @@ func (t *TUI) updateSecretDetails(secret resources.SecretInfo) {
 	details.WriteString(fmt.Sprintf("Type:         %s\n", secret.Type))
 	details.WriteString(fmt.Sprintf("Data Count:   %d\n", secret.DataCount))
 	details.WriteString(fmt.Sprintf("Age:          %s\n", secret.Age))
-	
+
 	// Security notice for secrets
 	details.WriteString(fmt.Sprintf("\n🔒 Security:\n"))
 	details.WriteString(fmt.Sprintf("  Secret data is protected and not displayed\n"))
 	details.WriteString(fmt.Sprintf("  for security reasons.\n"))
-	
+
 	// Labels information
 	if len(secret.Labels) > 0 {
 		details.WriteString(fmt.Sprintf("\nLabels:\n"))
@@ -2532,7 +2799,7 @@ func (t *TUI) updateSecretDetails(secret resources.SecretInfo) {
 			details.WriteString(fmt.Sprintf("  %s: %s\n", key, value))
 		}
 	}
-	
+
 	// Annotations information (non-sensitive)
 	if len(secret.Annotations) > 0 {
 		details.WriteString(fmt.Sprintf("\nAnnotations:\n"))
@@ -2850,6 +3117,81 @@ func (t *TUI) renderProjectModal() string {
 	modal := modalStyle.Render(content.String())
 
 	// Center the modal on screen
+	return lipgloss.Place(t.width, t.height, lipgloss.Center, lipgloss.Center, modal)
+}
+
+// renderSecretModal renders the secret data viewing modal
+func (t *TUI) renderSecretModal() string {
+	if t.secretModalData == nil || len(t.secretModalKeys) == 0 {
+		return t.renderMain()
+	}
+
+	primaryColor, _ := t.getThemeColors()
+
+	// Modal dimensions
+	modalWidth := min(80, t.width-4)
+	modalHeight := min(20, t.height-4)
+
+	// Modal style
+	modalStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(primaryColor).
+		Padding(1).
+		Width(modalWidth - 4). // Account for border and padding
+		Height(modalHeight - 4)
+
+	var content strings.Builder
+
+	// Title
+	title := fmt.Sprintf("Secret: %s", t.secretModalName)
+	if t.secretMasked {
+		title += " (masked - press 'm' to toggle)"
+	} else {
+		title += " (visible - press 'm' to mask)"
+	}
+	content.WriteString(lipgloss.NewStyle().Bold(true).Render(title) + "\n\n")
+
+	// Keys and values
+	maxDisplayKeys := modalHeight - 8 // Leave room for title, instructions, etc.
+	startIdx := 0
+	if t.selectedSecretKey >= maxDisplayKeys {
+		startIdx = t.selectedSecretKey - maxDisplayKeys + 1
+	}
+
+	for i := startIdx; i < len(t.secretModalKeys) && i < startIdx+maxDisplayKeys; i++ {
+		key := t.secretModalKeys[i]
+		value := t.secretModalData[key]
+
+		// Cursor indicator
+		prefix := "  "
+		if i == t.selectedSecretKey {
+			prefix = "► "
+		}
+
+		// Display value (masked or not)
+		displayValue := value
+		if t.secretMasked {
+			displayValue = strings.Repeat("*", min(len(value), 20))
+		} else {
+			// Truncate long values
+			if len(displayValue) > modalWidth-20 {
+				displayValue = displayValue[:modalWidth-20] + "..."
+			}
+		}
+
+		line := fmt.Sprintf("%s%s: %s", prefix, key, displayValue)
+		if i == t.selectedSecretKey {
+			line = lipgloss.NewStyle().Background(primaryColor).Foreground(lipgloss.Color("0")).Render(line)
+		}
+		content.WriteString(line + "\n")
+	}
+
+	// Instructions
+	content.WriteString("\n")
+	content.WriteString("j/k: navigate • m: toggle mask • c: copy selected • C: copy all as JSON\n")
+	content.WriteString("esc/q: close")
+
+	modal := modalStyle.Render(content.String())
 	return lipgloss.Place(t.width, t.height, lipgloss.Center, lipgloss.Center, modal)
 }
 
@@ -3181,7 +3523,7 @@ func (t *TUI) updateBuildConfigDisplay() {
 	content.WriteString("\nUse j/k or ↑↓ to navigate • Press 'enter' to trigger build • Press 'r' to refresh")
 
 	t.mainContent = content.String()
-	
+
 	// Update detail panel with selected BuildConfig info
 	if t.selectedBuildConfig < len(t.buildConfigs) && t.selectedBuildConfig >= 0 {
 		t.updateBuildConfigDetails(t.buildConfigs[t.selectedBuildConfig])
@@ -3234,7 +3576,7 @@ func (t *TUI) updateImageStreamDisplay() {
 	content.WriteString("\nUse j/k or ↑↓ to navigate • Press 'enter' for tag details • Press 'r' to refresh")
 
 	t.mainContent = content.String()
-	
+
 	// Update detail panel with selected ImageStream info
 	if t.selectedImageStream < len(t.imageStreams) && t.selectedImageStream >= 0 {
 		t.updateImageStreamDetails(t.imageStreams[t.selectedImageStream])
@@ -3290,7 +3632,7 @@ func (t *TUI) updateRouteDisplay() {
 	content.WriteString("\nUse j/k or ↑↓ to navigate • Press 'enter' for details • Press 'r' to refresh")
 
 	t.mainContent = content.String()
-	
+
 	// Update detail panel with selected Route info
 	if t.selectedRoute < len(t.routes) && t.selectedRoute >= 0 {
 		t.updateRouteDetails(t.routes[t.selectedRoute])
@@ -3347,7 +3689,7 @@ func (t *TUI) updateServiceDisplay() {
 	content.WriteString("\nUse j/k or ↑↓ to navigate • Press 'enter' for details • Press 'r' to refresh")
 
 	t.mainContent = content.String()
-	
+
 	// Update detail panel with selected Service info
 	if t.selectedService < len(t.services) && t.selectedService >= 0 {
 		t.updateServiceDetails(t.services[t.selectedService])
@@ -3402,7 +3744,7 @@ func (t *TUI) updateDeploymentDisplay() {
 	content.WriteString("\nUse j/k or ↑↓ to navigate • Press 'enter' for details • Press 'r' to refresh")
 
 	t.mainContent = content.String()
-	
+
 	// Update detail panel with selected Deployment info
 	if t.selectedDeployment < len(t.deployments) && t.selectedDeployment >= 0 {
 		t.updateDeploymentDetails(t.deployments[t.selectedDeployment])
@@ -3452,7 +3794,7 @@ func (t *TUI) updateConfigMapDisplay() {
 	content.WriteString("\nUse j/k or ↑↓ to navigate • Press 'enter' for details • Press 'r' to refresh")
 
 	t.mainContent = content.String()
-	
+
 	// Update detail panel with selected ConfigMap info
 	if t.selectedConfigMap < len(t.configMaps) && t.selectedConfigMap >= 0 {
 		t.updateConfigMapDetails(t.configMaps[t.selectedConfigMap])
@@ -3503,7 +3845,7 @@ func (t *TUI) updateSecretDisplay() {
 	content.WriteString("\nUse j/k or ↑↓ to navigate • Press 'enter' for details • Press 'r' to refresh")
 
 	t.mainContent = content.String()
-	
+
 	// Update detail panel with selected Secret info
 	if t.selectedSecret < len(t.secrets) && t.selectedSecret >= 0 {
 		t.updateSecretDetails(t.secrets[t.selectedSecret])
@@ -3521,7 +3863,7 @@ func truncateString(s string, maxLen int) string {
 // handleTabSwitch handles tab switching and auto-loading
 func (t *TUI) handleTabSwitch() tea.Cmd {
 	t.updateMainContent()
-	
+
 	// Auto-load data for resource tabs if needed
 	if t.connected {
 		switch t.ActiveTab {
@@ -3562,7 +3904,7 @@ func (t *TUI) handleTabSwitch() tea.Cmd {
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -3578,17 +3920,17 @@ func (t *TUI) loadBuildConfigs() tea.Cmd {
 
 		// Create a resource client for OpenShift
 		resourceClient := resources.NewOpenShiftResourceClient(osClient)
-		
+
 		// Load BuildConfigs
 		listOpts := resources.ListOptions{
 			Namespace: t.namespace,
 		}
-		
+
 		buildConfigList, err := resourceClient.ListBuildConfigs(context.Background(), listOpts)
 		if err != nil {
 			return messages.BuildConfigsLoadError{Err: err}
 		}
-		
+
 		return messages.BuildConfigsLoaded{BuildConfigs: buildConfigList.Items}
 	})
 }
@@ -3603,17 +3945,17 @@ func (t *TUI) loadImageStreams() tea.Cmd {
 
 		// Create a resource client for OpenShift
 		resourceClient := resources.NewOpenShiftResourceClient(osClient)
-		
+
 		// Load ImageStreams
 		listOpts := resources.ListOptions{
 			Namespace: t.namespace,
 		}
-		
+
 		imageStreamList, err := resourceClient.ListImageStreams(context.Background(), listOpts)
 		if err != nil {
 			return messages.ImageStreamsLoadError{Err: err}
 		}
-		
+
 		return messages.ImageStreamsLoaded{ImageStreams: imageStreamList.Items}
 	})
 }
@@ -3628,17 +3970,372 @@ func (t *TUI) loadRoutes() tea.Cmd {
 
 		// Create a resource client for OpenShift
 		resourceClient := resources.NewOpenShiftResourceClient(osClient)
-		
+
 		// Load Routes
 		listOpts := resources.ListOptions{
 			Namespace: t.namespace,
 		}
-		
+
 		routeList, err := resourceClient.ListRoutes(context.Background(), listOpts)
 		if err != nil {
 			return messages.RoutesLoadError{Err: err}
 		}
-		
+
 		return messages.RoutesLoaded{Routes: routeList.Items}
 	})
+}
+
+// handleSecretModalKeys handles key input for the secret modal
+func (t *TUI) handleSecretModalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q":
+		// Close secret modal
+		t.showSecretModal = false
+		t.secretModalData = nil
+		t.secretModalKeys = nil
+		t.selectedSecretKey = 0
+		return t, nil
+
+	case "j", "down":
+		if len(t.secretModalKeys) > 0 {
+			t.selectedSecretKey = (t.selectedSecretKey + 1) % len(t.secretModalKeys)
+		}
+		return t, nil
+
+	case "k", "up":
+		if len(t.secretModalKeys) > 0 {
+			t.selectedSecretKey = t.selectedSecretKey - 1
+			if t.selectedSecretKey < 0 {
+				t.selectedSecretKey = len(t.secretModalKeys) - 1
+			}
+		}
+		return t, nil
+
+	case "m":
+		// Toggle masking
+		t.secretMasked = !t.secretMasked
+		return t, nil
+
+	case "c":
+		// Copy selected secret key to clipboard
+		if len(t.secretModalKeys) > 0 && t.selectedSecretKey < len(t.secretModalKeys) {
+			key := t.secretModalKeys[t.selectedSecretKey]
+			value := t.secretModalData[key]
+			return t, t.copyToClipboard(value)
+		}
+		return t, nil
+
+	case "C":
+		// Copy all secret data to clipboard as JSON
+		return t, t.copySecretAsJSON()
+	}
+
+	return t, nil
+}
+
+// copyToClipboard copies text to clipboard
+func (t *TUI) copyToClipboard(text string) tea.Cmd {
+	return func() tea.Msg {
+		// Use different clipboard commands based on OS
+		var cmd *exec.Cmd
+		switch runtime.GOOS {
+		case "linux":
+			// Try xclip first, then xsel
+			if _, err := exec.LookPath("xclip"); err == nil {
+				cmd = exec.Command("xclip", "-selection", "clipboard")
+			} else if _, err := exec.LookPath("xsel"); err == nil {
+				cmd = exec.Command("xsel", "--clipboard", "--input")
+			} else {
+				t.logContent = append(t.logContent, "❌ No clipboard tool found (xclip or xsel required)")
+				return nil
+			}
+		case "darwin":
+			cmd = exec.Command("pbcopy")
+		case "windows":
+			cmd = exec.Command("clip")
+		default:
+			t.logContent = append(t.logContent, "❌ Clipboard not supported on this OS")
+			return nil
+		}
+
+		if cmd != nil {
+			cmd.Stdin = strings.NewReader(text)
+			if err := cmd.Run(); err != nil {
+				t.logContent = append(t.logContent, fmt.Sprintf("❌ Failed to copy to clipboard: %v", err))
+			} else {
+				t.logContent = append(t.logContent, "✅ Copied to clipboard")
+			}
+		}
+		return nil
+	}
+}
+
+// copySecretAsJSON copies all secret data as JSON to clipboard
+func (t *TUI) copySecretAsJSON() tea.Cmd {
+	return func() tea.Msg {
+		if t.secretModalData == nil {
+			return nil
+		}
+
+		jsonData, err := json.MarshalIndent(t.secretModalData, "", "  ")
+		if err != nil {
+			t.logContent = append(t.logContent, fmt.Sprintf("❌ Failed to serialize secret as JSON: %v", err))
+			return nil
+		}
+
+		return t.copyToClipboard(string(jsonData))()
+	}
+}
+
+// handleMouseEvent processes mouse interactions
+func (t *TUI) handleMouseEvent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	// Ignore mouse events in modal states
+	if t.showHelp || t.showErrorModal || t.showProjectModal || t.showSecretModal {
+		return t, nil
+	}
+
+	switch msg.Type {
+	case tea.MouseLeft:
+		return t.handleMouseClick(msg.X, msg.Y)
+	case tea.MouseWheelUp:
+		return t.handleMouseWheel(-1, msg.X, msg.Y)
+	case tea.MouseWheelDown:
+		return t.handleMouseWheel(1, msg.X, msg.Y)
+	}
+
+	return t, nil
+}
+
+// handleMouseClick processes mouse click events
+func (t *TUI) handleMouseClick(x, y int) (tea.Model, tea.Cmd) {
+	headerHeight := t.getHeaderHeight()
+	tabY := headerHeight
+
+	// Check if click is on tabs row
+	if y == tabY {
+		return t.handleTabClick(x)
+	}
+
+	// Check if click is in resource list area
+	resourceListStartY := headerHeight + 1 // header + tabs
+	if y > resourceListStartY {
+		return t.handleResourceClick(x, y-resourceListStartY-1) // -1 for 0-based indexing
+	}
+
+	return t, nil
+}
+
+// handleTabClick processes clicks on the tab bar
+func (t *TUI) handleTabClick(x int) (tea.Model, tea.Cmd) {
+	tabs := constants.ResourceTabs
+	totalTabs := len(tabs)
+
+	// Calculate tab width (approximately equal distribution)
+	tabWidth := t.width / totalTabs
+	if tabWidth < 1 {
+		tabWidth = 1
+	}
+
+	// Find which tab was clicked
+	clickedTab := x / tabWidth
+	if clickedTab >= totalTabs {
+		clickedTab = totalTabs - 1
+	}
+
+	// Switch to the clicked tab
+	t.ActiveTab = models.TabType(clickedTab)
+	logging.Debug(t.Logger, "Mouse click switched to tab %d (%s)", clickedTab, tabs[clickedTab])
+
+	return t, nil
+}
+
+// handleResourceClick processes clicks on resource list items
+func (t *TUI) handleResourceClick(x, y int) (tea.Model, tea.Cmd) {
+	// Only handle clicks if we're connected and have resources
+	if !t.connected {
+		return t, nil
+	}
+
+	switch t.ActiveTab {
+	case models.TabPods: // Pods
+		if y < len(t.pods) {
+			t.selectedPod = y
+			t.updatePodDisplay()
+			logging.Debug(t.Logger, "Mouse selected pod %d", y)
+		}
+	case models.TabServices: // Services
+		if y < len(t.services) {
+			t.selectedService = y
+			t.updateServiceDisplay()
+			logging.Debug(t.Logger, "Mouse selected service %d", y)
+		}
+	case models.TabDeployments: // Deployments
+		if y < len(t.deployments) {
+			t.selectedDeployment = y
+			t.updateDeploymentDisplay()
+			logging.Debug(t.Logger, "Mouse selected deployment %d", y)
+		}
+	case models.TabConfigMaps: // ConfigMaps
+		if y < len(t.configMaps) {
+			t.selectedConfigMap = y
+			t.updateConfigMapDisplay()
+			logging.Debug(t.Logger, "Mouse selected configmap %d", y)
+		}
+	case models.TabSecrets: // Secrets
+		if y < len(t.secrets) {
+			t.selectedSecret = y
+			t.updateSecretDisplay()
+			logging.Debug(t.Logger, "Mouse selected secret %d", y)
+		}
+	case models.TabBuildConfigs: // BuildConfigs
+		if y < len(t.buildConfigs) {
+			t.selectedBuildConfig = y
+			t.updateBuildConfigDisplay()
+			logging.Debug(t.Logger, "Mouse selected buildconfig %d", y)
+		}
+	case models.TabImageStreams: // ImageStreams
+		if y < len(t.imageStreams) {
+			t.selectedImageStream = y
+			t.updateImageStreamDisplay()
+			logging.Debug(t.Logger, "Mouse selected imagestream %d", y)
+		}
+	case models.TabRoutes: // Routes
+		if y < len(t.routes) {
+			t.selectedRoute = y
+			t.updateRouteDisplay()
+			logging.Debug(t.Logger, "Mouse selected route %d", y)
+		}
+	}
+
+	return t, nil
+}
+
+// handleMouseWheel processes mouse wheel scroll events
+func (t *TUI) handleMouseWheel(direction int, x, y int) (tea.Model, tea.Cmd) {
+	// Only handle wheel events if we're connected
+	if !t.connected {
+		return t, nil
+	}
+
+	headerHeight := t.getHeaderHeight()
+	resourceListStartY := headerHeight + 1
+
+	// Check if wheel event is in resource list area
+	if y > resourceListStartY {
+		return t.handleResourceListScroll(direction)
+	}
+
+	return t, nil
+}
+
+// handleResourceListScroll scrolls through resource lists
+func (t *TUI) handleResourceListScroll(direction int) (tea.Model, tea.Cmd) {
+	switch t.ActiveTab {
+	case models.TabPods: // Pods
+		if direction > 0 { // Scroll down
+			if t.selectedPod < len(t.pods)-1 {
+				t.selectedPod++
+				t.updatePodDisplay()
+			}
+		} else { // Scroll up
+			if t.selectedPod > 0 {
+				t.selectedPod--
+				t.updatePodDisplay()
+			}
+		}
+	case models.TabServices: // Services
+		if direction > 0 {
+			if t.selectedService < len(t.services)-1 {
+				t.selectedService++
+				t.updateServiceDisplay()
+			}
+		} else {
+			if t.selectedService > 0 {
+				t.selectedService--
+				t.updateServiceDisplay()
+			}
+		}
+	case models.TabDeployments: // Deployments
+		if direction > 0 {
+			if t.selectedDeployment < len(t.deployments)-1 {
+				t.selectedDeployment++
+				t.updateDeploymentDisplay()
+			}
+		} else {
+			if t.selectedDeployment > 0 {
+				t.selectedDeployment--
+				t.updateDeploymentDisplay()
+			}
+		}
+	case models.TabConfigMaps: // ConfigMaps
+		if direction > 0 {
+			if t.selectedConfigMap < len(t.configMaps)-1 {
+				t.selectedConfigMap++
+				t.updateConfigMapDisplay()
+			}
+		} else {
+			if t.selectedConfigMap > 0 {
+				t.selectedConfigMap--
+				t.updateConfigMapDisplay()
+			}
+		}
+	case models.TabSecrets: // Secrets
+		if direction > 0 {
+			if t.selectedSecret < len(t.secrets)-1 {
+				t.selectedSecret++
+				t.updateSecretDisplay()
+			}
+		} else {
+			if t.selectedSecret > 0 {
+				t.selectedSecret--
+				t.updateSecretDisplay()
+			}
+		}
+	case models.TabBuildConfigs: // BuildConfigs
+		if direction > 0 {
+			if t.selectedBuildConfig < len(t.buildConfigs)-1 {
+				t.selectedBuildConfig++
+				t.updateBuildConfigDisplay()
+			}
+		} else {
+			if t.selectedBuildConfig > 0 {
+				t.selectedBuildConfig--
+				t.updateBuildConfigDisplay()
+			}
+		}
+	case models.TabImageStreams: // ImageStreams
+		if direction > 0 {
+			if t.selectedImageStream < len(t.imageStreams)-1 {
+				t.selectedImageStream++
+				t.updateImageStreamDisplay()
+			}
+		} else {
+			if t.selectedImageStream > 0 {
+				t.selectedImageStream--
+				t.updateImageStreamDisplay()
+			}
+		}
+	case models.TabRoutes: // Routes
+		if direction > 0 {
+			if t.selectedRoute < len(t.routes)-1 {
+				t.selectedRoute++
+				t.updateRouteDisplay()
+			}
+		} else {
+			if t.selectedRoute > 0 {
+				t.selectedRoute--
+				t.updateRouteDisplay()
+			}
+		}
+	}
+
+	return t, nil
+}
+
+// getHeaderHeight calculates the header height based on terminal size
+func (t *TUI) getHeaderHeight() int {
+	if t.height < constants.SingleLineHeaderHeightThreshold {
+		return 1
+	}
+	return 2
 }
