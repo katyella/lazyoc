@@ -32,6 +32,20 @@ type RefreshPods struct{}
 // RefreshPodLogs is sent to trigger pod logs refresh
 type RefreshPodLogs struct{}
 
+// PodLogStreamUpdate is sent when new log lines are received in real-time
+type PodLogStreamUpdate struct{
+	PodName   string
+	Container string
+	LogLine   string
+}
+
+// PodLogStreamError is sent when log streaming encounters an error
+type PodLogStreamError struct{
+	PodName   string
+	Container string
+	Err       error
+}
+
 // NamespaceChanged is sent when namespace is changed
 type NamespaceChanged struct {
 	Namespace string
