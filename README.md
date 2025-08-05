@@ -7,6 +7,8 @@
 
 A lazy terminal UI for OpenShift and Kubernetes clusters. LazyOC provides an intuitive, vim-like interface for managing cluster resources without the complexity of memorizing kubectl/oc commands.
 
+![LazyOC Demo](docs/layzy_oc_33.gif)
+
 ## 🌟 Features
 
 ### Core Functionality
