@@ -1,10 +1,9 @@
 # LazyOC 🚀
 
-[![CI Status](https://github.com/katyella/lazyoc/workflows/CI/badge.svg)](https://github.com/katyella/lazyoc/actions)
-[![Go Report Card](https://goreportcard.com/badge/github.com/katyella/lazyoc)](https://goreportcard.com/report/github.com/katyella/lazyoc)
-[![codecov](https://codecov.io/gh/katyella/lazyoc/branch/main/graph/badge.svg)](https://codecov.io/gh/katyella/lazyoc)
-[![Release](https://img.shields.io/github/release/katyella/lazyoc.svg)](https://github.com/katyella/lazyoc/releases/latest)
+[![CI Status](https://github.com/katyella/lazyoc/actions/workflows/ci.yml/badge.svg)](https://github.com/katyella/lazyoc/actions)
+[![Release](https://img.shields.io/github/v/release/katyella/lazyoc.svg)](https://github.com/katyella/lazyoc/releases/latest)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/katyella/lazyoc)](https://github.com/katyella/lazyoc)
 
 A lazy terminal UI for OpenShift and Kubernetes clusters. LazyOC provides an intuitive, vim-like interface for managing cluster resources without the complexity of memorizing kubectl/oc commands.
 
