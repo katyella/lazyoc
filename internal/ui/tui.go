@@ -960,11 +960,13 @@ func (t *TUI) renderContent(availableHeight int) string {
 		// Show logs based on current log view mode
 		var logText string
 		var logHeader string
-		if t.logViewMode == "pod" {
+		
+		switch t.logViewMode {
+		case constants.PodLogViewMode:
 			// Pod logs mode
 			if t.loadingLogs {
 				logText = "🔄 Loading pod logs..."
-				logHeader = "Pod Logs (Loading...)"
+				logHeader = "📋 Pod Logs (Loading...)"
 			} else if len(t.podLogs) > 0 {
 				// Calculate visible lines strictly based on maxLogContentLines
 				visibleLines := maxLogContentLines
@@ -1024,29 +1026,79 @@ func (t *TUI) renderContent(availableHeight int) string {
 					if t.tailMode {
 						tailIndicator = " [TAIL]"
 					}
-					logHeader = fmt.Sprintf("Pod Logs: %s%s", t.pods[t.selectedPod].Name, tailIndicator)
+					logHeader = fmt.Sprintf("📋 Pod Logs: %s%s", t.pods[t.selectedPod].Name, tailIndicator)
 				} else {
-					logHeader = "Pod Logs"
+					logHeader = "📋 Pod Logs"
 				}
 			} else {
 				// Show message when no pod logs are available
 				if len(t.pods) > 0 && t.selectedPod < len(t.pods) {
 					selectedPodName := t.pods[t.selectedPod].Name
-					logText = fmt.Sprintf("📋 No logs loaded for pod '%s'", selectedPodName)
-					logHeader = fmt.Sprintf("Pod Logs: %s (Not loaded)", selectedPodName)
+					logText = fmt.Sprintf("📋 No logs available for pod '%s'", selectedPodName)
+					logHeader = fmt.Sprintf("📋 Pod Logs: %s (No logs)", selectedPodName)
 				} else {
 					logText = "📋 No pod selected"
-					logHeader = "Pod Logs (No pod selected)"
+					logHeader = "📋 Pod Logs (No pod selected)"
 				}
 			}
-		} else {
-			// App logs mode
+		
+		case constants.ServiceLogViewMode:
+			// Service logs mode - aggregated logs from all pods behind a service
+			if t.loadingServiceLogs {
+				logText = "🔄 Loading service logs..."
+				logHeader = "🔗 Service Logs (Loading...)"
+			} else if len(t.serviceLogs) > 0 {
+				// Calculate visible lines for service logs
+				visibleLines := maxLogContentLines
+				if visibleLines < 1 {
+					visibleLines = 1
+				}
+
+				start := t.logScrollOffset
+				end := start + visibleLines
+				if end > len(t.serviceLogs) {
+					end = len(t.serviceLogs)
+				}
+				if start >= len(t.serviceLogs) {
+					start = max(0, len(t.serviceLogs)-visibleLines)
+					end = len(t.serviceLogs)
+				}
+
+				visibleLogs := t.serviceLogs[start:end]
+				
+				// Apply coloring to service logs
+				coloredLogs := []string{}
+				for _, line := range visibleLogs {
+					colored := t.colorizeServiceLog(line)
+					coloredLogs = append(coloredLogs, colored)
+				}
+				logText = strings.Join(coloredLogs, "\n")
+
+				if len(t.services) > 0 && t.selectedService < len(t.services) {
+					selectedService := t.services[t.selectedService]
+					podCount := len(t.serviceLogPods)
+					logHeader = fmt.Sprintf("🔗 Service Logs: %s (%d pods)", selectedService.Name, podCount)
+				} else {
+					logHeader = "🔗 Service Logs"
+				}
+			} else {
+				// Show message when no service logs are available
+				if len(t.services) > 0 && t.selectedService < len(t.services) {
+					selectedService := t.services[t.selectedService]
+					logText = fmt.Sprintf("🔗 No logs available for service '%s'", selectedService.Name)
+					logHeader = fmt.Sprintf("🔗 Service Logs: %s (No logs)", selectedService.Name)
+				} else {
+					logText = "🔗 No service selected"
+					logHeader = "🔗 Service Logs (No service selected)"
+				}
+			}
+		
+		default: // App logs mode (legacy)
 			// Get recent logs but account for multiline entries
 			startIdx := max(0, len(t.logContent)-constants.LastNAppLogEntries) // Start with last 100 entries
 			recentLogs := t.logContent[startIdx:]
 
 			// Apply coloring and count actual rendered lines
-			// Account for both newlines and wrapped lines
 			coloredAppLogs := []string{}
 			totalLines := 0
 			logWidth := t.width - 6 // Account for borders and padding
@@ -1055,10 +1107,8 @@ func (t *TUI) renderContent(availableHeight int) string {
 				colored := t.colorizeAppLog(line)
 
 				// Count how many actual lines this log entry will render as
-				// This includes both explicit newlines and wrapped lines
 				lineCount := 0
 				for _, subline := range strings.Split(colored, "\n") {
-					// Calculate wrapped lines for each subline
 					sublineLen := len(subline)
 					if sublineLen == 0 {
 						lineCount++
@@ -1072,22 +1122,24 @@ func (t *TUI) renderContent(availableHeight int) string {
 					coloredAppLogs = append(coloredAppLogs, colored)
 					totalLines += lineCount
 				} else if totalLines < maxLogContentLines {
-					// Just skip partially visible entries to avoid complexity
 					break
 				} else {
 					break
 				}
 			}
 			logText = strings.Join(coloredAppLogs, "\n")
-			logHeader = "App Logs"
+			logHeader = "📱 App Logs"
 		}
 
-		// Color the header based on log type with brighter colors
+		// Color the header based on log type with distinctive colors
 		headerStyle := lipgloss.NewStyle().Bold(true)
-		if t.logViewMode == "pod" {
+		switch t.logViewMode {
+		case constants.PodLogViewMode:
 			headerStyle = headerStyle.Foreground(lipgloss.Color("207")) // Bright magenta for pod logs
-		} else {
-			headerStyle = headerStyle.Foreground(lipgloss.Color("51")) // Bright cyan for app logs
+		case constants.ServiceLogViewMode:
+			headerStyle = headerStyle.Foreground(lipgloss.Color("51"))  // Bright cyan for service logs
+		default: // App logs
+			headerStyle = headerStyle.Foreground(lipgloss.Color("220")) // Bright yellow for app logs
 		}
 
 		coloredHeader := headerStyle.Render(logHeader)
@@ -3043,6 +3095,54 @@ func (t *TUI) colorizePodLog(logLine string) string {
 	}
 }
 
+// colorizeServiceLog applies color to service aggregated log lines
+// Service logs have format: [pod-name/container] log-content
+func (t *TUI) colorizeServiceLog(logLine string) string {
+	// Define colors for service logs
+	podNameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true)    // Bright blue for pod names
+	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)     // Bright red for errors
+	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))                 // Orange for warnings
+	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46"))                  // Bright green for info
+	
+	// Extract pod/container prefix if present: [pod-name/container]
+	prefixPattern := regexp.MustCompile(`^\[([^/]+)/([^\]]+)\]\s*(.*)$`)
+	if matches := prefixPattern.FindStringSubmatch(logLine); len(matches) == 4 {
+		podName := matches[1]
+		containerName := matches[2]
+		logContent := matches[3]
+		
+		// Color the prefix
+		coloredPrefix := podNameStyle.Render(fmt.Sprintf("[%s/%s]", podName, containerName))
+		
+		// Color the log content based on patterns
+		var coloredContent string
+		switch {
+		case strings.Contains(strings.ToLower(logContent), "error") || strings.Contains(logContent, "❌"):
+			coloredContent = errorStyle.Render(logContent)
+		case strings.Contains(strings.ToLower(logContent), "warn") || strings.Contains(logContent, "⚠️"):
+			coloredContent = warnStyle.Render(logContent)
+		case strings.Contains(strings.ToLower(logContent), "info") || strings.Contains(logContent, "✅"):
+			coloredContent = infoStyle.Render(logContent)
+		default:
+			coloredContent = logContent
+		}
+		
+		return fmt.Sprintf("%s %s", coloredPrefix, coloredContent)
+	}
+	
+	// If no prefix found, apply basic coloring
+	switch {
+	case strings.Contains(strings.ToLower(logLine), "error"):
+		return errorStyle.Render(logLine)
+	case strings.Contains(strings.ToLower(logLine), "warn"):
+		return warnStyle.Render(logLine)
+	case strings.Contains(strings.ToLower(logLine), "info"):
+		return infoStyle.Render(logLine)
+	default:
+		return logLine
+	}
+}
+
 // OpenShift resource display functions
 
 func (t *TUI) updateBuildConfigDisplay() {
@@ -3436,6 +3536,16 @@ func truncateString(s string, maxLen int) string {
 // handleTabSwitch handles tab switching and auto-loading
 func (t *TUI) handleTabSwitch() tea.Cmd {
 	t.updateMainContent()
+
+	// Set appropriate log mode based on current tab
+	switch t.ActiveTab {
+	case 1: // Services tab - default to service logs mode if logs are visible
+		if t.showLogs {
+			t.logViewMode = constants.ServiceLogViewMode
+		}
+	default: // All other tabs - use pod logs mode
+		t.logViewMode = constants.PodLogViewMode
+	}
 
 	// Auto-load data for resource tabs if needed
 	if t.connected {

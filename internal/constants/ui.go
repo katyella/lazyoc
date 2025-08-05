@@ -29,13 +29,19 @@ var ResourceTabs = []string{"Pods", "Services", "Deployments", "ConfigMaps", "Se
 // PanelNames defines the available panels in the UI
 var PanelNames = []string{"Main", "Details", "Logs"}
 
-// Log view constants
+// Log view constants 
 const (
-	// DefaultLogViewMode is the default log view mode
-	DefaultLogViewMode = "app"
-
-	// PodLogViewMode is the pod log view mode
+	// AppLogViewMode shows application/system logs (legacy)
+	AppLogViewMode = "app"
+	
+	// PodLogViewMode shows logs from a specific pod
 	PodLogViewMode = "pod"
+	
+	// ServiceLogViewMode shows aggregated logs from all pods behind a service  
+	ServiceLogViewMode = "service"
+	
+	// DefaultLogViewMode is the default log view mode
+	DefaultLogViewMode = PodLogViewMode
 )
 
 // UI Messages

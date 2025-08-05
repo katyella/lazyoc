@@ -154,7 +154,7 @@ func (k *KeyboardHandler) handleDownKey() (tea.Model, tea.Cmd) {
 	if k.focusManager.IsMainPanelFocused() {
 		k.navigator.SelectNextResource()
 		// For pods, handle log loading
-		if k.tui.ActiveTab == 0 && k.tui.logViewMode == constants.PodLogViewMode {
+		if k.tui.ActiveTab == 0 {
 			k.tui.clearPodLogs()
 			return k.tui, tea.Batch(k.tui.loadPodLogs(), k.tui.startPodLogRefreshTimer())
 		}
@@ -165,7 +165,7 @@ func (k *KeyboardHandler) handleDownKey() (tea.Model, tea.Cmd) {
 	} else if k.focusManager.IsDetailsPanelFocused() && k.tui.showLogs {
 		// Move focus from details to logs
 		k.focusManager.FocusPanel(2)
-	} else if k.focusManager.IsLogsPanelFocused() && k.tui.logViewMode == "pod" && len(k.tui.podLogs) > 0 {
+	} else if k.focusManager.IsLogsPanelFocused() && len(k.tui.podLogs) > 0 {
 		// Scroll down in pod logs
 		maxScroll := k.tui.getMaxLogScrollOffset()
 		if k.tui.logScrollOffset < maxScroll {
@@ -185,12 +185,12 @@ func (k *KeyboardHandler) handleUpKey() (tea.Model, tea.Cmd) {
 	if k.focusManager.IsMainPanelFocused() {
 		k.navigator.SelectPreviousResource()
 		// For pods, handle log loading
-		if k.tui.ActiveTab == 0 && k.tui.logViewMode == constants.PodLogViewMode {
+		if k.tui.ActiveTab == 0 {
 			k.tui.clearPodLogs()
 			return k.tui, tea.Batch(k.tui.loadPodLogs(), k.tui.startPodLogRefreshTimer())
 		}
 		return k.tui, k.tui.loadPodLogs()
-	} else if k.focusManager.IsLogsPanelFocused() && k.tui.logViewMode == "pod" && len(k.tui.podLogs) > 0 {
+	} else if k.focusManager.IsLogsPanelFocused() && len(k.tui.podLogs) > 0 {
 		// Scroll up in pod logs
 		if k.tui.logScrollOffset > 0 {
 			k.tui.logScrollOffset -= 1
@@ -263,14 +263,6 @@ func (k *KeyboardHandler) handleEnterKey() (tea.Model, tea.Cmd) {
 				return k.tui, nil
 			}
 		}
-	} else if k.focusManager.IsLogsPanelFocused() {
-		// Toggle log view when in log panel
-		if k.tui.logViewMode == constants.DefaultLogViewMode {
-			k.tui.logViewMode = constants.PodLogViewMode
-		} else {
-			k.tui.logViewMode = constants.DefaultLogViewMode
-		}
-		return k.tui, nil
 	}
 	return k.tui, nil
 }
@@ -338,17 +330,8 @@ func (k *KeyboardHandler) handleTailToggleKey() (tea.Model, tea.Cmd) {
 }
 
 func (k *KeyboardHandler) handleLogToggleKey() (tea.Model, tea.Cmd) {
-	// Different behavior based on current panel
-	if k.focusManager.IsLogsPanelFocused() {
-		// Toggle log view when in log panel
-		if k.tui.logViewMode == constants.DefaultLogViewMode {
-			k.tui.logViewMode = constants.PodLogViewMode
-		} else {
-			k.tui.logViewMode = constants.DefaultLogViewMode
-		}
-		return k.tui, nil
-	} else if k.focusManager.IsMainPanelFocused() {
-		// Navigate tabs when in main panel (h/l navigation)
+	// Navigate tabs when in main panel (h/l navigation)
+	if k.focusManager.IsMainPanelFocused() {
 		k.tui.NextTab()
 		return k.tui, k.tui.handleTabSwitch()
 	}
@@ -356,12 +339,44 @@ func (k *KeyboardHandler) handleLogToggleKey() (tea.Model, tea.Cmd) {
 }
 
 func (k *KeyboardHandler) handleLogPanelToggleKey() (tea.Model, tea.Cmd) {
-	// Toggle logs panel (L key)
-	k.tui.showLogs = !k.tui.showLogs
-	if !k.tui.showLogs && k.focusManager.IsLogsPanelFocused() {
-		k.focusManager.FocusPanel(0) // Focus main panel if logs were focused
+	// Context-aware 'L' key behavior
+	if k.focusManager.IsMainPanelFocused() {
+		// When in main panel, behavior depends on current tab
+		switch k.tui.ActiveTab {
+		case 1: // Services tab
+			// Toggle service logs mode and show logs panel
+			if k.tui.logViewMode == constants.ServiceLogViewMode {
+				// Switch back to pod logs
+				k.tui.logViewMode = constants.PodLogViewMode
+			} else {
+				// Switch to service logs and load them
+				k.tui.logViewMode = constants.ServiceLogViewMode
+				k.tui.showLogs = true // Ensure logs panel is visible
+				return k.tui, k.tui.loadServiceLogs()
+			}
+			k.tui.showLogs = true // Ensure logs panel is visible
+			return k.tui, nil
+			
+		default:
+			// For other tabs, just toggle logs panel visibility
+			k.tui.showLogs = !k.tui.showLogs
+			if !k.tui.showLogs && k.focusManager.IsLogsPanelFocused() {
+				k.focusManager.FocusPanel(0) // Focus main panel if logs were focused
+			}
+			// Ensure we're in pod logs mode for non-service tabs
+			if k.tui.logViewMode != constants.PodLogViewMode {
+				k.tui.logViewMode = constants.PodLogViewMode
+			}
+			return k.tui, nil
+		}
+	} else {
+		// When not in main panel, just toggle logs panel visibility
+		k.tui.showLogs = !k.tui.showLogs
+		if !k.tui.showLogs && k.focusManager.IsLogsPanelFocused() {
+			k.focusManager.FocusPanel(0) // Focus main panel if logs were focused
+		}
+		return k.tui, nil
 	}
-	return k.tui, nil
 }
 
 func (k *KeyboardHandler) handleLeftTabKey() (tea.Model, tea.Cmd) {
