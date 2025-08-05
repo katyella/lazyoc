@@ -7,27 +7,29 @@ import (
 
 // ProgramOptions holds configuration for the Bubble Tea program
 type ProgramOptions struct {
-	Version      string
-	Debug        bool
-	AltScreen    bool
-	MouseSupport bool
-	KubeConfig   string
+	Version             string
+	Debug               bool
+	AltScreen           bool
+	MouseSupport        bool
+	KubeConfig          string
+	ShowFullClusterInfo bool
 }
 
 // DefaultProgramOptions returns sensible defaults for the TUI program
 func DefaultProgramOptions() ProgramOptions {
 	return ProgramOptions{
-		Version:      "dev",
-		Debug:        false,
-		AltScreen:    true,  // Use alternate screen buffer
-		MouseSupport: true,  // Enable mouse support for scrolling
+		Version:             "dev",
+		Debug:               false,
+		AltScreen:           true,  // Use alternate screen buffer
+		MouseSupport:        true,  // Enable mouse support for scrolling
+		ShowFullClusterInfo: false, // Obfuscate cluster info by default for security
 	}
 }
 
 // NewProgram creates a new Bubble Tea program with the TUI model
 func NewProgram(opts ProgramOptions) *tea.Program {
 	// Create the simplified TUI model
-	tui := NewTUI(opts.Version, opts.Debug)
+	tui := NewTUI(opts.Version, opts.Debug, opts.ShowFullClusterInfo)
 
 	// Set kubeconfig if provided
 	if opts.KubeConfig != "" {
