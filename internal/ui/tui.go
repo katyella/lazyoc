@@ -3842,16 +3842,6 @@ func (t *TUI) handleLogStreamError(err error) {
 	}()
 }
 
-// getLogViewHeight calculates the height available for log display
-func (t *TUI) getLogViewHeight() int {
-	headerHeight := t.getHeaderHeight()
-	statusHeight := 1
-	availableHeight := t.height - headerHeight - statusHeight
-	if t.showDetails {
-		availableHeight = availableHeight / 2 // Split with details panel
-	}
-	return max(1, availableHeight-2) // Account for borders
-}
 
 // Line-based scroll anchoring methods
 
