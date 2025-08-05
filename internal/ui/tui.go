@@ -43,12 +43,13 @@ type TUI struct {
 	projectFactory *projects.DefaultProjectManagerFactory
 
 	// Connection state
-	connected      bool
-	connecting     bool
-	connectionErr  error
-	namespace      string
-	context        string
-	clusterVersion string
+	connected           bool
+	connecting          bool
+	connectionErr       error
+	namespace           string
+	context             string
+	clusterVersion      string
+	showFullClusterInfo bool
 
 	// Bubble Tea program reference for sending messages from goroutines
 	program *tea.Program
@@ -168,7 +169,7 @@ type TUI struct {
 }
 
 // NewTUI creates a new TUI instance
-func NewTUI(version string, debug bool) *TUI {
+func NewTUI(version string, debug bool, showFullClusterInfo bool) *TUI {
 	app := models.NewApp(version)
 	app.Debug = debug
 	app.Logger = logging.SetupLogger(debug)
@@ -176,17 +177,18 @@ func NewTUI(version string, debug bool) *TUI {
 	logging.Info(app.Logger, "Initializing Simplified LazyOC TUI v%s", version)
 
 	tui := &TUI{
-		App:           app,
-		theme:         constants.DefaultTheme,
-		showDetails:   true,
-		showLogs:      true,
-		focusedPanel:  constants.DefaultFocusedPanel,
-		mainContent:   "", // Will be set by updateMainContent
-		logContent:    []string{constants.InitialLogMessage},
-		detailContent: constants.DefaultDetailContent,
-		namespace:     constants.DefaultNamespace,
-		pods:          []resources.PodInfo{},
-		selectedPod:   0,
+		App:                 app,
+		theme:               constants.DefaultTheme,
+		showDetails:         true,
+		showLogs:            true,
+		focusedPanel:        constants.DefaultFocusedPanel,
+		mainContent:         "", // Will be set by updateMainContent
+		logContent:          []string{constants.InitialLogMessage},
+		detailContent:       constants.DefaultDetailContent,
+		namespace:           constants.DefaultNamespace,
+		pods:                []resources.PodInfo{},
+		selectedPod:         0,
+		showFullClusterInfo: showFullClusterInfo,
 		// Pod logs
 		podLogs:      []string{},
 		maxLogLines:  constants.MaxLogLines,
@@ -311,7 +313,8 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			t.logContent = append(t.logContent, fmt.Sprintf("✨ Connection restored after %d retries", t.retryCount))
 			t.retryCount = 0
 		} else {
-			t.logContent = append(t.logContent, fmt.Sprintf("✅ Connected to %s", msg.Context))
+			obfuscatedContext := t.obfuscateClusterContext(msg.Context)
+		t.logContent = append(t.logContent, fmt.Sprintf("✅ Connected to %s", obfuscatedContext))
 		}
 		t.retryInProgress = false
 
@@ -798,6 +801,31 @@ func (t *TUI) renderMain() string {
 }
 
 // renderHeader renders a themed header
+// obfuscateClusterContext obfuscates sensitive parts of cluster context URLs
+func (t *TUI) obfuscateClusterContext(context string) string {
+	if context == "" || t.showFullClusterInfo {
+		return context
+	}
+
+	// Pattern: namespace/api-domain:port/namespace or similar
+	// Examples: 
+	// - "katyella-dev/api-rm3-7wse-p1-openshiftapps-com:6443/katyella"
+	// - "default/api-cluster-domain-com:6443/default"
+	
+	// Replace domain parts with asterisks, keeping structure visible
+	// Replace anything that looks like a domain (contains hyphens and dots/dashes)
+	domainPattern := regexp.MustCompile(`[a-zA-Z0-9]+-[a-zA-Z0-9]+-[a-zA-Z0-9]+-[a-zA-Z0-9]+-[a-zA-Z0-9-]+`)
+	obfuscated := domainPattern.ReplaceAllStringFunc(context, func(match string) string {
+		if len(match) <= 8 {
+			return strings.Repeat("*", len(match))
+		}
+		// Keep first 2 and last 2 characters, replace middle with asterisks
+		return match[:2] + strings.Repeat("*", len(match)-4) + match[len(match)-2:]
+	})
+	
+	return obfuscated
+}
+
 func (t *TUI) renderHeader(height int) string {
 	primaryColor, errorColor := t.getThemeColors()
 	headerStyle := lipgloss.NewStyle().
@@ -833,7 +861,8 @@ func (t *TUI) renderHeader(height int) string {
 		statusColor = primaryColor
 	} else if t.connected {
 		projectInfo := t.getProjectDisplayInfo()
-		statusText = fmt.Sprintf("● Connected to %s (%s)", t.context, projectInfo)
+		obfuscatedContext := t.obfuscateClusterContext(t.context)
+		statusText = fmt.Sprintf("● Connected to %s (%s)", obfuscatedContext, projectInfo)
 		statusColor = lipgloss.Color("2") // green
 	} else {
 		statusText = constants.NotConnectedMessage
