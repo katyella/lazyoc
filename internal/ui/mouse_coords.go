@@ -36,36 +36,42 @@ func NewMouseCoordinator(tui *TUI) *MouseCoordinator {
 // GetClickTarget determines what was clicked based on coordinates
 func (m *MouseCoordinator) GetClickTarget(x, y int) ClickTarget {
 	headerHeight := m.tui.getHeaderHeight()
-	
-	logging.Debug(m.tui.Logger, "MouseCoordinator: analyzing click at X=%d, Y=%d, headerHeight=%d", 
+
+	logging.Debug(m.tui.Logger, "MouseCoordinator: analyzing click at X=%d, Y=%d, headerHeight=%d",
 		x, y, headerHeight)
-	
+
 	// Check if click is on tabs row
 	if y == headerHeight {
 		tabIndex := m.calculateTabIndex(x)
 		logging.Debug(m.tui.Logger, "MouseCoordinator: tab click detected, tabIndex=%d", tabIndex)
 		return ClickTarget{Type: ClickTab, TabIndex: tabIndex}
 	}
-	
+
 	// Determine which panel was clicked
 	panel := m.getPanelFromCoordinates(x, y)
-	
-	// Check if click is in resource list area of main panel
-	if panel == 0 && y > headerHeight+1 {
+
+	// Check if click is in actual resource rows (not headers)
+	resourceListStartY := headerHeight + 1
+	contentHeaderLines := m.getContentHeaderLines()
+	firstResourceY := resourceListStartY + contentHeaderLines
+	if panel == 0 && y >= firstResourceY {
 		resourceIndex := m.calculateResourceIndex(y)
-		if resourceIndex >= 0 {
-			logging.Debug(m.tui.Logger, "MouseCoordinator: resource click detected, panel=%d, resourceIndex=%d", 
+		// Validate that the resource index is within bounds and not a separator/header click
+		if resourceIndex >= 0 && m.isValidResourceClick(resourceIndex) {
+			logging.Debug(m.tui.Logger, "MouseCoordinator: resource click detected, panel=%d, resourceIndex=%d",
 				panel, resourceIndex)
 			return ClickTarget{Type: ClickResource, Panel: panel, ResourceIndex: resourceIndex}
+		} else {
+			logging.Debug(m.tui.Logger, "MouseCoordinator: invalid resource click, resourceIndex=%d", resourceIndex)
 		}
 	}
-	
+
 	// Generic panel click
 	if panel >= 0 {
 		logging.Debug(m.tui.Logger, "MouseCoordinator: panel click detected, panel=%d", panel)
 		return ClickTarget{Type: ClickPanel, Panel: panel}
 	}
-	
+
 	logging.Debug(m.tui.Logger, "MouseCoordinator: unhandled click")
 	return ClickTarget{Type: ClickUnhandled}
 }
@@ -77,30 +83,30 @@ func (m *MouseCoordinator) calculateTabIndex(x int) int {
 	// Calculate actual tab positions accounting for padding and centering
 	var tabWidths []int
 	totalTabsWidth := 0
-	
+
 	for _, tab := range tabs {
 		// Each tab has padding of 1 on each side, so width = len(name) + 2
 		tabWidth := len(tab) + 2
 		tabWidths = append(tabWidths, tabWidth)
 		totalTabsWidth += tabWidth
 	}
-	
+
 	// Calculate starting position (center-aligned)
 	startX := (m.tui.width - totalTabsWidth) / 2
 	if startX < 0 {
 		startX = 0
 	}
-	
+
 	// Find which tab was clicked
 	currentX := startX
-	
+
 	for i, tabWidth := range tabWidths {
 		if x >= currentX && x < currentX+tabWidth {
 			return i
 		}
 		currentX += tabWidth
 	}
-	
+
 	// Return -1 if click is outside tab area
 	return -1
 }
@@ -109,15 +115,30 @@ func (m *MouseCoordinator) calculateTabIndex(x int) int {
 func (m *MouseCoordinator) calculateResourceIndex(y int) int {
 	headerHeight := m.tui.getHeaderHeight()
 	resourceListStartY := headerHeight + 1 // header + tabs
-	
-	// Account for content header (title + empty line + column headers + separator = 4 lines)
-	contentHeaderLines := 4
-	resourceIndex := y - resourceListStartY - contentHeaderLines - 1 // -1 for 0-based indexing
-	
-	logging.Debug(m.tui.Logger, "MouseCoordinator: calculateResourceIndex Y=%d, resourceListStartY=%d, contentHeaderLines=%d, resourceIndex=%d", 
-		y, resourceListStartY, contentHeaderLines, resourceIndex)
-	
+
+	// Different resource types have different content header structures
+	contentHeaderLines := m.getContentHeaderLines()
+	firstResourceY := resourceListStartY + contentHeaderLines
+	resourceIndex := y - firstResourceY
+
+	logging.Debug(m.tui.Logger, "MouseCoordinator: calculateResourceIndex Y=%d, resourceListStartY=%d, contentHeaderLines=%d, firstResourceY=%d, resourceIndex=%d, headerHeight=%d, activeTab=%d",
+		y, resourceListStartY, contentHeaderLines, firstResourceY, resourceIndex, headerHeight, int(m.tui.ActiveTab))
+
 	return resourceIndex
+}
+
+// getContentHeaderLines returns the number of header lines for the current resource type
+func (m *MouseCoordinator) getContentHeaderLines() int {
+	// All resource types follow the same pattern:
+	// blank space
+	// blank space
+	// Line 2: "📦 Resource Name\n"
+	// Line 3: "\n" (empty line)
+	// Line 4: "NAME ... AGE\n" (header)
+	// Line 6: "────────\n" (separator)
+	// Line 7+: actual resource data
+
+	return 6 // All tabs have exactly 4 header lines before resource data
 }
 
 // getPanelFromCoordinates determines which panel was clicked based on coordinates
@@ -149,4 +170,28 @@ func (m *MouseCoordinator) getPanelFromCoordinates(x, y int) int {
 	}
 
 	return 0 // Main panel
+}
+
+// isValidResourceClick validates that the resource index corresponds to an actual resource
+func (m *MouseCoordinator) isValidResourceClick(resourceIndex int) bool {
+	switch m.tui.ActiveTab {
+	case 0: // Pods
+		return resourceIndex >= 0 && resourceIndex < len(m.tui.pods)
+	case 1: // Services
+		return resourceIndex >= 0 && resourceIndex < len(m.tui.services)
+	case 2: // Deployments
+		return resourceIndex >= 0 && resourceIndex < len(m.tui.deployments)
+	case 3: // ConfigMaps
+		return resourceIndex >= 0 && resourceIndex < len(m.tui.configMaps)
+	case 4: // Secrets
+		return resourceIndex >= 0 && resourceIndex < len(m.tui.secrets)
+	case 5: // BuildConfigs
+		return resourceIndex >= 0 && resourceIndex < len(m.tui.buildConfigs)
+	case 6: // ImageStreams
+		return resourceIndex >= 0 && resourceIndex < len(m.tui.imageStreams)
+	case 7: // Routes
+		return resourceIndex >= 0 && resourceIndex < len(m.tui.routes)
+	default:
+		return false
+	}
 }
