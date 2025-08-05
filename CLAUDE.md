@@ -6,7 +6,7 @@
 - **Language**: Go 1.24.5
 - **Main Framework**: Bubble Tea (TUI)  
 - **Target**: OpenShift/Kubernetes cluster management
-- **Version**: 0.1.0 (from VERSION file)
+- **Version**: 0.2.4 (from VERSION file)
 - **Status**: Full OpenShift support implemented with navigation and details panels
 
 ## Essential Build & Development Commands
@@ -189,14 +189,27 @@ go test -v ./internal/k8s/...   # Specific package tests
 
 ### Configuration
 - Constants: `internal/constants/*.go`
-- Version: `VERSION` file (currently 0.1.0)
+- Version: `VERSION` file (currently 0.2.4)
 
 ## Git & Release
 
 ### Version Management
 - Version stored in `VERSION` file
 - Git tags: `v{VERSION}` (e.g., `v0.1.0`)
-- Automated releases via GitHub Actions
+- **IMPORTANT**: Releases are fully automated via GitHub Actions
+
+### Release Process
+**DO NOT use `gh release create` manually!** The project uses automated releases:
+
+1. **Update VERSION file**: Edit `VERSION` file with new version number
+2. **Commit version bump**: `git commit -m "bump: version X.Y.Z"`
+3. **Create and push tag**: `git tag vX.Y.Z && git push origin vX.Y.Z`
+4. **GitHub Actions handles the rest**: 
+   - `.github/workflows/release.yml` triggers on tag push
+   - Uses GoReleaser to build multi-platform binaries
+   - Creates GitHub release with auto-generated notes
+   - Uploads all release assets
+   - Updates Homebrew tap if configured
 
 ### Commit Patterns
 - Use conventional commits: `feat:`, `fix:`, `docs:`, etc.
