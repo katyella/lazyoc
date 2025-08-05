@@ -9,6 +9,7 @@ A lazy terminal UI for OpenShift and Kubernetes clusters. LazyOC provides an int
 
 ![LazyOC Demo](docs/lazy_oc_sm.gif)
 
+
 ## 🌟 Features
 
 ### Core Functionality
