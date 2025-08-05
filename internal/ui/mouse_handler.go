@@ -48,12 +48,14 @@ func (m *MouseHandler) Handle(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 // handleMouseClick processes mouse click events
 func (m *MouseHandler) handleMouseClick(x, y int) (tea.Model, tea.Cmd) {
+	logging.Debug(m.tui.Logger, "MouseHandler: click at X=%d, Y=%d", x, y)
 	target := m.coordinator.GetClickTarget(x, y)
 	
 	switch target.Type {
 	case ClickTab:
 		return m.handleTabClick(target.TabIndex)
 	case ClickResource:
+		logging.Debug(m.tui.Logger, "MouseHandler: resource click - calculated index=%d, current selected=%d", target.ResourceIndex, m.getCurrentSelectedIndex())
 		return m.handleResourceClick(target.ResourceIndex)
 	case ClickPanel:
 		return m.handlePanelClick(target.Panel)
@@ -88,10 +90,20 @@ func (m *MouseHandler) handleResourceClick(resourceIndex int) (tea.Model, tea.Cm
 		return m.tui, nil
 	}
 	
-	logging.Debug(m.tui.Logger, "MouseHandler: selecting resource %d in tab %d", 
-		resourceIndex, int(m.tui.ActiveTab))
+	currentSelected := m.getCurrentSelectedIndex()
+	logging.Debug(m.tui.Logger, "MouseHandler: selecting resource %d in tab %d (was %d)", 
+		resourceIndex, int(m.tui.ActiveTab), currentSelected)
+	
+	// Switch focus to main panel when selecting a resource
+	if m.focusManager.GetFocusedPanel() != 0 {
+		logging.Debug(m.tui.Logger, "MouseHandler: switching focus to main panel for resource selection")
+		m.focusManager.FocusPanel(0)
+	}
 	
 	m.navigator.SelectResource(resourceIndex)
+	
+	newSelected := m.getCurrentSelectedIndex()
+	logging.Debug(m.tui.Logger, "MouseHandler: selection changed from %d to %d", currentSelected, newSelected)
 	
 	// For pods, handle log loading if needed
 	if m.tui.ActiveTab == 0 && m.tui.logViewMode == constants.PodLogViewMode {
@@ -184,4 +196,28 @@ func (m *MouseHandler) handleLogScroll(direction int) (tea.Model, tea.Cmd) {
 		direction, m.tui.logScrollOffset)
 	
 	return m.tui, nil
+}
+
+// getCurrentSelectedIndex returns the currently selected resource index for the active tab
+func (m *MouseHandler) getCurrentSelectedIndex() int {
+	switch m.tui.ActiveTab {
+	case 0: // Pods
+		return m.tui.selectedPod
+	case 1: // Services
+		return m.tui.selectedService
+	case 2: // Deployments
+		return m.tui.selectedDeployment
+	case 3: // ConfigMaps
+		return m.tui.selectedConfigMap
+	case 4: // Secrets
+		return m.tui.selectedSecret
+	case 5: // BuildConfigs
+		return m.tui.selectedBuildConfig
+	case 6: // ImageStreams
+		return m.tui.selectedImageStream
+	case 7: // Routes
+		return m.tui.selectedRoute
+	default:
+		return 0
+	}
 }
