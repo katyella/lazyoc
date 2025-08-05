@@ -32,15 +32,20 @@ func (m *MouseHandler) Handle(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m.tui, nil
 	}
 
-	logging.Debug(m.tui.Logger, "MouseHandler: received event Type=%v, X=%d, Y=%d", msg.Type, msg.X, msg.Y)
+	logging.Debug(m.tui.Logger, "MouseHandler: received event Action=%v, Button=%v, X=%d, Y=%d", msg.Action, msg.Button, msg.X, msg.Y)
 
-	switch msg.Type {
-	case tea.MouseLeft:
-		return m.handleMouseClick(msg.X, msg.Y)
-	case tea.MouseWheelUp:
-		return m.handleMouseWheel(-1, msg.X, msg.Y)
-	case tea.MouseWheelDown:
-		return m.handleMouseWheel(1, msg.X, msg.Y)
+	switch msg.Action {
+	case tea.MouseActionPress:
+		if msg.Button == tea.MouseButtonLeft {
+			return m.handleMouseClick(msg.X, msg.Y)
+		}
+	case tea.MouseActionMotion:
+		// Handle wheel events via button type
+		if msg.Button == tea.MouseButtonWheelUp {
+			return m.handleMouseWheel(-1, msg.X, msg.Y)
+		} else if msg.Button == tea.MouseButtonWheelDown {
+			return m.handleMouseWheel(1, msg.X, msg.Y)
+		}
 	}
 
 	return m.tui, nil

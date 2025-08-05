@@ -12,7 +12,6 @@ import (
 	buildv1 "github.com/openshift/api/build/v1"
 	imagev1 "github.com/openshift/api/image/v1"
 	routev1 "github.com/openshift/api/route/v1"
-	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
 
 	"github.com/katyella/lazyoc/internal/k8s"
 )
@@ -498,68 +497,3 @@ func routeToInfo(route *routev1.Route) RouteInfo {
 	return info
 }
 
-func clusterServiceVersionToInfo(csv *operatorsv1alpha1.ClusterServiceVersion) OperatorInfo {
-	info := OperatorInfo{
-		ResourceInfo: ResourceInfo{
-			Name:        csv.Name,
-			Namespace:   csv.Namespace,
-			Kind:        "ClusterServiceVersion",
-			APIVersion:  csv.APIVersion,
-			Labels:      csv.Labels,
-			Annotations: csv.Annotations,
-			CreatedAt:   csv.CreationTimestamp.Time,
-			Status:      string(csv.Status.Phase),
-		},
-		Phase:       string(csv.Status.Phase),
-		Version:     csv.Spec.Version.String(),
-		DisplayName: csv.Spec.DisplayName,
-		Description: csv.Spec.Description,
-		Age:         duration.HumanDuration(time.Since(csv.CreationTimestamp.Time)),
-	}
-
-	// Set provider
-	if csv.Spec.Provider.Name != "" {
-		info.Provider = OperatorProvider{
-			Name: csv.Spec.Provider.Name,
-			URL:  csv.Spec.Provider.URL,
-		}
-	}
-
-	return info
-}
-
-func subscriptionToInfo(sub *operatorsv1alpha1.Subscription) SubscriptionInfo {
-	info := SubscriptionInfo{
-		ResourceInfo: ResourceInfo{
-			Name:        sub.Name,
-			Namespace:   sub.Namespace,
-			Kind:        "Subscription",
-			APIVersion:  sub.APIVersion,
-			Labels:      sub.Labels,
-			Annotations: sub.Annotations,
-			CreatedAt:   sub.CreationTimestamp.Time,
-			Status:      string(sub.Status.State),
-		},
-		Channel:               sub.Spec.Channel,
-		StartingCSV:           sub.Spec.StartingCSV,
-		CurrentCSV:            sub.Status.CurrentCSV,
-		InstalledCSV:          sub.Status.InstalledCSV,
-		InstallPlanGeneration: int64(sub.Status.InstallPlanGeneration),
-		State:                 string(sub.Status.State),
-		Age:                   duration.HumanDuration(time.Since(sub.CreationTimestamp.Time)),
-	}
-
-	// Set install plan ref
-	if sub.Status.InstallPlanRef != nil {
-		info.InstallPlanRef = &InstallPlanRef{
-			APIVersion:      sub.Status.InstallPlanRef.APIVersion,
-			Kind:            sub.Status.InstallPlanRef.Kind,
-			Name:            sub.Status.InstallPlanRef.Name,
-			Namespace:       sub.Status.InstallPlanRef.Namespace,
-			ResourceVersion: sub.Status.InstallPlanRef.ResourceVersion,
-			UID:             string(sub.Status.InstallPlanRef.UID),
-		}
-	}
-
-	return info
-}

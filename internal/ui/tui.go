@@ -1660,92 +1660,6 @@ func (t *TUI) loadDeployments() tea.Cmd {
 	}
 }
 
-// streamServiceLogs streams logs for all pods behind the selected service
-func (t *TUI) streamServiceLogs() tea.Cmd {
-	return func() tea.Msg {
-		if !t.connected || t.resourceClient == nil {
-			return messages.ServiceLogsLoadError{Err: fmt.Errorf("not connected to cluster")}
-		}
-
-		if len(t.services) == 0 || t.selectedService >= len(t.services) {
-			return messages.ServiceLogsLoadError{Err: fmt.Errorf("no service selected")}
-		}
-
-		selectedService := t.services[t.selectedService]
-
-		ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultOperationTimeout)
-		defer cancel()
-
-		// Get pods for the selected service
-		pods, err := t.resourceClient.GetPodsForService(ctx, t.namespace, selectedService.Name)
-		if err != nil {
-			return messages.ServiceLogsLoadError{Err: fmt.Errorf("failed to get pods for service %s: %w", selectedService.Name, err)}
-		}
-
-		if len(pods) == 0 {
-			return messages.ServiceLogsLoaded{
-				ServiceName: selectedService.Name,
-				Pods:        pods,
-				Logs:        []string{fmt.Sprintf("No pods found for service %s", selectedService.Name)},
-			}
-		}
-
-		// Start streaming logs for all pods concurrently
-		logChan := make(chan string, 100)
-		ctx2, cancel2 := context.WithCancel(context.Background())
-
-		// Start goroutines for each pod
-		for _, pod := range pods {
-			if len(pod.ContainerInfo) > 0 {
-				containerName := pod.ContainerInfo[0].Name
-				go func(podName, containerName string) {
-					opts := resources.LogOptions{
-						Follow:    true,
-						TailLines: func() *int64 { i := int64(50); return &i }(),
-					}
-
-					logStream, err := t.resourceClient.StreamPodLogs(ctx2, t.namespace, podName, containerName, opts)
-					if err != nil {
-						logChan <- fmt.Sprintf("[%s/%s] Error streaming logs: %v", podName, containerName, err)
-						return
-					}
-
-					for logLine := range logStream {
-						select {
-						case <-ctx2.Done():
-							return
-						case logChan <- fmt.Sprintf("[%s/%s] %s", podName, containerName, logLine):
-						}
-					}
-				}(pod.Name, containerName)
-			}
-		}
-
-		// Collect initial logs
-		var allLogs []string
-		timeout := time.After(2 * time.Second) // Wait up to 2 seconds for initial logs
-	CollectLoop:
-		for {
-			select {
-			case logLine := <-logChan:
-				allLogs = append(allLogs, logLine)
-				if len(allLogs) >= 100 { // Limit initial load
-					break CollectLoop
-				}
-			case <-timeout:
-				break CollectLoop
-			}
-		}
-
-		cancel2() // Stop streaming for now - we'll implement continuous streaming later
-
-		return messages.ServiceLogsLoaded{
-			ServiceName: selectedService.Name,
-			Pods:        pods,
-			Logs:        allLogs,
-		}
-	}
-}
 
 // loadServiceLogs loads logs for all pods behind the selected service
 func (t *TUI) loadServiceLogs() tea.Cmd {
@@ -2210,7 +2124,7 @@ func (t *TUI) updateBuildConfigDetails(bc resources.BuildConfigInfo) {
 	details.WriteString(fmt.Sprintf("Age:        %s\n", bc.Age))
 
 	// Source information
-	details.WriteString(fmt.Sprintf("\nSource:\n"))
+	details.WriteString("\nSource:\n")
 	details.WriteString(fmt.Sprintf("  Type:     %s\n", bc.Source.Type))
 	if bc.Source.Git != nil {
 		details.WriteString(fmt.Sprintf("  Git URI:  %s\n", bc.Source.Git.URI))
@@ -2223,16 +2137,16 @@ func (t *TUI) updateBuildConfigDetails(bc resources.BuildConfigInfo) {
 	}
 
 	// Output information
-	details.WriteString(fmt.Sprintf("\nOutput:\n"))
+	details.WriteString("\nOutput:\n")
 	details.WriteString(fmt.Sprintf("  To:       %s\n", bc.Output.To))
 
 	// Build statistics
-	details.WriteString(fmt.Sprintf("\nBuilds:\n"))
+	details.WriteString("\nBuilds:\n")
 	details.WriteString(fmt.Sprintf("  Success:  %d\n", bc.SuccessBuilds))
 	details.WriteString(fmt.Sprintf("  Failed:   %d\n", bc.FailedBuilds))
 
 	if bc.LastBuild != nil {
-		details.WriteString(fmt.Sprintf("\nLast Build:\n"))
+		details.WriteString("\nLast Build:\n")
 		details.WriteString(fmt.Sprintf("  Status:   %s\n", bc.LastBuild.Phase))
 		details.WriteString(fmt.Sprintf("  Duration: %s\n", bc.LastBuild.Duration))
 	}
@@ -2286,7 +2200,7 @@ func (t *TUI) updateRouteDetails(route resources.RouteInfo) {
 	}
 
 	// Service information
-	details.WriteString(fmt.Sprintf("\nTarget Service:\n"))
+	details.WriteString("\nTarget Service:\n")
 	details.WriteString(fmt.Sprintf("  Name:       %s\n", route.Service.Name))
 	details.WriteString(fmt.Sprintf("  Kind:       %s\n", route.Service.Kind))
 
@@ -2296,13 +2210,13 @@ func (t *TUI) updateRouteDetails(route resources.RouteInfo) {
 
 	// TLS information
 	if route.TLS != nil {
-		details.WriteString(fmt.Sprintf("\nTLS:\n"))
+		details.WriteString("\nTLS:\n")
 		details.WriteString(fmt.Sprintf("  Termination: %s\n", route.TLS.Termination))
 		if route.TLS.InsecureEdgeTerminationPolicy != "" {
 			details.WriteString(fmt.Sprintf("  Insecure:    %s\n", route.TLS.InsecureEdgeTerminationPolicy))
 		}
 	} else {
-		details.WriteString(fmt.Sprintf("\nTLS:          None\n"))
+		details.WriteString("\nTLS:          None\n")
 	}
 
 	if route.WildcardPolicy != "" {
@@ -2329,7 +2243,7 @@ func (t *TUI) updateServiceDetails(svc resources.ServiceInfo) {
 
 	// Ports information
 	if len(svc.Ports) > 0 {
-		details.WriteString(fmt.Sprintf("\nPorts:\n"))
+		details.WriteString("\nPorts:\n")
 		for _, port := range svc.Ports {
 			details.WriteString(fmt.Sprintf("  • %s\n", port))
 		}
@@ -2354,7 +2268,7 @@ func (t *TUI) updateDeploymentDetails(deploy resources.DeploymentInfo) {
 	details.WriteString(fmt.Sprintf("Age:          %s\n", deploy.Age))
 
 	// Replica information
-	details.WriteString(fmt.Sprintf("\nReplicas:\n"))
+	details.WriteString("\nReplicas:\n")
 	details.WriteString(fmt.Sprintf("  Desired:    %d\n", deploy.Replicas))
 	details.WriteString(fmt.Sprintf("  Ready:      %d\n", deploy.ReadyReplicas))
 	details.WriteString(fmt.Sprintf("  Updated:    %d\n", deploy.UpdatedReplicas))
@@ -2380,7 +2294,7 @@ func (t *TUI) updateConfigMapDetails(cm resources.ConfigMapInfo) {
 
 	// Labels information
 	if len(cm.Labels) > 0 {
-		details.WriteString(fmt.Sprintf("\nLabels:\n"))
+		details.WriteString("\nLabels:\n")
 		for key, value := range cm.Labels {
 			details.WriteString(fmt.Sprintf("  %s: %s\n", key, value))
 		}
@@ -2388,7 +2302,7 @@ func (t *TUI) updateConfigMapDetails(cm resources.ConfigMapInfo) {
 
 	// Annotations information
 	if len(cm.Annotations) > 0 {
-		details.WriteString(fmt.Sprintf("\nAnnotations:\n"))
+		details.WriteString("\nAnnotations:\n")
 		for key, value := range cm.Annotations {
 			// Truncate long annotation values
 			if len(value) > 60 {
@@ -2413,13 +2327,13 @@ func (t *TUI) updateSecretDetails(secret resources.SecretInfo) {
 	details.WriteString(fmt.Sprintf("Age:          %s\n", secret.Age))
 
 	// Security notice for secrets
-	details.WriteString(fmt.Sprintf("\n🔒 Security:\n"))
-	details.WriteString(fmt.Sprintf("  Secret data is protected and not displayed\n"))
-	details.WriteString(fmt.Sprintf("  for security reasons.\n"))
+	details.WriteString("\n🔒 Security:\n")
+	details.WriteString("  Secret data is protected and not displayed\n")
+	details.WriteString("  for security reasons.\n")
 
 	// Labels information
 	if len(secret.Labels) > 0 {
-		details.WriteString(fmt.Sprintf("\nLabels:\n"))
+		details.WriteString("\nLabels:\n")
 		for key, value := range secret.Labels {
 			details.WriteString(fmt.Sprintf("  %s: %s\n", key, value))
 		}
@@ -2427,7 +2341,7 @@ func (t *TUI) updateSecretDetails(secret resources.SecretInfo) {
 
 	// Annotations information (non-sensitive)
 	if len(secret.Annotations) > 0 {
-		details.WriteString(fmt.Sprintf("\nAnnotations:\n"))
+		details.WriteString("\nAnnotations:\n")
 		for key, value := range secret.Annotations {
 			// Truncate long annotation values
 			if len(value) > 60 {
