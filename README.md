@@ -34,11 +34,31 @@ A lazy terminal UI for OpenShift and Kubernetes clusters. LazyOC provides an int
 - **Resource Editing**: YAML/JSON editing with validation
 - **Hot Reload**: Apply configuration changes without downtime
 
+## 🆕 What's New in v0.2.0
+
+### Complete OpenShift Integration
+- **Full Resource Support**: Native support for BuildConfigs, ImageStreams, and Routes
+- **Unified Navigation**: Seamless browsing across all 8 resource types (Pods, Services, Deployments, StatefulSets, ConfigMaps, BuildConfigs, ImageStreams, Routes)
+- **OpenShift Detection**: Automatic fallback to Kubernetes-only mode for non-OpenShift clusters
+- **Resource Details**: Rich detail panels showing build strategies, image tags, routing configurations
+
+### Enhanced User Experience  
+- **Simplified Architecture**: Cleaned up TUI implementation for better performance and maintainability
+- **Improved Navigation**: Fixed 'j'/'k' key navigation working consistently across all resource tabs
+- **Context-Aware Details**: Details panel now shows relevant information based on selected resource type
+- **Better Error Handling**: Enhanced error recovery and user feedback
+
+### Homebrew Distribution
+- **Easy Installation**: Now available via Homebrew tap for macOS users
+- **Cross-Platform Binaries**: Automated releases for Linux, macOS (Intel & ARM), and Windows
+- **Streamlined Updates**: `brew upgrade lazyoc` keeps you on the latest version
+
 ## 🚀 Installation
 
 ### macOS (Homebrew)
 ```bash
-brew install mattwojtowicz/tap/lazyoc
+brew tap katyella/tap
+brew install lazyoc
 ```
 
 ### Linux/macOS (Manual)
@@ -52,10 +72,12 @@ curl -L https://github.com/katyella/lazyoc/releases/latest/download/lazyoc_Darwi
 sudo mv lazyoc /usr/local/bin/
 ```
 
-### Windows (Scoop)
+### Windows
 ```powershell
-scoop bucket add mattwojtowicz https://github.com/mattwojtowicz/scoop-bucket
-scoop install lazyoc
+# Download the latest Windows release
+Invoke-WebRequest -Uri "https://github.com/katyella/lazyoc/releases/latest/download/lazyoc_Windows_x86_64.zip" -OutFile "lazyoc.zip"
+Expand-Archive -Path "lazyoc.zip" -DestinationPath "$env:USERPROFILE\bin"
+# Add $env:USERPROFILE\bin to your PATH
 ```
 
 ### From Source
