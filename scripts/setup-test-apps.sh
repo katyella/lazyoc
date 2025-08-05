@@ -51,7 +51,7 @@ oc new-app --name=httpd-test httpd --as-deployment-config=false > /dev/null 2>&1
     echo "  ⚠️  HTTPD deployment failed or already exists"
 }
 
-echo "  📦 Deploying continuous logging application..."
+echo "  📦 Deploying high-frequency logging application (3 logs/second)..."
 # Delete existing log-generator if it exists to ensure clean deployment
 oc delete deployment log-generator --ignore-not-found=true > /dev/null 2>&1
 
@@ -77,7 +77,7 @@ spec:
       - name: log-generator
         image: alpine:latest
         command: ["/bin/sh"]
-        args: ["-c", "counter=1; while true; do echo \"\$(date) [INFO] Log entry #\$counter - Application is running smoothly\"; echo \"\$(date) [DEBUG] Processing request ID: \$((counter * 7 % 9999))\"; echo \"\$(date) [WARN] Memory usage at \$((counter % 40 + 60))%\"; if [ \$((counter % 10)) -eq 0 ]; then echo \"\$(date) [ERROR] Simulated error condition detected\"; fi; counter=\$((counter + 1)); sleep 5; done"]
+        args: ["-c", "counter=1; while true; do echo \"\$(date) [INFO] Log entry #\$counter - Application is running smoothly\"; echo \"\$(date) [DEBUG] Processing request ID: \$((counter * 7 % 9999))\"; echo \"\$(date) [WARN] Memory usage at \$((counter % 40 + 60))%\"; if [ \$((counter % 10)) -eq 0 ]; then echo \"\$(date) [ERROR] Simulated error condition detected\"; fi; counter=\$((counter + 1)); sleep 0.33; done"]
 EOF
 
 echo ""
@@ -203,7 +203,7 @@ echo "  3. Test auto-refresh (30s intervals)"
 echo "  4. Test manual refresh with 'r' key"
 echo "  5. Test project context display (🎯 icon)"
 echo "  6. Test Ctrl+P for project switching UI"
-echo "  7. Test log viewing with the log-generator pod (continuously logging)"
+echo "  7. Test log viewing with the log-generator pod (high-frequency logging at 3 logs/second)"
 echo "  8. Toggle between app logs and pod logs with 'l' key"
 echo "  9. 🔐 Test secret viewing: Navigate to Secrets tab → Select a secret → Press Enter"
 echo "     - Use j/k to navigate between secret keys"
