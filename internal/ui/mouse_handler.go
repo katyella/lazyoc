@@ -106,7 +106,7 @@ func (m *MouseHandler) handleResourceClick(resourceIndex int) (tea.Model, tea.Cm
 	logging.Debug(m.tui.Logger, "MouseHandler: selection changed from %d to %d", currentSelected, newSelected)
 	
 	// For pods, handle log loading if needed
-	if m.tui.ActiveTab == 0 && m.tui.logViewMode == constants.PodLogViewMode {
+	if m.tui.ActiveTab == 0 {
 		m.tui.clearPodLogs()
 		return m.tui, tea.Batch(m.tui.loadPodLogs(), m.tui.startPodLogRefreshTimer())
 	}
@@ -162,7 +162,7 @@ func (m *MouseHandler) handleResourceListScroll(direction int) (tea.Model, tea.C
 	}
 	
 	// For pods, handle log loading if needed
-	if m.tui.ActiveTab == 0 && m.tui.logViewMode == constants.PodLogViewMode {
+	if m.tui.ActiveTab == 0 {
 		m.tui.clearPodLogs()
 		return m.tui, tea.Batch(m.tui.loadPodLogs(), m.tui.startPodLogRefreshTimer())
 	}

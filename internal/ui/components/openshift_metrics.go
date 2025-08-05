@@ -121,7 +121,7 @@ func (m *OpenShiftMetrics) RenderResourceTopology(buildConfigs []resources.Build
 
 	// Create topology map
 	topology := m.buildTopologyMap(buildConfigs, deploymentConfigs, routes, imageStreams)
-	
+
 	topologyStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("5")).
@@ -237,7 +237,7 @@ func (m *OpenShiftMetrics) buildTopologyMap(buildConfigs []resources.BuildConfig
 
 	// Group resources by application (using labels or naming conventions)
 	apps := make(map[string]*AppResources)
-	
+
 	// Simple grouping by name prefix (before first -)
 	for _, bc := range buildConfigs {
 		appName := getAppName(bc.Name)

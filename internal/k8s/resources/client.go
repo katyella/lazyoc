@@ -876,6 +876,63 @@ func (c *K8sResourceClient) GetPodLogs(ctx context.Context, namespace, podName, 
 	return string(logs), nil
 }
 
+// GetPodsForService retrieves all pods that match a service's selector
+func (c *K8sResourceClient) GetPodsForService(ctx context.Context, namespace, serviceName string) ([]PodInfo, error) {
+	if namespace == "" {
+		namespace = c.currentNamespace
+	}
+
+	// Get the service to retrieve its selector
+	svc, err := c.clientset.CoreV1().Services(namespace).Get(ctx, serviceName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get service %s/%s: %w", namespace, serviceName, err)
+	}
+
+	// If service has no selector, return empty list
+	if len(svc.Spec.Selector) == 0 {
+		return []PodInfo{}, nil
+	}
+
+	// Convert selector to label selector string
+	var selectorParts []string
+	for k, v := range svc.Spec.Selector {
+		selectorParts = append(selectorParts, k+"="+v)
+	}
+	labelSelector := strings.Join(selectorParts, ",")
+
+	// List pods matching the selector
+	opts := ListOptions{
+		Namespace:     namespace,
+		LabelSelector: labelSelector,
+	}
+
+	podList, err := c.ListPods(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list pods for service %s/%s: %w", namespace, serviceName, err)
+	}
+
+	return podList.Items, nil
+}
+
+// GetSecretData retrieves the actual secret data (decoded)
+func (c *K8sResourceClient) GetSecretData(ctx context.Context, namespace, secretName string) (map[string]string, error) {
+	if namespace == "" {
+		namespace = c.currentNamespace
+	}
+
+	secret, err := c.clientset.CoreV1().Secrets(namespace).Get(ctx, secretName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get secret data %s/%s: %w", namespace, secretName, err)
+	}
+
+	secretData := make(map[string]string)
+	for key, value := range secret.Data {
+		secretData[key] = string(value) // Secret data is already decoded by client-go
+	}
+
+	return secretData, nil
+}
+
 // StreamPodLogs streams logs from a specific pod container
 func (c *K8sResourceClient) StreamPodLogs(ctx context.Context, namespace, podName, containerName string, opts LogOptions) (<-chan string, error) {
 	logOptions := &corev1.PodLogOptions{

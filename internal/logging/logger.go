@@ -15,13 +15,13 @@ import (
 const (
 	// LevelDebug represents debug-level logging for detailed diagnostic information
 	LevelDebug = "DEBUG"
-	
+
 	// LevelInfo represents informational logging for general application events
 	LevelInfo = "INFO"
-	
+
 	// LevelWarn represents warning-level logging for potentially problematic situations
 	LevelWarn = "WARN"
-	
+
 	// LevelError represents error-level logging for error conditions
 	LevelError = "ERROR"
 )

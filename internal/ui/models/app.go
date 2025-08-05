@@ -13,13 +13,13 @@ type AppState int
 const (
 	// StateLoading indicates the application is initializing or loading data
 	StateLoading AppState = iota
-	
+
 	// StateMain indicates the application is in normal operation mode
 	StateMain
-	
+
 	// StateHelp indicates the help overlay is currently displayed
 	StateHelp
-	
+
 	// StateError indicates the application is displaying an error state
 	StateError
 )
@@ -168,7 +168,7 @@ func (a *App) NextTab() {
 		TabPods, TabServices, TabDeployments, TabConfigMaps, TabSecrets,
 		TabBuildConfigs, TabImageStreams, TabRoutes,
 	}
-	
+
 	// Find current tab index and move to next
 	for i, tab := range tabs {
 		if tab == a.ActiveTab {
@@ -187,7 +187,7 @@ func (a *App) PrevTab() {
 		TabPods, TabServices, TabDeployments, TabConfigMaps, TabSecrets,
 		TabBuildConfigs, TabImageStreams, TabRoutes,
 	}
-	
+
 	// Find current tab index and move to previous
 	for i, tab := range tabs {
 		if tab == a.ActiveTab {

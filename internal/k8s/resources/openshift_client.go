@@ -7,13 +7,13 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/duration"
-	
+
+	appsv1 "github.com/openshift/api/apps/v1"
 	buildv1 "github.com/openshift/api/build/v1"
 	imagev1 "github.com/openshift/api/image/v1"
-	appsv1 "github.com/openshift/api/apps/v1"
 	routev1 "github.com/openshift/api/route/v1"
 	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
-	
+
 	"github.com/katyella/lazyoc/internal/k8s"
 )
 
@@ -59,7 +59,12 @@ func (c *OpenShiftResourceClient) ListBuildConfigs(ctx context.Context, opts Lis
 		Total:     len(items),
 		Namespace: opts.Namespace,
 		Continue:  buildConfigs.Continue,
-		Remaining: func() int64 { if buildConfigs.RemainingItemCount != nil { return *buildConfigs.RemainingItemCount }; return 0 }(),
+		Remaining: func() int64 {
+			if buildConfigs.RemainingItemCount != nil {
+				return *buildConfigs.RemainingItemCount
+			}
+			return 0
+		}(),
 	}, nil
 }
 
@@ -86,7 +91,7 @@ func (c *OpenShiftResourceClient) TriggerBuild(ctx context.Context, namespace, n
 	}
 
 	buildClient := c.client.GetBuildClient()
-	
+
 	// Create a BuildRequest to trigger the build
 	buildRequest := &buildv1.BuildRequest{
 		ObjectMeta: metav1.ObjectMeta{
@@ -134,7 +139,12 @@ func (c *OpenShiftResourceClient) ListBuilds(ctx context.Context, opts ListOptio
 		Total:     len(items),
 		Namespace: opts.Namespace,
 		Continue:  builds.Continue,
-		Remaining: func() int64 { if builds.RemainingItemCount != nil { return *builds.RemainingItemCount }; return 0 }(),
+		Remaining: func() int64 {
+			if builds.RemainingItemCount != nil {
+				return *builds.RemainingItemCount
+			}
+			return 0
+		}(),
 	}, nil
 }
 
@@ -168,7 +178,12 @@ func (c *OpenShiftResourceClient) ListImageStreams(ctx context.Context, opts Lis
 		Total:     len(items),
 		Namespace: opts.Namespace,
 		Continue:  imageStreams.Continue,
-		Remaining: func() int64 { if imageStreams.RemainingItemCount != nil { return *imageStreams.RemainingItemCount }; return 0 }(),
+		Remaining: func() int64 {
+			if imageStreams.RemainingItemCount != nil {
+				return *imageStreams.RemainingItemCount
+			}
+			return 0
+		}(),
 	}, nil
 }
 
@@ -202,7 +217,12 @@ func (c *OpenShiftResourceClient) ListDeploymentConfigs(ctx context.Context, opt
 		Total:     len(items),
 		Namespace: opts.Namespace,
 		Continue:  dcs.Continue,
-		Remaining: func() int64 { if dcs.RemainingItemCount != nil { return *dcs.RemainingItemCount }; return 0 }(),
+		Remaining: func() int64 {
+			if dcs.RemainingItemCount != nil {
+				return *dcs.RemainingItemCount
+			}
+			return 0
+		}(),
 	}, nil
 }
 
@@ -236,7 +256,12 @@ func (c *OpenShiftResourceClient) ListRoutes(ctx context.Context, opts ListOptio
 		Total:     len(items),
 		Namespace: opts.Namespace,
 		Continue:  routes.Continue,
-		Remaining: func() int64 { if routes.RemainingItemCount != nil { return *routes.RemainingItemCount }; return 0 }(),
+		Remaining: func() int64 {
+			if routes.RemainingItemCount != nil {
+				return *routes.RemainingItemCount
+			}
+			return 0
+		}(),
 	}, nil
 }
 
@@ -317,7 +342,7 @@ func buildConfigToInfo(bc *buildv1.BuildConfig) BuildConfigInfo {
 
 	// Set build statistics
 	info.SuccessBuilds = int(bc.Status.LastVersion)
-	
+
 	return info
 }
 
@@ -375,7 +400,7 @@ func imageStreamToInfo(is *imagev1.ImageStream) ImageStreamInfo {
 		},
 		DockerImageRepository:       is.Status.DockerImageRepository,
 		PublicDockerImageRepository: is.Status.PublicDockerImageRepository,
-		Age:                        duration.HumanDuration(time.Since(is.CreationTimestamp.Time)),
+		Age:                         duration.HumanDuration(time.Since(is.CreationTimestamp.Time)),
 	}
 
 	// Convert tags
@@ -384,7 +409,7 @@ func imageStreamToInfo(is *imagev1.ImageStream) ImageStreamInfo {
 			Name:  tag.Tag,
 			Items: make([]ImageStreamImage, 0, len(tag.Items)),
 		}
-		
+
 		for _, item := range tag.Items {
 			imageInfo := ImageStreamImage{
 				Created:        item.Created.Time,
@@ -394,7 +419,7 @@ func imageStreamToInfo(is *imagev1.ImageStream) ImageStreamInfo {
 			}
 			tagInfo.Items = append(tagInfo.Items, imageInfo)
 		}
-		
+
 		info.Tags = append(info.Tags, tagInfo)
 	}
 
@@ -463,9 +488,9 @@ func routeToInfo(route *routev1.Route) RouteInfo {
 		info.TLS = &TLSConfig{
 			Termination:                   string(route.Spec.TLS.Termination),
 			Certificate:                   route.Spec.TLS.Certificate,
-			Key:                          route.Spec.TLS.Key,
-			CACertificate:                route.Spec.TLS.CACertificate,
-			DestinationCACertificate:     route.Spec.TLS.DestinationCACertificate,
+			Key:                           route.Spec.TLS.Key,
+			CACertificate:                 route.Spec.TLS.CACertificate,
+			DestinationCACertificate:      route.Spec.TLS.DestinationCACertificate,
 			InsecureEdgeTerminationPolicy: string(route.Spec.TLS.InsecureEdgeTerminationPolicy),
 		}
 	}
@@ -515,13 +540,13 @@ func subscriptionToInfo(sub *operatorsv1alpha1.Subscription) SubscriptionInfo {
 			CreatedAt:   sub.CreationTimestamp.Time,
 			Status:      string(sub.Status.State),
 		},
-		Channel:                sub.Spec.Channel,
-		StartingCSV:            sub.Spec.StartingCSV,
-		CurrentCSV:             sub.Status.CurrentCSV,
-		InstalledCSV:           sub.Status.InstalledCSV,
-		InstallPlanGeneration:  int64(sub.Status.InstallPlanGeneration),
-		State:                  string(sub.Status.State),
-		Age:                    duration.HumanDuration(time.Since(sub.CreationTimestamp.Time)),
+		Channel:               sub.Spec.Channel,
+		StartingCSV:           sub.Spec.StartingCSV,
+		CurrentCSV:            sub.Status.CurrentCSV,
+		InstalledCSV:          sub.Status.InstalledCSV,
+		InstallPlanGeneration: int64(sub.Status.InstallPlanGeneration),
+		State:                 string(sub.Status.State),
+		Age:                   duration.HumanDuration(time.Since(sub.CreationTimestamp.Time)),
 	}
 
 	// Set install plan ref

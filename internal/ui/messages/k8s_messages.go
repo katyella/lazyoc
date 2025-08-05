@@ -100,6 +100,30 @@ type SecretsLoadError struct {
 	Err error
 }
 
+// ServiceLogsLoaded is sent when service logs are successfully loaded
+type ServiceLogsLoaded struct {
+	ServiceName string
+	Pods        []resources.PodInfo
+	Logs        []string
+}
+
+// ServiceLogsLoadError is sent when service log loading fails
+type ServiceLogsLoadError struct {
+	Err error
+}
+
+// SecretDataLoaded is sent when secret data is successfully loaded
+type SecretDataLoaded struct {
+	SecretName string
+	Data       map[string]string
+	Keys       []string
+}
+
+// SecretDataLoadError is sent when secret data loading fails
+type SecretDataLoadError struct {
+	Err error
+}
+
 // OpenShift-specific messages
 
 // BuildConfigsLoaded is sent when BuildConfigs are successfully loaded

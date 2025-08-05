@@ -6,31 +6,31 @@ import (
 	"os"
 	"path/filepath"
 
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"github.com/openshift/client-go/apps/clientset/versioned"
 	buildclientset "github.com/openshift/client-go/build/clientset/versioned"
 	imageclientset "github.com/openshift/client-go/image/clientset/versioned"
 	routeclientset "github.com/openshift/client-go/route/clientset/versioned"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/katyella/lazyoc/internal/constants"
 )
 
 // ClientFactory creates and manages Kubernetes clients
 type ClientFactory struct {
-	config           *rest.Config
-	clientset        *kubernetes.Clientset
-	kubeconfig       string
-	isOpenShift      bool
-	
+	config      *rest.Config
+	clientset   *kubernetes.Clientset
+	kubeconfig  string
+	isOpenShift bool
+
 	// OpenShift clients
-	appsClient       versioned.Interface
-	buildClient      buildclientset.Interface
-	imageClient      imageclientset.Interface
-	routeClient      routeclientset.Interface
-	dynamicClient    dynamic.Interface
+	appsClient    versioned.Interface
+	buildClient   buildclientset.Interface
+	imageClient   imageclientset.Interface
+	routeClient   routeclientset.Interface
+	dynamicClient dynamic.Interface
 }
 
 // NewClientFactory creates a new client factory
@@ -95,7 +95,7 @@ func (cf *ClientFactory) InitializeOpenShiftAfterSetup() error {
 	if cf.config == nil || cf.clientset == nil {
 		return fmt.Errorf("config and clientset must be set before initializing OpenShift clients")
 	}
-	
+
 	return cf.initializeOpenShiftClients()
 }
 
@@ -208,10 +208,10 @@ func (cf *ClientFactory) initializeOpenShiftClients() error {
 	// Check if OpenShift API groups are present
 	hasOpenShiftGroups := false
 	for _, group := range groups.Groups {
-		if group.Name == "apps.openshift.io" || 
-		   group.Name == "build.openshift.io" || 
-		   group.Name == "image.openshift.io" || 
-		   group.Name == "route.openshift.io" {
+		if group.Name == "apps.openshift.io" ||
+			group.Name == "build.openshift.io" ||
+			group.Name == "image.openshift.io" ||
+			group.Name == "route.openshift.io" {
 			hasOpenShiftGroups = true
 			break
 		}

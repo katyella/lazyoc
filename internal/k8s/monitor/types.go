@@ -11,19 +11,19 @@ type ConnectionStatus int
 const (
 	// StatusUnknown indicates the connection status is unknown or uninitialized
 	StatusUnknown ConnectionStatus = iota
-	
+
 	// StatusConnected indicates an active, healthy connection to the cluster
 	StatusConnected
-	
+
 	// StatusDisconnected indicates no connection to the cluster
 	StatusDisconnected
-	
+
 	// StatusConnecting indicates a connection attempt is in progress
 	StatusConnecting
-	
+
 	// StatusReconnecting indicates an attempt to restore a lost connection
 	StatusReconnecting
-	
+
 	// StatusError indicates a connection error has occurred
 	StatusError
 )

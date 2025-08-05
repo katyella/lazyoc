@@ -19,10 +19,10 @@ type ClusterType int
 const (
 	// ClusterTypeUnknown indicates the cluster type could not be determined
 	ClusterTypeUnknown ClusterType = iota
-	
+
 	// ClusterTypeKubernetes indicates a standard Kubernetes cluster
 	ClusterTypeKubernetes
-	
+
 	// ClusterTypeOpenShift indicates an OpenShift cluster with additional APIs
 	ClusterTypeOpenShift
 )

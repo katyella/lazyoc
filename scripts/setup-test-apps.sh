@@ -118,6 +118,82 @@ oc get services --no-headers | grep -v kubernetes | while read line; do
 done
 
 echo ""
+echo "🔐 Creating test secrets for manual testing..."
+
+# Database credentials secret
+echo "  📦 Creating database credentials secret..."
+oc delete secret database-credentials --ignore-not-found=true > /dev/null 2>&1
+oc create secret generic database-credentials \
+    --from-literal=username=admin \
+    --from-literal=password=super-secret-password-123 \
+    --from-literal=host=postgres.example.com \
+    --from-literal=port=5432 \
+    --from-literal=database=myapp_production > /dev/null 2>&1 || echo "  ⚠️  Database credentials secret creation failed"
+
+# API keys secret
+echo "  📦 Creating API keys secret..."
+oc delete secret api-keys --ignore-not-found=true > /dev/null 2>&1
+oc create secret generic api-keys \
+    --from-literal=stripe-key=sk_test_4eC39HqLyjWDarjtT1zdp7dc \
+    --from-literal=aws-access-key=AKIAIOSFODNN7EXAMPLE \
+    --from-literal=aws-secret-key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY \
+    --from-literal=github-token=ghp_1234567890abcdefghijklmnopqrstuvwxyz \
+    --from-literal=slack-webhook=https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX > /dev/null 2>&1 || echo "  ⚠️  API keys secret creation failed"
+
+# TLS certificates secret
+echo "  📦 Creating TLS certificates secret..."
+oc delete secret tls-certificates --ignore-not-found=true > /dev/null 2>&1
+# Create dummy certificate data (base64 encoded)
+oc create secret generic tls-certificates \
+    --from-literal=tls.crt="$(echo -e '-----BEGIN CERTIFICATE-----\nMIIDXTCCAkWgAwIBAgIJAKoK/heBjcOuMA0GCSqGSIb3DQEBBQUAMEUxCzAJBgNV\nBAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5ldCBX\naWRnaXRzIFB0eSBMdGQwHhcNMTIwOTEyMjE1MjAyWhcNMTUwOTEyMjE1MjAyWjBF\nMQswCQYDVQQGEwJBVTETMBEGA1UECAwKU29tZS1TdGF0ZTEhMB8GA1UECgwYSW50\nZXJuZXQgV2lkZ2l0cyBQdHkgTHRkMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIB\nCgKCAQEAwUdHPiQmXwQs04XmhWmJKnTBAu6wjTQRPM93fJkIDz3jZbHJqD9BcXFz\nZ7dEACbLyJk13V5dGKJYCHfY2DjL+m3j2F5GhWoO3hKw1ZcLIYmvZ5W2Q3R6gVA1\n2P7YvW8JaCGCF+3jM8hAF0JBHWvUk0F8s9Ev4hKQ5Sv/HxWfvGgYlQqiWK3b3Y9Z\nM4fk5m6Bz+xMqW+6DthgL4Q5iWrCUBB2o5yRn5d9k6BG4v5K2iRgL3lT8gA7wKgZ\nT1iGX1k8K+T4d7b9Q9w3kP9aCfU1K4X8RlVHdPeJ+6r8T8A5z2n6V2hD8C1v9mD+\nK4I+4t/qywIDAQABo1AwTjAdBgNVHQ4EFgQUhKs61e4zPx0PSWaFqFqmAFGj9g0w\nHwYDVR0jBBgwFoAUhKs61e4zPx0PSWaFqFqmAFGj9g0wDAYDVR0TBAUwAwEB/zAN\nBgkqhkiG9w0BAQUFAAOCAQEAGcnqtZNlNqFH1BKpKr7Ky8k/wZ8Y3Fh3i2d7B4h7\n-----END CERTIFICATE-----' | base64 -w 0)" \
+    --from-literal=tls.key="$(echo -e '-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDBR0c+JCZfBCzT\nheaFaYkqdMEC7rCNNBE8z3d8mQgPPeNlscmoP0FxcXNnt0QAJsvImTXdXl0Yolg\nId9jYOMv6bePYXkaFag7eErDVlwshia9nlbZDdHqBUDXY/ti9bwloIYIX7eMzw\nEAXQkEda9STQXyz0S/iEpDlK/8fFZ+8aBiVCqJYrdvdj1kzh+TmboHP7Eypb7\noO2GAvhDmJasJQEHajnJGfl32ToEbi/kraJGAveVPyADvAqBlPWIZfWTwr5Ph\n3tv1D3DeQ/1oJ9TUrhfxGVUd094n7qvxPwDnPafpXaEPwLW/2YP4rgj7i3+rL\nAgMBAAECggEBALVGvz7Ql0VGKz90n2vXdmm7Y9Tk+c2fIqp3zAjQxGnK4vE1iK\nfKZ7TlCG3z5r7fL1hY3bLr+e2K2oI8u2xLz3mXc6W4V4n9m2H+K5iB8jJE9Q\n3K9j7F4hG2Q9oE8mT8zKXjL1l5X3kYL3uKvVJF8gS7ZnF1t7fF+F5oZ6j9d4\nQ8q8zVcXhL2U5fvJx9oKjW8Tn2L5qR7fE5Y8hP5rN3+xV4c3k6bQ1A1f5Y4k\n2cY5N9z4K6r8rGo4d4U7M5+L9K3fJ8z5W4hV7b3S8oI5u7yT4f7Kj2V9t8pL\n5fR4oX2k9Y7E1+c8z6bU9bJ4q7d5W8Vy8pJyFt7oECgYEA46j8D1p8L7q2fI\n-----END PRIVATE KEY-----' | base64 -w 0)" > /dev/null 2>&1 || echo "  ⚠️  TLS certificates secret creation failed"
+
+# Application configuration secret
+echo "  📦 Creating application configuration secret..."
+oc delete secret app-config --ignore-not-found=true > /dev/null 2>&1
+oc create secret generic app-config \
+    --from-literal=debug=true \
+    --from-literal=log-level=INFO \
+    --from-literal=max-connections=100 \
+    --from-literal=timeout=30s \
+    --from-literal=cache-ttl=3600 \
+    --from-literal=feature-flags="{\"new-ui\": true, \"beta-api\": false, \"analytics\": true}" \
+    --from-literal=environment=development > /dev/null 2>&1 || echo "  ⚠️  Application configuration secret creation failed"
+
+# Docker registry credentials secret
+echo "  📦 Creating Docker registry credentials secret..."
+oc delete secret docker-registry-creds --ignore-not-found=true > /dev/null 2>&1
+oc create secret generic docker-registry-creds \
+    --from-literal=registry=docker.io \
+    --from-literal=username=mycompany \
+    --from-literal=password=my-registry-password-456 \
+    --from-literal=email=devops@company.com > /dev/null 2>&1 || echo "  ⚠️  Docker registry credentials secret creation failed"
+
+# OAuth tokens secret  
+echo "  📦 Creating OAuth tokens secret..."
+oc delete secret oauth-tokens --ignore-not-found=true > /dev/null 2>&1
+oc create secret generic oauth-tokens \
+    --from-literal=google-oauth-client-id=123456789012-abcdefghijklmnopqrstuvwxyz123456.apps.googleusercontent.com \
+    --from-literal=google-oauth-client-secret=GOCSPX-abcdefghijklmnopqrstuvwxyz123456 \
+    --from-literal=github-oauth-client-id=Iv1.abcdefghijklmnop \
+    --from-literal=github-oauth-client-secret=abcdefghijklmnopqrstuvwxyz1234567890abcdef \
+    --from-literal=jwt-secret=my-super-secret-jwt-signing-key-that-should-be-very-long > /dev/null 2>&1 || echo "  ⚠️  OAuth tokens secret creation failed"
+
+# Simple credentials secret (for basic testing)
+echo "  📦 Creating simple credentials secret..."
+oc delete secret simple-creds --ignore-not-found=true > /dev/null 2>&1
+oc create secret generic simple-creds \
+    --from-literal=user=admin \
+    --from-literal=pass=password123 > /dev/null 2>&1 || echo "  ⚠️  Simple credentials secret creation failed"
+
+echo ""
+echo "🔐 Secrets created:"
+echo "=================="
+oc get secrets --no-headers | grep -v default-token | while read line; do
+    echo "  $line"
+done
+
+echo ""
 echo "✅ Test applications setup complete!"
 echo ""
 echo "🧪 Testing recommendations:"
@@ -129,6 +205,22 @@ echo "  5. Test project context display (🎯 icon)"
 echo "  6. Test Ctrl+P for project switching UI"
 echo "  7. Test log viewing with the log-generator pod (continuously logging)"
 echo "  8. Toggle between app logs and pod logs with 'l' key"
+echo "  9. 🔐 Test secret viewing: Navigate to Secrets tab → Select a secret → Press Enter"
+echo "     - Use j/k to navigate between secret keys"
+echo "     - Press 'm' to toggle masking/unmasking of values"
+echo "     - Press 'c' to copy selected key's value to clipboard"
+echo "     - Press 'C' to copy entire secret as JSON to clipboard"
+echo "     - Press 'esc' or 'q' to close the modal"
+echo "  10. Test service-level logs: Navigate to Services tab → Select a service → Press 'L'"
 echo ""
 echo "🧹 When done testing, run: ./scripts/teardown-test-apps.sh"
+echo ""
+echo "🚀 RECOMMENDED: For a comprehensive LazyOC demonstration:"
+echo "  📦 Use ./scripts/setup-production-demo.sh instead"
+echo "  🏪 Deploys Google Cloud's 'Online Boutique' - 11 production microservices"
+echo "  ⭐ Perfect for showcasing ALL LazyOC features with real applications"
+echo ""
+echo "📝 Alternative options:"
+echo "  - ./scripts/setup-k8s-test-secrets.sh (Kubernetes-only secrets)"
+echo "  - This script (simple test apps - legacy)"
 echo ""

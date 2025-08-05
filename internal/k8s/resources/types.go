@@ -190,19 +190,19 @@ type LogOptions struct {
 // BuildConfigInfo represents simplified BuildConfig information
 type BuildConfigInfo struct {
 	ResourceInfo
-	Strategy      string               `json:"strategy"`      // Docker, Source, Custom
-	Source        BuildSource          `json:"source"`        // Source configuration
-	Output        BuildOutput          `json:"output"`        // Output configuration
-	Triggers      []BuildTrigger       `json:"triggers"`      // Build triggers
-	LastBuild     *BuildInfo           `json:"lastBuild,omitempty"` // Most recent build
-	SuccessBuilds int                  `json:"successBuilds"` // Number of successful builds
-	FailedBuilds  int                  `json:"failedBuilds"`  // Number of failed builds
-	Age           string               `json:"age"`
+	Strategy      string         `json:"strategy"`            // Docker, Source, Custom
+	Source        BuildSource    `json:"source"`              // Source configuration
+	Output        BuildOutput    `json:"output"`              // Output configuration
+	Triggers      []BuildTrigger `json:"triggers"`            // Build triggers
+	LastBuild     *BuildInfo     `json:"lastBuild,omitempty"` // Most recent build
+	SuccessBuilds int            `json:"successBuilds"`       // Number of successful builds
+	FailedBuilds  int            `json:"failedBuilds"`        // Number of failed builds
+	Age           string         `json:"age"`
 }
 
 // BuildSource represents build source configuration
 type BuildSource struct {
-	Type       string     `json:"type"`       // Git, Binary, Dockerfile, etc.
+	Type       string     `json:"type"` // Git, Binary, Dockerfile, etc.
 	Git        *GitSource `json:"git,omitempty"`
 	Dockerfile string     `json:"dockerfile,omitempty"`
 	ContextDir string     `json:"contextDir,omitempty"`
@@ -216,23 +216,23 @@ type GitSource struct {
 
 // BuildOutput represents build output configuration
 type BuildOutput struct {
-	To       *BuildOutputTo `json:"to,omitempty"`
-	PushSecret string       `json:"pushSecret,omitempty"`
+	To         *BuildOutputTo `json:"to,omitempty"`
+	PushSecret string         `json:"pushSecret,omitempty"`
 }
 
 // BuildOutputTo represents build output destination
 type BuildOutputTo struct {
-	Kind      string `json:"kind"`      // ImageStreamTag, DockerImage
+	Kind      string `json:"kind"` // ImageStreamTag, DockerImage
 	Name      string `json:"name"`
 	Namespace string `json:"namespace,omitempty"`
 }
 
 // BuildTrigger represents a build trigger
 type BuildTrigger struct {
-	Type           string              `json:"type"`           // GitHub, Generic, ConfigChange, ImageChange
-	GitHub         *GitHubWebHook      `json:"github,omitempty"`
-	Generic        *GenericWebHook     `json:"generic,omitempty"`
-	ImageChange    *ImageChangeTrigger `json:"imageChange,omitempty"`
+	Type        string              `json:"type"` // GitHub, Generic, ConfigChange, ImageChange
+	GitHub      *GitHubWebHook      `json:"github,omitempty"`
+	Generic     *GenericWebHook     `json:"generic,omitempty"`
+	ImageChange *ImageChangeTrigger `json:"imageChange,omitempty"`
 }
 
 // GitHubWebHook represents GitHub webhook trigger
@@ -253,38 +253,38 @@ type ImageChangeTrigger struct {
 // BuildInfo represents simplified Build information
 type BuildInfo struct {
 	ResourceInfo
-	Phase         string    `json:"phase"`         // New, Pending, Running, Complete, Failed, Error, Cancelled
-	Message       string    `json:"message,omitempty"`
-	Duration      string    `json:"duration"`      // Build duration
-	StartTime     time.Time `json:"startTime"`
+	Phase          string     `json:"phase"` // New, Pending, Running, Complete, Failed, Error, Cancelled
+	Message        string     `json:"message,omitempty"`
+	Duration       string     `json:"duration"` // Build duration
+	StartTime      time.Time  `json:"startTime"`
 	CompletionTime *time.Time `json:"completionTime,omitempty"`
-	BuildConfig   string    `json:"buildConfig"`   // Parent BuildConfig name
-	Strategy      string    `json:"strategy"`      // Build strategy used
-	OutputImage   string    `json:"outputImage,omitempty"` // Resulting image
-	Age           string    `json:"age"`
+	BuildConfig    string     `json:"buildConfig"`           // Parent BuildConfig name
+	Strategy       string     `json:"strategy"`              // Build strategy used
+	OutputImage    string     `json:"outputImage,omitempty"` // Resulting image
+	Age            string     `json:"age"`
 }
 
 // ImageStreamInfo represents simplified ImageStream information
 type ImageStreamInfo struct {
 	ResourceInfo
-	DockerImageRepository string                    `json:"dockerImageRepository"`
-	Tags                  []ImageStreamTag          `json:"tags"`
-	PublicDockerImageRepository string            `json:"publicDockerImageRepository,omitempty"`
-	Age                   string                    `json:"age"`
+	DockerImageRepository       string           `json:"dockerImageRepository"`
+	Tags                        []ImageStreamTag `json:"tags"`
+	PublicDockerImageRepository string           `json:"publicDockerImageRepository,omitempty"`
+	Age                         string           `json:"age"`
 }
 
 // ImageStreamTag represents a tag within an ImageStream
 type ImageStreamTag struct {
-	Name         string              `json:"name"`
-	Items        []ImageStreamImage  `json:"items"`
-	Conditions   []TagEventCondition `json:"conditions,omitempty"`
+	Name       string              `json:"name"`
+	Items      []ImageStreamImage  `json:"items"`
+	Conditions []TagEventCondition `json:"conditions,omitempty"`
 }
 
 // ImageStreamImage represents an image within a tag
 type ImageStreamImage struct {
 	Created        time.Time `json:"created"`
 	DockerImageRef string    `json:"dockerImageRef"`
-	Image          string    `json:"image"`      // SHA256 digest
+	Image          string    `json:"image"` // SHA256 digest
 	Generation     int64     `json:"generation"`
 }
 
@@ -300,31 +300,31 @@ type TagEventCondition struct {
 // DeploymentConfigInfo represents simplified DeploymentConfig information
 type DeploymentConfigInfo struct {
 	ResourceInfo
-	Replicas          int32                      `json:"replicas"`
-	ReadyReplicas     int32                      `json:"readyReplicas"`
-	UpdatedReplicas   int32                      `json:"updatedReplicas"`
-	AvailableReplicas int32                      `json:"availableReplicas"`
-	LatestVersion     int64                      `json:"latestVersion"`
-	Strategy          DeploymentStrategy         `json:"strategy"`
-	Triggers          []DeploymentTrigger        `json:"triggers"`
-	Conditions        []DeploymentCondition      `json:"conditions"`
-	Age               string                     `json:"age"`
+	Replicas          int32                 `json:"replicas"`
+	ReadyReplicas     int32                 `json:"readyReplicas"`
+	UpdatedReplicas   int32                 `json:"updatedReplicas"`
+	AvailableReplicas int32                 `json:"availableReplicas"`
+	LatestVersion     int64                 `json:"latestVersion"`
+	Strategy          DeploymentStrategy    `json:"strategy"`
+	Triggers          []DeploymentTrigger   `json:"triggers"`
+	Conditions        []DeploymentCondition `json:"conditions"`
+	Age               string                `json:"age"`
 }
 
 // DeploymentStrategy represents deployment strategy
 type DeploymentStrategy struct {
-	Type           string                    `json:"type"`             // Recreate, Rolling
+	Type           string                    `json:"type"` // Recreate, Rolling
 	RollingParams  *RollingDeploymentParams  `json:"rollingParams,omitempty"`
 	RecreateParams *RecreateDeploymentParams `json:"recreateParams,omitempty"`
 }
 
 // RollingDeploymentParams represents rolling deployment parameters
 type RollingDeploymentParams struct {
-	UpdatePeriodSeconds     *int64 `json:"updatePeriodSeconds,omitempty"`
-	IntervalSeconds         *int64 `json:"intervalSeconds,omitempty"`
-	TimeoutSeconds          *int64 `json:"timeoutSeconds,omitempty"`
-	MaxUnavailable          string `json:"maxUnavailable,omitempty"`
-	MaxSurge                string `json:"maxSurge,omitempty"`
+	UpdatePeriodSeconds *int64 `json:"updatePeriodSeconds,omitempty"`
+	IntervalSeconds     *int64 `json:"intervalSeconds,omitempty"`
+	TimeoutSeconds      *int64 `json:"timeoutSeconds,omitempty"`
+	MaxUnavailable      string `json:"maxUnavailable,omitempty"`
+	MaxSurge            string `json:"maxSurge,omitempty"`
 }
 
 // RecreateDeploymentParams represents recreate deployment parameters
@@ -334,15 +334,15 @@ type RecreateDeploymentParams struct {
 
 // DeploymentTrigger represents a deployment trigger
 type DeploymentTrigger struct {
-	Type           string                      `json:"type"`           // ConfigChange, ImageChange
-	ImageChange    *DeploymentTriggerImageChange `json:"imageChange,omitempty"`
+	Type        string                        `json:"type"` // ConfigChange, ImageChange
+	ImageChange *DeploymentTriggerImageChange `json:"imageChange,omitempty"`
 }
 
 // DeploymentTriggerImageChange represents image change trigger
 type DeploymentTriggerImageChange struct {
-	From                *ImageStreamReference `json:"from,omitempty"`
-	LastTriggeredImage  string               `json:"lastTriggeredImage,omitempty"`
-	ContainerNames      []string             `json:"containerNames,omitempty"`
+	From               *ImageStreamReference `json:"from,omitempty"`
+	LastTriggeredImage string                `json:"lastTriggeredImage,omitempty"`
+	ContainerNames     []string              `json:"containerNames,omitempty"`
 }
 
 // ImageStreamReference represents a reference to an ImageStream
@@ -365,14 +365,14 @@ type DeploymentCondition struct {
 // RouteInfo represents simplified Route information
 type RouteInfo struct {
 	ResourceInfo
-	Host               string            `json:"host"`
-	Path               string            `json:"path,omitempty"`
-	Service            RouteTargetRef    `json:"service"`
-	Port               *RoutePort        `json:"port,omitempty"`
-	TLS                *TLSConfig        `json:"tls,omitempty"`
-	WildcardPolicy     string            `json:"wildcardPolicy,omitempty"`
-	AdmittedConditions []RouteCondition  `json:"admittedConditions"`
-	Age                string            `json:"age"`
+	Host               string           `json:"host"`
+	Path               string           `json:"path,omitempty"`
+	Service            RouteTargetRef   `json:"service"`
+	Port               *RoutePort       `json:"port,omitempty"`
+	TLS                *TLSConfig       `json:"tls,omitempty"`
+	WildcardPolicy     string           `json:"wildcardPolicy,omitempty"`
+	AdmittedConditions []RouteCondition `json:"admittedConditions"`
+	Age                string           `json:"age"`
 }
 
 // RouteTargetRef represents a route target reference
@@ -389,11 +389,11 @@ type RoutePort struct {
 
 // TLSConfig represents TLS configuration for a route
 type TLSConfig struct {
-	Termination                   string `json:"termination"`                   // edge, passthrough, reencrypt
+	Termination                   string `json:"termination"` // edge, passthrough, reencrypt
 	Certificate                   string `json:"certificate,omitempty"`
-	Key                          string `json:"key,omitempty"`
-	CACertificate                string `json:"caCertificate,omitempty"`
-	DestinationCACertificate     string `json:"destinationCACertificate,omitempty"`
+	Key                           string `json:"key,omitempty"`
+	CACertificate                 string `json:"caCertificate,omitempty"`
+	DestinationCACertificate      string `json:"destinationCACertificate,omitempty"`
 	InsecureEdgeTerminationPolicy string `json:"insecureEdgeTerminationPolicy,omitempty"`
 }
 
@@ -409,17 +409,17 @@ type RouteCondition struct {
 // OperatorInfo represents simplified Operator information (ClusterServiceVersion)
 type OperatorInfo struct {
 	ResourceInfo
-	Phase              string                     `json:"phase"`              // Pending, Installing, Succeeded, Failed, Unknown
-	Version            string                     `json:"version"`
-	DisplayName        string                     `json:"displayName"`
-	Description        string                     `json:"description"`
-	Provider           OperatorProvider           `json:"provider"`
-	InstallModes       []OperatorInstallMode      `json:"installModes"`
-	Requirements       []OperatorRequirement      `json:"requirements"`
-	Conditions         []OperatorCondition        `json:"conditions"`
-	OwnedResources     []OwnedResource           `json:"ownedResources"`     // CRDs owned by this operator
-	RequiredResources  []RequiredResource        `json:"requiredResources"`  // Resources required by this operator
-	Age                string                     `json:"age"`
+	Phase             string                `json:"phase"` // Pending, Installing, Succeeded, Failed, Unknown
+	Version           string                `json:"version"`
+	DisplayName       string                `json:"displayName"`
+	Description       string                `json:"description"`
+	Provider          OperatorProvider      `json:"provider"`
+	InstallModes      []OperatorInstallMode `json:"installModes"`
+	Requirements      []OperatorRequirement `json:"requirements"`
+	Conditions        []OperatorCondition   `json:"conditions"`
+	OwnedResources    []OwnedResource       `json:"ownedResources"`    // CRDs owned by this operator
+	RequiredResources []RequiredResource    `json:"requiredResources"` // Resources required by this operator
+	Age               string                `json:"age"`
 }
 
 // OperatorProvider represents operator provider information
@@ -430,7 +430,7 @@ type OperatorProvider struct {
 
 // OperatorInstallMode represents an install mode
 type OperatorInstallMode struct {
-	Type      string `json:"type"`      // OwnNamespace, SingleNamespace, MultiNamespace, AllNamespaces
+	Type      string `json:"type"` // OwnNamespace, SingleNamespace, MultiNamespace, AllNamespaces
 	Supported bool   `json:"supported"`
 }
 
@@ -472,15 +472,15 @@ type RequiredResource struct {
 // SubscriptionInfo represents simplified Subscription information
 type SubscriptionInfo struct {
 	ResourceInfo
-	Channel                string               `json:"channel"`
-	StartingCSV            string               `json:"startingCSV"`
-	CurrentCSV             string               `json:"currentCSV"`
-	InstalledCSV           string               `json:"installedCSV"`
-	InstallPlanGeneration  int64                `json:"installPlanGeneration"`
-	InstallPlanRef         *InstallPlanRef      `json:"installPlanRef,omitempty"`
-	State                  string               `json:"state"`                  // UpgradePending, AtLatestKnown, etc.
-	Conditions             []SubscriptionCondition `json:"conditions"`
-	Age                    string               `json:"age"`
+	Channel               string                  `json:"channel"`
+	StartingCSV           string                  `json:"startingCSV"`
+	CurrentCSV            string                  `json:"currentCSV"`
+	InstalledCSV          string                  `json:"installedCSV"`
+	InstallPlanGeneration int64                   `json:"installPlanGeneration"`
+	InstallPlanRef        *InstallPlanRef         `json:"installPlanRef,omitempty"`
+	State                 string                  `json:"state"` // UpgradePending, AtLatestKnown, etc.
+	Conditions            []SubscriptionCondition `json:"conditions"`
+	Age                   string                  `json:"age"`
 }
 
 // InstallPlanRef represents a reference to an InstallPlan

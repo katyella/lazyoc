@@ -29,10 +29,13 @@ func (n *Navigator) SelectPreviousResource() {
 func (n *Navigator) SelectResource(index int) {
 	switch n.tui.ActiveTab {
 	case models.TabPods:
+		logging.Debug(n.tui.Logger, "Navigator: attempting to select pod %d, have %d pods total", index, len(n.tui.pods))
 		if index >= 0 && index < len(n.tui.pods) {
 			n.tui.selectedPod = index
 			n.tui.updatePodDisplay()
 			logging.Debug(n.tui.Logger, "Selected pod %d", index)
+		} else {
+			logging.Debug(n.tui.Logger, "Navigator: pod index %d out of bounds (0-%d)", index, len(n.tui.pods)-1)
 		}
 	case models.TabServices:
 		if index >= 0 && index < len(n.tui.services) {

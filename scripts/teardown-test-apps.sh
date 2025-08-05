@@ -85,6 +85,17 @@ for app in "${APPS[@]}"; do
     oc delete replicaset -l app="$app" --ignore-not-found=true > /dev/null 2>&1 || true
 done
 
+# Delete test secrets
+echo "🔐 Cleaning up test secrets..."
+TEST_SECRETS=("database-credentials" "api-keys" "tls-certificates" "app-config" "docker-registry-creds" "oauth-tokens" "simple-creds")
+
+for secret in "${TEST_SECRETS[@]}"; do
+    if oc get secret "$secret" &> /dev/null; then
+        echo "  🗑️  Deleting secret: $secret"
+        oc delete secret "$secret" --ignore-not-found=true > /dev/null 2>&1 || true
+    fi
+done
+
 echo ""
 echo "📋 Remaining resources in project '$CURRENT_PROJECT':"
 echo "===================================================="
@@ -118,6 +129,17 @@ if [ "$SVC_COUNT" -eq 0 ]; then
     echo "  (no services found, except kubernetes)"
 else
     oc get services --no-headers | grep -v kubernetes | while read line; do
+        echo "  $line"
+    done
+fi
+
+echo ""
+echo "🔐 Secrets:"
+SECRET_COUNT=$(oc get secrets --no-headers 2>/dev/null | grep -v default-token | wc -l || echo "0")
+if [ "$SECRET_COUNT" -eq 0 ]; then
+    echo "  (no custom secrets found, except default tokens)"
+else
+    oc get secrets --no-headers | grep -v default-token | while read line; do
         echo "  $line"
     done
 fi
