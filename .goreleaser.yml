@@ -32,9 +32,8 @@ builds:
 
 archives:
   - id: lazyoc
-    format_overrides:
-      - goos: windows
-        format: zip
+    builds:
+      - lazyoc
     name_template: >-
       lazyoc_
       {{- .Version }}_
