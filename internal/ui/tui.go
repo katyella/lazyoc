@@ -4094,6 +4094,8 @@ func (t *TUI) handleMouseEvent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return t, nil
 	}
 
+	logging.Debug(t.Logger, "Mouse event: Type=%v, X=%d, Y=%d", msg.Type, msg.X, msg.Y)
+
 	switch msg.Type {
 	case tea.MouseLeft:
 		return t.handleMouseClick(msg.X, msg.Y)
@@ -4111,17 +4113,42 @@ func (t *TUI) handleMouseClick(x, y int) (tea.Model, tea.Cmd) {
 	headerHeight := t.getHeaderHeight()
 	tabY := headerHeight
 
+	logging.Debug(t.Logger, "Mouse click: X=%d, Y=%d, headerHeight=%d, tabY=%d, terminalSize=%dx%d", 
+		x, y, headerHeight, tabY, t.width, t.height)
+
 	// Check if click is on tabs row
 	if y == tabY {
+		logging.Debug(t.Logger, "Click detected on tabs row")
 		return t.handleTabClick(x)
 	}
 
-	// Check if click is in resource list area
-	resourceListStartY := headerHeight + 1 // header + tabs
-	if y > resourceListStartY {
-		return t.handleResourceClick(x, y-resourceListStartY-1) // -1 for 0-based indexing
+	// Determine which panel was clicked based on x coordinate and current layout
+	panel := t.getPanelFromCoordinates(x, y)
+	if panel >= 0 && panel != t.focusedPanel {
+		logging.Debug(t.Logger, "Switching focus from panel %d to panel %d", t.focusedPanel, panel)
+		t.focusedPanel = panel
+		return t, nil
 	}
 
+	// Handle clicks within the focused panel
+	if t.focusedPanel == 0 { // Main panel
+		// Check if click is in resource list area
+		resourceListStartY := headerHeight + 1 // header + tabs
+		if y > resourceListStartY {
+			// Account for content header (title + empty line + column headers + separator = 4 lines)
+			contentHeaderLines := 4
+			resourceIndex := y - resourceListStartY - contentHeaderLines - 1 // -1 for 0-based indexing
+			logging.Debug(t.Logger, "Click detected in resource list area, resourceListStartY=%d, contentHeaderLines=%d, resourceIndex=%d", 
+				resourceListStartY, contentHeaderLines, resourceIndex)
+			
+			// Only handle clicks on actual resource rows (resourceIndex >= 0)
+			if resourceIndex >= 0 {
+				return t.handleResourceClick(x, resourceIndex)
+			}
+		}
+	}
+
+	logging.Debug(t.Logger, "Click not handled - outside recognized areas")
 	return t, nil
 }
 
@@ -4130,21 +4157,49 @@ func (t *TUI) handleTabClick(x int) (tea.Model, tea.Cmd) {
 	tabs := constants.ResourceTabs
 	totalTabs := len(tabs)
 
-	// Calculate tab width (approximately equal distribution)
-	tabWidth := t.width / totalTabs
-	if tabWidth < 1 {
-		tabWidth = 1
+	// Calculate actual tab positions accounting for padding and centering
+	var tabWidths []int
+	totalTabsWidth := 0
+	
+	for _, tab := range tabs {
+		// Each tab has padding of 1 on each side, so width = len(name) + 2
+		tabWidth := len(tab) + 2
+		tabWidths = append(tabWidths, tabWidth)
+		totalTabsWidth += tabWidth
 	}
-
+	
+	// Calculate starting position (center-aligned)
+	startX := (t.width - totalTabsWidth) / 2
+	if startX < 0 {
+		startX = 0
+	}
+	
 	// Find which tab was clicked
-	clickedTab := x / tabWidth
-	if clickedTab >= totalTabs {
-		clickedTab = totalTabs - 1
+	currentX := startX
+	clickedTab := -1
+	
+	for i, tabWidth := range tabWidths {
+		if x >= currentX && x < currentX+tabWidth {
+			clickedTab = i
+			break
+		}
+		currentX += tabWidth
 	}
-
-	// Switch to the clicked tab
-	t.ActiveTab = models.TabType(clickedTab)
-	logging.Debug(t.Logger, "Mouse click switched to tab %d (%s)", clickedTab, tabs[clickedTab])
+	
+	logging.Debug(t.Logger, "Tab click: X=%d, startX=%d, totalTabsWidth=%d, clickedTab=%d, currentTab=%d", 
+		x, startX, totalTabsWidth, clickedTab, int(t.ActiveTab))
+	
+	// Only switch if we found a valid tab
+	if clickedTab >= 0 && clickedTab < totalTabs {
+		oldTab := t.ActiveTab
+		t.ActiveTab = models.TabType(clickedTab)
+		logging.Debug(t.Logger, "Mouse click switched from tab %d (%s) to tab %d (%s)", 
+			int(oldTab), tabs[int(oldTab)], clickedTab, tabs[clickedTab])
+		// Call handleTabSwitch to update the content display
+		return t, t.handleTabSwitch()
+	} else {
+		logging.Debug(t.Logger, "Tab click outside valid range")
+	}
 
 	return t, nil
 }
@@ -4153,8 +4208,11 @@ func (t *TUI) handleTabClick(x int) (tea.Model, tea.Cmd) {
 func (t *TUI) handleResourceClick(x, y int) (tea.Model, tea.Cmd) {
 	// Only handle clicks if we're connected and have resources
 	if !t.connected {
+		logging.Debug(t.Logger, "Resource click ignored - not connected")
 		return t, nil
 	}
+
+	logging.Debug(t.Logger, "Resource click: X=%d, Y=%d, ActiveTab=%d", x, y, int(t.ActiveTab))
 
 	switch t.ActiveTab {
 	case models.TabPods: // Pods
@@ -4217,14 +4275,32 @@ func (t *TUI) handleMouseWheel(direction int, x, y int) (tea.Model, tea.Cmd) {
 		return t, nil
 	}
 
-	headerHeight := t.getHeaderHeight()
-	resourceListStartY := headerHeight + 1
-
-	// Check if wheel event is in resource list area
-	if y > resourceListStartY {
+	// Determine which panel the wheel event is in
+	panel := t.getPanelFromCoordinates(x, y)
+	
+	switch panel {
+	case 0: // Main panel - scroll resource list
 		return t.handleResourceListScroll(direction)
+	
+	case 1: // Details panel - scroll details content
+		if t.showDetails {
+			// For now, just log it - detailed scrolling can be implemented later
+			logging.Debug(t.Logger, "Mouse wheel in details panel: direction=%d", direction)
+		}
+	
+	case 2: // Logs panel - scroll logs
+		if t.showLogs {
+			if direction > 0 {
+				// Scroll down
+				t.logScrollOffset++
+			} else if direction < 0 && t.logScrollOffset > 0 {
+				// Scroll up
+				t.logScrollOffset--
+			}
+			logging.Debug(t.Logger, "Mouse wheel in logs panel: direction=%d, offset=%d", direction, t.logScrollOffset)
+		}
 	}
-
+	
 	return t, nil
 }
 
@@ -4338,4 +4414,36 @@ func (t *TUI) getHeaderHeight() int {
 		return 1
 	}
 	return 2
+}
+
+// getPanelFromCoordinates determines which panel was clicked based on coordinates
+func (t *TUI) getPanelFromCoordinates(x, y int) int {
+	// If no details or logs shown, everything is main panel
+	if !t.showDetails && !t.showLogs {
+		return 0
+	}
+
+	// Calculate main panel width
+	mainWidth := t.width
+	if t.showDetails {
+		mainWidth = int(float64(t.width) * constants.MainPanelWidthRatio)
+	}
+
+	// Check horizontal position for main vs details
+	if t.showDetails && x >= mainWidth {
+		return 1 // Details panel
+	}
+
+	// Check vertical position for logs
+	if t.showLogs {
+		// Calculate where logs panel starts
+		// This is complex as it depends on the layout calculation in renderContent
+		// For now, let's use a simple heuristic - bottom 1/3 of screen
+		logStartY := t.height - (t.height / 3)
+		if y >= logStartY {
+			return 2 // Logs panel
+		}
+	}
+
+	return 0 // Main panel
 }
