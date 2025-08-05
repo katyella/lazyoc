@@ -33,14 +33,32 @@ func (m *MouseHandler) Handle(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 
 	logging.Debug(m.tui.Logger, "MouseHandler: received event Action=%v, Button=%v, X=%d, Y=%d", msg.Action, msg.Button, msg.X, msg.Y)
+	
+	// Special debug for trackpad troubleshooting
+	if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
+		logging.Debug(m.tui.Logger, "MouseHandler: WHEEL EVENT detected - Action=%v, Button=%v", msg.Action, msg.Button)
+	}
 
 	switch msg.Action {
 	case tea.MouseActionPress:
 		if msg.Button == tea.MouseButtonLeft {
 			return m.handleMouseClick(msg.X, msg.Y)
 		}
+		// Handle trackpad/wheel scroll events in press action
+		if msg.Button == tea.MouseButtonWheelUp {
+			return m.handleMouseWheel(-1, msg.X, msg.Y)
+		} else if msg.Button == tea.MouseButtonWheelDown {
+			return m.handleMouseWheel(1, msg.X, msg.Y)
+		}
+	case tea.MouseActionRelease:
+		// Handle trackpad/wheel scroll events in release action
+		if msg.Button == tea.MouseButtonWheelUp {
+			return m.handleMouseWheel(-1, msg.X, msg.Y)
+		} else if msg.Button == tea.MouseButtonWheelDown {
+			return m.handleMouseWheel(1, msg.X, msg.Y)
+		}
 	case tea.MouseActionMotion:
-		// Handle wheel events via button type
+		// Handle wheel events via button type (traditional mouse wheel)
 		if msg.Button == tea.MouseButtonWheelUp {
 			return m.handleMouseWheel(-1, msg.X, msg.Y)
 		} else if msg.Button == tea.MouseButtonWheelDown {
@@ -113,7 +131,7 @@ func (m *MouseHandler) handleResourceClick(resourceIndex int) (tea.Model, tea.Cm
 	// For pods, handle log loading if needed
 	if m.tui.ActiveTab == 0 {
 		m.tui.clearPodLogs()
-		return m.tui, tea.Batch(m.tui.loadPodLogs(), m.tui.startPodLogRefreshTimer())
+		return m.tui, m.tui.startPodLogStream()
 	}
 	
 	return m.tui, m.tui.loadPodLogs()
@@ -169,7 +187,7 @@ func (m *MouseHandler) handleResourceListScroll(direction int) (tea.Model, tea.C
 	// For pods, handle log loading if needed
 	if m.tui.ActiveTab == 0 {
 		m.tui.clearPodLogs()
-		return m.tui, tea.Batch(m.tui.loadPodLogs(), m.tui.startPodLogRefreshTimer())
+		return m.tui, m.tui.startPodLogStream()
 	}
 	
 	return m.tui, m.tui.loadPodLogs()
@@ -180,13 +198,20 @@ func (m *MouseHandler) handleLogScroll(direction int) (tea.Model, tea.Cmd) {
 	if direction > 0 {
 		// Scroll down
 		maxScroll := m.tui.getMaxLogScrollOffset()
-		if m.tui.logScrollOffset < maxScroll {
+		// Be more lenient about "at bottom" - within 2 lines is considered bottom
+		if m.tui.logScrollOffset < maxScroll-1 {
 			m.tui.logScrollOffset++
 			m.tui.userScrolled = true
 			m.tui.tailMode = false
+			// Update anchor to current top visible line
+			m.tui.updateScrollAnchor()
 		} else {
+			// We're at or very close to bottom - enter tail mode
 			m.tui.tailMode = true
 			m.tui.userScrolled = false
+			m.tui.logScrollOffset = maxScroll // Ensure we're exactly at bottom
+			// Clear anchor when in tail mode
+			m.tui.clearScrollAnchor()
 		}
 	} else {
 		// Scroll up
@@ -194,6 +219,8 @@ func (m *MouseHandler) handleLogScroll(direction int) (tea.Model, tea.Cmd) {
 			m.tui.logScrollOffset--
 			m.tui.userScrolled = true
 			m.tui.tailMode = false
+			// Update anchor to current top visible line
+			m.tui.updateScrollAnchor()
 		}
 	}
 	

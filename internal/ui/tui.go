@@ -50,6 +50,9 @@ type TUI struct {
 	context        string
 	clusterVersion string
 
+	// Bubble Tea program reference for sending messages from goroutines
+	program *tea.Program
+
 	// Resource data
 	pods        []resources.PodInfo
 	selectedPod int
@@ -91,6 +94,15 @@ type TUI struct {
 	lastLogTime     string          // Track last log timestamp for streaming
 	tailMode        bool            // True when auto-scrolling to new logs
 	seenLogLines    map[string]bool // Track seen log lines to prevent duplicates
+
+	// Real-time log streaming
+	logStreamCtx    context.Context
+	logStreamCancel context.CancelFunc
+	currentPodName  string // Track current pod for stream management
+
+	// Line-based scroll anchoring
+	anchorLogLine   string // The log line we're anchored to
+	anchorOffset    int    // Offset from the anchored line
 
 	// Log view mode: "app", "pod", or "service"
 	logViewMode string
@@ -311,7 +323,7 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			t.loadClusterInfo(),
 			t.loadPods(),
 			t.startPodRefreshTimer(),
-			t.startPodLogRefreshTimer(),
+			t.startPodLogStream(),
 			t.startSpinnerAnimation(),
 		)
 
@@ -528,11 +540,23 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return t, t.startPodRefreshTimer()
 
 	case messages.RefreshPodLogs:
-		// Automatically refresh pod logs and set up next refresh
+		// Legacy polling fallback - should not be used with streaming
 		if t.connected && t.logViewMode == constants.PodLogViewMode && len(t.pods) > 0 && t.selectedPod < len(t.pods) {
-			return t, tea.Batch(t.loadPodLogsInternal(true), t.startPodLogRefreshTimer())
+			return t, t.startPodLogStream()
 		}
-		return t, t.startPodLogRefreshTimer()
+		return t, nil // No need for polling with streaming
+
+	case messages.PodLogStreamUpdate:
+		// Handle real-time log stream updates
+		if t.connected && t.logViewMode == constants.PodLogViewMode {
+			t.handleLogStreamUpdate(msg.LogLine)
+		}
+
+	case messages.PodLogStreamError:
+		// Handle streaming errors
+		if t.connected && t.logViewMode == constants.PodLogViewMode {
+			t.handleLogStreamError(msg.Err)
+		}
 
 	case messages.NoKubeconfigMsg:
 		t.logContent = append(t.logContent, fmt.Sprintf("⚠️  %s", msg.Message))
@@ -1825,13 +1849,6 @@ func (t *TUI) startPodRefreshTimer() tea.Cmd {
 	})
 }
 
-// startPodLogRefreshTimer returns a command that sets up automatic pod log refresh
-func (t *TUI) startPodLogRefreshTimer() tea.Cmd {
-	return tea.Tick(constants.PodLogRefreshInterval, func(time.Time) tea.Msg {
-		return messages.RefreshPodLogs{}
-	})
-}
-
 // startSpinnerAnimation returns a command that triggers spinner animation updates
 func (t *TUI) startSpinnerAnimation() tea.Cmd {
 	return tea.Tick(constants.SpinnerAnimationInterval, func(time.Time) tea.Msg {
@@ -1852,6 +1869,9 @@ func (t *TUI) loadClusterInfo() tea.Cmd {
 
 // clearPodLogs clears the current pod logs and sets loading state
 func (t *TUI) clearPodLogs() {
+	// Stop any existing log stream
+	t.stopPodLogStream()
+
 	t.podLogs = []string{}
 	t.logScrollOffset = 0
 	t.loadingLogs = true
@@ -1859,6 +1879,7 @@ func (t *TUI) clearPodLogs() {
 	t.lastLogTime = ""                     // Reset timestamp tracking
 	t.tailMode = true                      // Reset to tail mode
 	t.seenLogLines = make(map[string]bool) // Clear seen logs map
+	t.clearScrollAnchor()                  // Clear line anchor
 }
 
 // loadPodLogs fetches logs from the currently selected pod
@@ -3692,5 +3713,197 @@ func (t *TUI) getHeaderHeight() int {
 		return 1
 	}
 	return 2
+}
+
+// Real-time log streaming methods
+
+// startPodLogStream initiates real-time log streaming for the current pod
+func (t *TUI) startPodLogStream() tea.Cmd {
+	return func() tea.Msg {
+		if !t.connected || t.resourceClient == nil || len(t.pods) == 0 || t.selectedPod >= len(t.pods) {
+			return messages.PodLogStreamError{
+				PodName:   "",
+				Container: "",
+				Err:       fmt.Errorf("no pod selected or not connected"),
+			}
+		}
+
+		pod := t.pods[t.selectedPod]
+		containerName := ""
+		if len(pod.ContainerInfo) > 0 {
+			containerName = pod.ContainerInfo[0].Name
+		}
+
+		// Stop any existing stream
+		t.stopPodLogStream()
+
+		// Create new context for this stream
+		t.logStreamCtx, t.logStreamCancel = context.WithCancel(context.Background())
+		t.currentPodName = pod.Name
+
+		// Start streaming
+		logChan, err := t.resourceClient.StreamPodLogs(t.logStreamCtx, pod.Namespace, pod.Name, containerName, resources.LogOptions{
+			TailLines: func() *int64 { i := int64(constants.MaxLogLines); return &i }(),
+			Follow:    true,
+		})
+		if err != nil {
+			return messages.PodLogStreamError{
+				PodName:   pod.Name,
+				Container: containerName,
+				Err:       err,
+			}
+		}
+
+		// Start listener goroutine
+		go t.listenForLogUpdates(logChan, pod.Name, containerName)
+
+		return nil // No immediate message needed
+	}
+}
+
+// stopPodLogStream stops the current log stream
+func (t *TUI) stopPodLogStream() {
+	if t.logStreamCancel != nil {
+		t.logStreamCancel()
+		t.logStreamCancel = nil
+		t.logStreamCtx = nil
+		t.currentPodName = ""
+	}
+}
+
+// listenForLogUpdates listens for log updates and sends them as messages
+func (t *TUI) listenForLogUpdates(logChan <-chan string, podName, containerName string) {
+	for {
+		select {
+		case <-t.logStreamCtx.Done():
+			return
+		case logLine, ok := <-logChan:
+			if !ok {
+				// Channel closed, stream ended
+				return
+			}
+			// Send log update message to TUI
+			t.program.Send(messages.PodLogStreamUpdate{
+				PodName:   podName,
+				Container: containerName,
+				LogLine:   logLine,
+			})
+		}
+	}
+}
+
+// handleLogStreamUpdate processes a new log line from the stream
+func (t *TUI) handleLogStreamUpdate(logLine string) {
+	if logLine == "" {
+		return
+	}
+
+	// Add to pod logs with duplicate prevention
+	if !t.seenLogLines[logLine] {
+		t.seenLogLines[logLine] = true
+		t.podLogs = append(t.podLogs, logLine)
+
+		// Maintain maximum log lines
+		if len(t.podLogs) > constants.MaxLogLines {
+			// Remove oldest logs and update seen map
+			removed := t.podLogs[:len(t.podLogs)-constants.MaxLogLines]
+			for _, removedLine := range removed {
+				delete(t.seenLogLines, removedLine)
+			}
+			t.podLogs = t.podLogs[len(t.podLogs)-constants.MaxLogLines:]
+		}
+
+		// Handle scroll behavior based on mode
+		if t.tailMode {
+			// In tail mode, ALWAYS stay at bottom regardless of userScrolled flag
+			t.logScrollOffset = t.getMaxLogScrollOffset()
+			t.userScrolled = false // Ensure we stay in tail mode
+		} else if t.userScrolled && t.anchorLogLine != "" {
+			// Maintain anchor position when user has manually scrolled
+			t.adjustScrollForAnchor()
+		}
+		// If no anchor, scroll position naturally preserves
+
+		// Clear loading state
+		t.loadingLogs = false
+	}
+}
+
+// handleLogStreamError processes streaming errors
+func (t *TUI) handleLogStreamError(err error) {
+	t.loadingLogs = false
+	t.podLogs = append(t.podLogs, fmt.Sprintf("❌ Log streaming error: %v", err))
+	// Try to restart streaming after a delay
+	go func() {
+		time.Sleep(2 * time.Second)
+		if t.program != nil {
+			t.program.Send(messages.RefreshPodLogs{}) // Fallback to polling
+		}
+	}()
+}
+
+// getLogViewHeight calculates the height available for log display
+func (t *TUI) getLogViewHeight() int {
+	headerHeight := t.getHeaderHeight()
+	statusHeight := 1
+	availableHeight := t.height - headerHeight - statusHeight
+	if t.showDetails {
+		availableHeight = availableHeight / 2 // Split with details panel
+	}
+	return max(1, availableHeight-2) // Account for borders
+}
+
+// Line-based scroll anchoring methods
+
+// updateScrollAnchor sets the anchor to the currently visible top line
+func (t *TUI) updateScrollAnchor() {
+	if len(t.podLogs) == 0 || t.logScrollOffset >= len(t.podLogs) {
+		t.clearScrollAnchor()
+		return
+	}
+
+	// Set anchor to the top visible line
+	t.anchorLogLine = t.podLogs[t.logScrollOffset]
+	t.anchorOffset = 0 // Top of view
+}
+
+// clearScrollAnchor removes the scroll anchor
+func (t *TUI) clearScrollAnchor() {
+	t.anchorLogLine = ""
+	t.anchorOffset = 0
+}
+
+// findAnchorPosition finds the current position of the anchored line
+func (t *TUI) findAnchorPosition() int {
+	if t.anchorLogLine == "" {
+		return -1
+	}
+
+	// Search for the anchor line in current logs
+	for i, logLine := range t.podLogs {
+		if logLine == t.anchorLogLine {
+			return i
+		}
+	}
+	return -1 // Anchor line not found (may have been rotated out)
+}
+
+// adjustScrollForAnchor adjusts scroll position to maintain anchor
+func (t *TUI) adjustScrollForAnchor() {
+	if t.anchorLogLine == "" || t.tailMode {
+		return // No anchor or in tail mode
+	}
+
+	anchorPos := t.findAnchorPosition()
+	if anchorPos == -1 {
+		// Anchor line not found, clear anchor
+		t.clearScrollAnchor()
+		return
+	}
+
+	// Adjust scroll offset to keep anchor line at the same relative position
+	newScrollOffset := anchorPos - t.anchorOffset
+	maxScroll := t.getMaxLogScrollOffset()
+	t.logScrollOffset = max(0, min(newScrollOffset, maxScroll))
 }
 

@@ -50,6 +50,8 @@ func (k *KeyboardHandler) Handle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Normal key handling
 	switch msg.String() {
 	case "ctrl+c", "q":
+		// Stop log streaming before quitting
+		k.tui.stopPodLogStream()
 		return k.tui, tea.Quit
 		
 	case "ctrl+p":
@@ -156,7 +158,7 @@ func (k *KeyboardHandler) handleDownKey() (tea.Model, tea.Cmd) {
 		// For pods, handle log loading
 		if k.tui.ActiveTab == 0 {
 			k.tui.clearPodLogs()
-			return k.tui, tea.Batch(k.tui.loadPodLogs(), k.tui.startPodLogRefreshTimer())
+			return k.tui, k.tui.startPodLogStream()
 		}
 		return k.tui, k.tui.loadPodLogs()
 	} else if k.focusManager.IsMainPanelFocused() && k.tui.showLogs {
@@ -168,13 +170,20 @@ func (k *KeyboardHandler) handleDownKey() (tea.Model, tea.Cmd) {
 	} else if k.focusManager.IsLogsPanelFocused() && len(k.tui.podLogs) > 0 {
 		// Scroll down in pod logs
 		maxScroll := k.tui.getMaxLogScrollOffset()
-		if k.tui.logScrollOffset < maxScroll {
+		// Be more lenient about "at bottom" - within 2 lines is considered bottom
+		if k.tui.logScrollOffset < maxScroll-1 {
 			k.tui.logScrollOffset += 1
 			k.tui.userScrolled = true
 			k.tui.tailMode = false
+			// Update anchor to current top visible line
+			k.tui.updateScrollAnchor()
 		} else {
+			// We're at or very close to bottom - enter tail mode
 			k.tui.tailMode = true
 			k.tui.userScrolled = false
+			k.tui.logScrollOffset = maxScroll // Ensure we're exactly at bottom
+			// Clear anchor when in tail mode
+			k.tui.clearScrollAnchor()
 		}
 	}
 	return k.tui, nil
@@ -187,7 +196,7 @@ func (k *KeyboardHandler) handleUpKey() (tea.Model, tea.Cmd) {
 		// For pods, handle log loading
 		if k.tui.ActiveTab == 0 {
 			k.tui.clearPodLogs()
-			return k.tui, tea.Batch(k.tui.loadPodLogs(), k.tui.startPodLogRefreshTimer())
+			return k.tui, k.tui.startPodLogStream()
 		}
 		return k.tui, k.tui.loadPodLogs()
 	} else if k.focusManager.IsLogsPanelFocused() && len(k.tui.podLogs) > 0 {
@@ -196,6 +205,8 @@ func (k *KeyboardHandler) handleUpKey() (tea.Model, tea.Cmd) {
 			k.tui.logScrollOffset -= 1
 			k.tui.userScrolled = true
 			k.tui.tailMode = false
+			// Update anchor to current top visible line
+			k.tui.updateScrollAnchor()
 		}
 	} else if k.focusManager.IsLogsPanelFocused() {
 		// Move focus up from logs

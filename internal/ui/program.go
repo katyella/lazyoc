@@ -20,7 +20,7 @@ func DefaultProgramOptions() ProgramOptions {
 		Version:      "dev",
 		Debug:        false,
 		AltScreen:    true,  // Use alternate screen buffer
-		MouseSupport: false, // Disable mouse for now (can enable later)
+		MouseSupport: true,  // Enable mouse support for scrolling
 	}
 }
 
@@ -42,7 +42,8 @@ func NewProgram(opts ProgramOptions) *tea.Program {
 	}
 
 	if opts.MouseSupport {
-		programOpts = append(programOpts, tea.WithMouseCellMotion())
+		// Use all motion for better trackpad support
+		programOpts = append(programOpts, tea.WithMouseAllMotion())
 	}
 
 	// Add input handling (using default stdin, no need to specify nil)
@@ -51,8 +52,13 @@ func NewProgram(opts ProgramOptions) *tea.Program {
 	logging.Info(tui.Logger, "Creating Bubble Tea program with options: AltScreen=%v, Mouse=%v",
 		opts.AltScreen, opts.MouseSupport)
 
-	// Create and return the program
-	return tea.NewProgram(tui, programOpts...)
+	// Create the program
+	program := tea.NewProgram(tui, programOpts...)
+
+	// Set program reference in TUI for goroutine message sending
+	tui.program = program
+
+	return program
 }
 
 // RunTUI creates and runs the TUI with the given options
