@@ -1041,11 +1041,113 @@
             "testStrategy": "Run goreleaser in snapshot mode to test release process without publishing. Build for all target platforms and verify binaries work correctly. Test installation process on clean systems. Verify all documentation accurately reflects the current state of the project."
           }
         ]
+      },
+      {
+        "id": 15,
+        "title": "Service-Level Log Aggregation Feature",
+        "description": "Implement a log aggregation feature that displays combined logs from all pods behind a service, with proper formatting, pod name prefixes, timestamp ordering, and real-time streaming capabilities.",
+        "details": "1. Service Log Aggregation Implementation:\n   - Create `internal/ui/views/service_logs.go` for service log aggregation logic\n   - Implement pod discovery using service selectors to find all matching pods\n   - Create concurrent log streaming from multiple pods using goroutines\n   - Implement log line parsing to extract timestamps for proper ordering\n   - Add pod name prefixing to each log line for clear identification\n   - Create buffered channel system for efficient log aggregation\n   - Implement memory-efficient circular buffer for log storage\n\n2. UI Integration in Services Tab:\n   - Modify `internal/ui/tui.go` to add 'L' key handler in Services tab\n   - Create new view mode for service logs similar to pod log view\n   - Add visual indicator when in service log aggregation mode\n   - Implement smooth transition between service details and log view\n   - Add loading indicator while discovering pods and establishing streams\n\n3. Real-time Log Streaming:\n   - Implement multiplexed log streaming using Kubernetes watch API\n   - Create log merger that maintains chronological order across pods\n   - Add timestamp-based sorting with configurable time window\n   - Implement backpressure handling for high-volume log scenarios\n   - Add automatic reconnection for dropped pod log streams\n\n4. Log Formatting and Display:\n   - Create consistent log format: `[POD_NAME] TIMESTAMP LOG_MESSAGE`\n   - Implement color coding for different pods (cycling through color palette)\n   - Add filtering capability to show/hide specific pod logs\n   - Implement search functionality within aggregated logs\n   - Add log level detection and optional filtering\n\n5. Performance Optimizations:\n   - Implement log line deduplication for identical messages\n   - Add configurable buffer sizes and retention policies\n   - Create efficient scrolling with virtual rendering for large log volumes\n   - Implement progressive loading for historical logs\n   - Add metrics for monitoring aggregation performance\n\n6. Error Handling and Edge Cases:\n   - Handle pods that are terminating or restarting\n   - Manage services with no matching pods gracefully\n   - Handle multi-container pods with container selection\n   - Add timeout handling for unresponsive log streams\n   - Implement graceful degradation for partial failures\n\n7. Keyboard Navigation:\n   - 'L' key: Toggle service log aggregation view\n   - 'f': Toggle follow mode for real-time updates\n   - '/': Search within aggregated logs\n   - 'n'/'N': Navigate search results\n   - Tab: Cycle through pod filters\n   - 'c': Clear current log buffer\n   - ESC: Return to service details view",
+        "testStrategy": "1. Unit Testing:\n   - Test service selector to pod matching logic\n   - Verify timestamp parsing and ordering algorithms\n   - Test log line formatting with various input formats\n   - Verify memory usage stays within limits for large log volumes\n   - Test concurrent stream handling and synchronization\n\n2. Integration Testing:\n   - Deploy test service with 3-5 backend pods generating logs\n   - Verify all pod logs appear in aggregated view\n   - Test real-time updates when pods generate new logs\n   - Verify correct ordering when pods have clock skew\n   - Test behavior when pods are added/removed from service\n\n3. Performance Testing:\n   - Test with services having 50+ pods\n   - Measure memory usage with 10,000+ log lines\n   - Verify UI responsiveness with high log throughput\n   - Test scroll performance with large log buffers\n   - Measure CPU usage during active log aggregation\n\n4. Edge Case Testing:\n   - Test with service having zero matching pods\n   - Verify behavior with pods in various states (Pending, Terminating)\n   - Test with multi-container pods\n   - Verify handling of pods with no logs\n   - Test recovery from network interruptions\n\n5. User Experience Testing:\n   - Verify 'L' key works only in Services tab\n   - Test all keyboard shortcuts in log view\n   - Verify smooth transitions between views\n   - Test search functionality with complex queries\n   - Verify color coding is distinguishable and accessible",
+        "status": "in-progress",
+        "dependencies": [
+          2,
+          4,
+          6,
+          7
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 16,
+        "title": "Basic Mouse Support Implementation for LazyOC",
+        "description": "Implement core mouse interaction support for LazyOC using Bubble Tea framework, enabling tab selection, resource selection, and basic scrolling functionality.",
+        "details": "1. Configure Bubble Tea for mouse support:\n   - Add tea.WithMouseCellMotion() to program initialization in main.go\n   - Update the application model to handle tea.MouseMsg events in Update method\n\n2. Implement tab selection via mouse clicks:\n   - Create clickable regions for each of the 8 tabs (Pods, Services, Deployments, ConfigMaps, Secrets, BuildConfigs, ImageStreams, Routes)\n   - Add mouse event handling in the tab navigation component\n   - Implement tab switching logic when a tab is clicked\n\n3. Add resource selection within panels:\n   - Make resource list items clickable\n   - Implement selection logic to update the currently selected resource\n   - Ensure selection state is properly updated in the application model\n\n4. Implement basic scrolling support:\n   - Add mouse wheel event handling for resource lists\n   - Implement scrolling in the details panel for resources with extensive information\n   - Ensure proper boundary checking for scroll limits",
+        "testStrategy": "1. Unit Testing:\n   - Create tests for mouse event handling in the Update method\n   - Test hit detection logic for tab and resource selection\n   - Verify scroll calculations and boundary conditions\n\n2. Integration Testing:\n   - Verify tab selection works correctly with mouse clicks\n   - Test resource selection in each panel type\n   - Confirm scrolling works in both resource lists and details panels\n   - Verify mouse wheel events are properly captured and processed\n\n3. Basic Cross-Platform Testing:\n   - Test mouse support across different terminal emulators\n   - Verify functionality in various operating systems (Linux, macOS, Windows)",
+        "status": "done",
+        "dependencies": [
+          2,
+          4
+        ],
+        "priority": "medium",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Configure Bubble Tea Mouse Support",
+            "description": "Set up the Bubble Tea framework to handle mouse events and configure the program initialization with proper mouse motion tracking.",
+            "dependencies": [],
+            "details": "Modify the program initialization in cmd/lazyoc/main.go to include tea.WithMouseCellMotion() and tea.WithAltScreen() options. Update internal/ui/program.go to ensure the tea.Program is created with mouse support enabled. Verify that the main application model in internal/ui/models/app.go is prepared to handle mouse events by adding the necessary fields for tracking mouse state, hover positions, and click regions.",
+            "status": "done",
+            "testStrategy": "Create unit tests to verify that the tea.Program is initialized with correct options. Test that mouse events are properly propagated through the application model. Verify that mouse configuration doesn't break existing keyboard navigation functionality."
+          },
+          {
+            "id": 2,
+            "title": "Implement Tab Mouse Navigation",
+            "description": "Create mouse interaction capabilities for the tab navigation system, allowing users to click on tabs to switch between resource types.",
+            "dependencies": [
+              "16.1"
+            ],
+            "details": "In internal/ui/tui.go, implement mouse event handling for the 8 resource tabs (Pods, Services, Deployments, ConfigMaps, Secrets, BuildConfigs, ImageStreams, Routes). Calculate clickable regions for each tab based on their rendered positions. Implement click detection logic that calls the appropriate tab switching methods (NextTab/PrevTab or direct tab selection) when a tab is clicked.",
+            "status": "done",
+            "testStrategy": "Test click detection accuracy for all 8 tabs across different terminal sizes. Test that clicking tabs properly updates the active tab and refreshes the resource list. Ensure tab switching via mouse maintains consistency with keyboard navigation state."
+          },
+          {
+            "id": 3,
+            "title": "Add Resource List Mouse Selection",
+            "description": "Implement mouse-based selection of resources within the resource list panels, allowing users to click on items to select them.",
+            "dependencies": [
+              "16.1"
+            ],
+            "details": "Extend the resource rendering functions in internal/ui/tui.go to track clickable regions for each displayed resource item. Implement hit testing to determine which resource is clicked based on mouse coordinates. Update selection indices (selectedPodIndex, selectedServiceIndex, etc.) when items are clicked. Ensure that mouse selection properly triggers the details panel update for the selected resource. Handle edge cases like clicking on empty space or scrolled content.",
+            "status": "done",
+            "testStrategy": "Test accurate hit detection for resource items in all 8 tabs. Verify that clicking resources updates the correct selection index for each resource type. Verify details panel updates when resources are selected via mouse. Test edge cases like clicking between items or on empty space."
+          },
+          {
+            "id": 4,
+            "title": "Implement Basic Scrolling Functionality",
+            "description": "Add mouse wheel support for scrolling through resource lists and details panels.",
+            "dependencies": [
+              "16.1",
+              "16.3"
+            ],
+            "details": "Handle tea.MouseMsg events for wheel up/down in the Update method of internal/ui/tui.go. Implement scroll offset tracking for both resource lists and details panels. Add boundary checking to prevent scrolling beyond content limits. Ensure scroll state is maintained when switching between tabs or resources.",
+            "status": "done",
+            "testStrategy": "Test mouse wheel scrolling in resource lists with varying content lengths. Verify scroll boundaries are properly enforced. Test that scroll state is preserved when switching tabs and restored when returning."
+          },
+          {
+            "id": 5,
+            "title": "Ensure Keyboard Navigation Compatibility",
+            "description": "Ensure full keyboard navigation compatibility alongside mouse interaction.",
+            "dependencies": [
+              "16.2",
+              "16.3",
+              "16.4"
+            ],
+            "details": "Ensure all mouse actions have keyboard equivalents and that state remains synchronized between input methods. Create a consistent interaction model where mouse and keyboard can be used interchangeably. Document the mouse interaction patterns in code comments for future maintenance.",
+            "status": "done",
+            "testStrategy": "Test seamless switching between mouse and keyboard input methods. Verify that using mouse doesn't break keyboard shortcuts or navigation."
+          }
+        ]
+      },
+      {
+        "id": 17,
+        "title": "Advanced Mouse UI Enhancements for LazyOC",
+        "description": "Implement sophisticated mouse features for LazyOC including hover effects, cursor style changes, tooltips, scrollbars, performance optimizations, and cross-platform testing to enhance user experience.",
+        "details": "1. Implement Hover Effects for Interactive Elements:\n   - Add visual feedback on hover for all clickable elements\n   - Create hover state styles for tabs, buttons, and selectable resources\n   - Implement highlight animations with subtle transitions\n   - Ensure hover states are consistent across the application\n\n2. Add Dynamic Cursor Style Changes:\n   - Change cursor to pointer when hovering over clickable elements\n   - Use wait cursor during loading operations\n   - Implement text selection cursor for copyable content\n   - Add resize cursors for adjustable panels\n   - Create custom cursors for specialized operations (if needed)\n\n3. Develop Tooltip System:\n   - Create reusable tooltip component in internal/ui/components/tooltip.go\n   - Implement tooltip positioning logic to avoid screen edges\n   - Add delay timing for tooltip appearance (show after 500ms hover)\n   - Design tooltip styling with consistent appearance\n   - Add tooltip content for all major UI elements explaining their function\n   - Include keyboard shortcut hints in tooltips where applicable\n\n4. Implement Scroll Indicators and Scrollbars:\n   - Add visual scrollbars for all scrollable panels\n   - Implement scroll position indicators showing relative location in content\n   - Create draggable scrollbar thumbs for mouse-based scrolling\n   - Add scroll shadows at content boundaries\n   - Ensure scrollbars adapt to panel size changes\n\n5. Performance Optimizations:\n   - Implement caching of clickable regions to avoid recalculation\n   - Add mouse event throttling to prevent excessive updates\n   - Optimize hit detection algorithms for large resource lists\n   - Implement efficient region-based rendering for mouse interactions\n   - Add profiling for mouse event handling to identify bottlenecks\n\n6. Cross-Platform Testing and Compatibility:\n   - Test mouse behavior on Linux, macOS, and Windows\n   - Verify compatibility with various terminal emulators\n   - Handle platform-specific mouse event differences\n   - Test with different mouse types (trackpad, traditional mouse, trackball)\n   - Ensure consistent behavior across all supported environments\n\n7. Accessibility Considerations:\n   - Ensure all mouse interactions have keyboard alternatives\n   - Add focus indicators that appear during keyboard navigation\n   - Test with screen readers to verify compatibility\n   - Implement appropriate ARIA attributes for terminal UI context\n\n8. Usability Testing and Refinement:\n   - Create test scenarios for common mouse interaction patterns\n   - Gather feedback on mouse feature usability\n   - Measure and optimize interaction efficiency\n   - Refine mouse behavior based on user testing results",
+        "testStrategy": "1. Unit Testing:\n   - Create tests for hover state management\n   - Test tooltip positioning logic with various screen sizes\n   - Verify scrollbar calculations and positioning\n   - Test hit detection for nested clickable elements\n   - Verify cursor style changes for different UI states\n\n2. Integration Testing:\n   - Test interaction between mouse features and keyboard navigation\n   - Verify tooltip content accuracy for all UI elements\n   - Test scrollbar behavior with various content sizes\n   - Verify hover effects work correctly with dynamic content\n   - Test performance under high update frequency\n\n3. Cross-Platform Testing:\n   - Set up test environments for Linux, macOS, and Windows\n   - Test with multiple terminal emulators on each platform:\n     * Linux: GNOME Terminal, Konsole, Alacritty\n     * macOS: Terminal.app, iTerm2, Alacritty\n     * Windows: Windows Terminal, ConEmu, Alacritty\n   - Verify consistent behavior across all environments\n   - Document any platform-specific adjustments needed\n\n4. Performance Testing:\n   - Benchmark mouse event handling with large resource lists (1000+ items)\n   - Measure memory usage during intensive mouse interaction\n   - Test CPU utilization during rapid mouse movements\n   - Verify rendering performance with frequent hover state changes\n   - Compare performance before and after optimizations\n\n5. Usability Testing:\n   - Create task-based scenarios for testers to complete using mouse\n   - Measure completion time and error rates\n   - Gather qualitative feedback on mouse feature intuitiveness\n   - Test with both experienced and new users\n   - Iterate on design based on usability findings\n\n6. Regression Testing:\n   - Verify existing keyboard shortcuts still work correctly\n   - Ensure mouse features don't interfere with core functionality\n   - Test backward compatibility with previous user interaction patterns\n   - Verify all existing tests still pass after mouse enhancements",
+        "status": "pending",
+        "dependencies": [
+          16,
+          9,
+          14
+        ],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
       "created": "2025-07-19T19:01:35.351Z",
-      "updated": "2025-07-26T08:16:38.296Z",
+      "updated": "2025-08-04T14:10:17.252Z",
       "description": "Tasks for master context"
     }
   }
